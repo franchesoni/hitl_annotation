@@ -4,10 +4,10 @@
 Annotate images fast with human-in-the-loop learning for annotation.
 
 ## DONE
-
-## TODO
 - image loader (backend, single image)
 - image viewer (single image)
+
+## TODO
 - image loader (backend, multiple images)
 - image viewer (multiple image)
 - database (multiple images, sqlite)
