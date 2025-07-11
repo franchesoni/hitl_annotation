@@ -19,6 +19,7 @@ let panX = 0, panY = 0;
 let minScale = 1;
 const MAX_SCALE = 10;
 let dragging = false, startX = 0, startY = 0;
+let panZoomEnabled = true;
 
 
 // =====================
@@ -133,6 +134,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // --- Zoom and Pan ---
     // Mouse wheel zoom (zoom around cursor)
     canvas.addEventListener('wheel', (e) => {
+        if (!panZoomEnabled) return;
         e.preventDefault();
         if (!img.width || !img.height) return;
         const rect = canvas.getBoundingClientRect();
@@ -141,7 +143,7 @@ document.addEventListener('DOMContentLoaded', () => {
         // Image coords under mouse before zoom
         const imgX = (px - panX) / scale;
         const imgY = (py - panY) / scale;
-        let newScale = scale * Math.pow(1.2, -e.deltaY / 100);
+        let newScale = scale * Math.pow(1.2, -e.deltaY / 200);
         newScale = Math.max(minScale, Math.min(MAX_SCALE, newScale));
         // Update pan so (imgX, imgY) stays under cursor
         panX = px - imgX * newScale;
@@ -152,6 +154,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Drag to pan
     canvas.addEventListener('pointerdown', (e) => {
+        if (!panZoomEnabled) return;
         dragging = true;
         startX = e.clientX;
         startY = e.clientY;
@@ -159,6 +162,7 @@ document.addEventListener('DOMContentLoaded', () => {
         e.preventDefault();
     });
     canvas.addEventListener('pointermove', (e) => {
+        if (!panZoomEnabled) return;
         if (!dragging) return;
         panX += e.clientX - startX;
         panY += e.clientY - startY;
@@ -168,10 +172,25 @@ document.addEventListener('DOMContentLoaded', () => {
         e.preventDefault();
     });
     canvas.addEventListener('pointerup', (e) => {
+        if (!panZoomEnabled) return;
         dragging = false;
         canvas.releasePointerCapture(e.pointerId);
     });
     window.addEventListener('pointerup', () => { dragging = false; });
+
+    // Pan/Zoom toggle button
+    const toggleBtn = document.getElementById('toggle-panzoom-btn');
+    if (toggleBtn) {
+        toggleBtn.addEventListener('click', () => {
+            panZoomEnabled = !panZoomEnabled;
+            // Reset view on toggle
+            resetViewToImage();
+            drawImageToCanvas();
+            toggleBtn.textContent = panZoomEnabled ? 'Disable Pan/Zoom' : 'Enable Pan/Zoom';
+        });
+        // Set initial label
+        toggleBtn.textContent = panZoomEnabled ? 'Disable Pan/Zoom' : 'Enable Pan/Zoom';
+    }
 
     // Use existing Reset View button
     const resetBtn = document.getElementById('reset-view-btn');
