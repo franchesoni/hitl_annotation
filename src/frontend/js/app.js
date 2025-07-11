@@ -62,12 +62,31 @@ function updateImage() {
 // =====================
 // Navigation
 // =====================
+function fetchImageList() {
+  return fetch('/api/ids')
+    .then(r => r.json())
+    .then(ids => {
+      const prevId = imageIds[currentIdx];
+      imageIds = ids;
+      // Find the index of the previous image in the new list
+      let idx = imageIds.indexOf(prevId);
+      if (idx === -1) {
+        idx = 0;
+      }
+      currentIdx = idx;
+      updateIdDisplay();
+      updateNavButtons();
+    });
+}
+
 function goToPrev() {
   if (isLoading) return;
   if (currentIdx > 0) {
     currentIdx--;
     updateImage();
     updateNavButtons();
+    // Fetch the image list after navigating
+    fetchImageList();
   }
 }
 
@@ -77,25 +96,16 @@ function goToNext() {
     currentIdx++;
     updateImage();
     updateNavButtons();
+    // Fetch the image list after navigating
+    fetchImageList();
   }
 }
 
 // =====================
 // Initialization
 // =====================
-function fetchAndInitImages() {
-  fetch('/api/ids')
-    .then(r => r.json())
-    .then(ids => {
-      imageIds = ids;
-      currentIdx = 0;
-      updateImage();
-      updateNavButtons();
-    });
-}
-
 document.addEventListener('DOMContentLoaded', () => {
-  fetchAndInitImages();
+  fetchImageList().then(() => updateImage());
   if (prevBtn) prevBtn.addEventListener('click', goToPrev);
   if (nextBtn) nextBtn.addEventListener('click', goToNext);
 });

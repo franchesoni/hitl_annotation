@@ -10,8 +10,6 @@ Annotate images fast with human-in-the-loop learning for annotation.
 ## DONE
 - image loader (backend, single image)
 - image viewer (single image)
-
-## TODO
 - image viewer (multiple images)
     [x] change the sample api to get by id
     - add navigation
@@ -19,10 +17,13 @@ Annotate images fast with human-in-the-loop learning for annotation.
         [x] get requests right
         [x] block requests
     [x] update the frontend to display the image ID
-    - make the frontend request the list everytime we navigate (after navigating)
+    [x] make the frontend request the list everytime we navigate (after navigating)
     [x] make the frontend display a spinner if the image is loading
-- database (multiple images, sqlite)
+
+
+## TODO
 - image viewer (panning)
 - image viewer (zooming)
 - documentation
 - image loader (.zip)
+- database (multiple images, sqlite)
