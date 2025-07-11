@@ -19,11 +19,10 @@ Annotate images fast with human-in-the-loop learning for annotation.
     [x] update the frontend to display the image ID
     [x] make the frontend request the list everytime we navigate (after navigating)
     [x] make the frontend display a spinner if the image is loading
-
-
-## TODO
 - image viewer (panning)
 - image viewer (zooming)
+
+## TODO
 - documentation
 - image loader (.zip)
 - database (multiple images, sqlite)

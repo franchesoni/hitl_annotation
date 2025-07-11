@@ -13,6 +13,13 @@ const idDiv = document.getElementById('image-ids');
 let imageIds = [];
 let currentIdx = 0;
 let isLoading = false;
+// Zoom & Pan State
+let scale = 1;
+let panX = 0, panY = 0;
+let minScale = 1;
+const MAX_SCALE = 10;
+let dragging = false, startX = 0, startY = 0;
+
 
 // =====================
 // UI Helpers
@@ -38,19 +45,33 @@ function updateIdDisplay() {
 // Image Logic
 // =====================
 function drawImageToCanvas() {
-  // Get viewport size (minus a small margin)
+  // Set canvas to viewport size (fixed)
   const maxWidth = window.innerWidth * 0.90;
   const maxHeight = window.innerHeight * 0.90;
-  const scale = Math.min(maxWidth / img.width, maxHeight / img.height, 1);
-  const drawWidth = img.width * scale;
-  const drawHeight = img.height * scale;
-  canvas.width = drawWidth;
-  canvas.height = drawHeight;
-  ctx.drawImage(img, 0, 0, drawWidth, drawHeight);
+  canvas.width = maxWidth;
+  canvas.height = maxHeight;
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  ctx.setTransform(scale, 0, 0, scale, panX, panY);
+  ctx.drawImage(img, 0, 0, img.width, img.height);
+  ctx.setTransform(1, 0, 0, 1, 0, 0); // reset
   setLoading(false);
 }
 
-img.onload = drawImageToCanvas;
+// Helper to reset view for a new image
+function resetViewToImage() {
+  const maxWidth = window.innerWidth * 0.90;
+  const maxHeight = window.innerHeight * 0.90;
+  const fitScale = Math.min(maxWidth / img.width, maxHeight / img.height, 1);
+  scale = fitScale;
+  minScale = fitScale * 0.5;
+  panX = (maxWidth - img.width * scale) / 2;
+  panY = (maxHeight - img.height * scale) / 2;
+}
+img.onload = function() {
+  resetViewToImage();
+  drawImageToCanvas();
+};
 
 function updateImage() {
   if (imageIds.length === 0) return;
@@ -108,4 +129,61 @@ document.addEventListener('DOMContentLoaded', () => {
   fetchImageList().then(() => updateImage());
   if (prevBtn) prevBtn.addEventListener('click', goToPrev);
   if (nextBtn) nextBtn.addEventListener('click', goToNext);
+
+  // --- Zoom and Pan ---
+  // Mouse wheel zoom (zoom around cursor)
+  canvas.addEventListener('wheel', (e) => {
+    e.preventDefault();
+    if (!img.width || !img.height) return;
+    const rect = canvas.getBoundingClientRect();
+    const px = e.clientX - rect.left;
+    const py = e.clientY - rect.top;
+    // Image coords under mouse before zoom
+    const imgX = (px - panX) / scale;
+    const imgY = (py - panY) / scale;
+    let newScale = scale * Math.pow(1.2, -e.deltaY / 100);
+    newScale = Math.max(minScale, Math.min(MAX_SCALE, newScale));
+    // Update pan so (imgX, imgY) stays under cursor
+    panX = px - imgX * newScale;
+    panY = py - imgY * newScale;
+    scale = newScale;
+    drawImageToCanvas();
+  }, { passive: false });
+
+  // Drag to pan
+  canvas.addEventListener('pointerdown', (e) => {
+    dragging = true;
+    startX = e.clientX;
+    startY = e.clientY;
+    canvas.setPointerCapture(e.pointerId);
+    e.preventDefault();
+  });
+  canvas.addEventListener('pointermove', (e) => {
+    if (!dragging) return;
+    panX += e.clientX - startX;
+    panY += e.clientY - startY;
+    startX = e.clientX;
+    startY = e.clientY;
+    drawImageToCanvas();
+    e.preventDefault();
+  });
+  canvas.addEventListener('pointerup', (e) => {
+    dragging = false;
+    canvas.releasePointerCapture(e.pointerId);
+  });
+  window.addEventListener('pointerup', () => { dragging = false; });
+
+  // Use existing Reset View button
+  const resetBtn = document.getElementById('reset-view-btn');
+  if (resetBtn) {
+    resetBtn.addEventListener('click', () => {
+      resetViewToImage();
+      drawImageToCanvas();
+    });
+  }
+
+  // Redraw on resize
+  window.addEventListener('resize', () => {
+    drawImageToCanvas();
+  });
 });
