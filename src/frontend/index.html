@@ -1,25 +1,37 @@
 <!doctype html>
 <html lang="en">
+
 <head>
-  <meta charset="utf-8" />
-  <title>Canvas demo</title>
-  <style>body{margin:0;display:flex;justify-content:center;align-items:center;height:100vh;}</style>
+	<meta charset="utf-8" />
+	<title>Canvas demo</title>
+	<style>
+		body {
+			margin: 0;
+			display: flex;
+			justify-content: center;
+			align-items: center;
+			height: 100vh;
+		}
+	</style>
 </head>
+
 <body>
-  <div style="display:flex;flex-direction:column;align-items:center;width:100vw;">
-    <div style="margin-bottom:10px;">
-      <button id="prev-btn">Prev</button>
-      <button id="next-btn">Next</button>
-      <button id="reset-view-btn" style="margin-left:10px;">Reset view</button>
-    </div>
-    <div style="position:relative;display:inline-block;">
-      <canvas id="c"></canvas>
-      <div id="loading-overlay" style="display:none;position:absolute;top:0;left:0;width:100%;height:100%;background:rgba(255,255,255,0.7);z-index:10;justify-content:center;align-items:center;font-size:2em;color:#333;">
-        Loading...
-      </div>
-    </div>
-    <div id="image-ids"></div>
-  </div>
-  <script src="js/app.js"></script>
+	<div style="display:flex;flex-direction:column;align-items:center;width:100vw;">
+		<div style="margin-bottom:10px;">
+			<button id="prev-btn">Prev</button>
+			<button id="next-btn">Next</button>
+			<button id="reset-view-btn" style="margin-left:10px;">Reset view</button>
+		</div>
+		<div style="position:relative;display:inline-block;">
+			<canvas id="c"></canvas>
+			<div id="loading-overlay"
+				style="display:none;position:absolute;top:0;left:0;width:100%;height:100%;background:rgba(255,255,255,0.7);z-index:10;justify-content:center;align-items:center;font-size:2em;color:#333;">
+				Loading...
+			</div>
+		</div>
+		<div id="image-ids"></div>
+	</div>
+	<script src="js/app.js"></script>
 </body>
+
 </html>
