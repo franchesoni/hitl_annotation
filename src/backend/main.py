@@ -27,6 +27,7 @@ async def sample(request):
     id_param = request.query_params.get("id")
     all_images = db.get_samples()
     if id_param not in all_images:
+        # this check is important, without it the client can access any file in the system
         raise ValueError(f"Image with id '{id_param}' not found.")
     image_path = id_param
     import mimetypes
