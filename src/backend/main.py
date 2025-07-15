@@ -5,20 +5,32 @@ from starlette.routing import Route
 from starlette.staticfiles import StaticFiles
 from pathlib import Path
 
+# --- Database integration ---
+from src.database.data import DatabaseAPI, validate_db_dict
+from src.database.db_init import build_initial_db_dict
+
 BASE_DIR = Path(__file__).resolve().parent
 FRONTEND_DIR = BASE_DIR.parent / "frontend"
-IMAGES = [
-    "/home/franchesoni/mine/repos/annotation_apps/bbox_class_editor/data/assembled_image_img_1_1609.125_1817.0.png",
-    "/home/franchesoni/mine/repos/annotation_apps/bbox_class_editor/data/assembled_image_img_1_2699.125_464.0.png",
-]
+
+# Build and validate the initial db dict
+db_dict = build_initial_db_dict()
+validate_db_dict(db_dict)
+
+# Initialize the database
+db = DatabaseAPI()
+db.set_samples([s["filepath"] for s in db_dict["samples"]])
+# Optionally, you could also set annotations and predictions here if needed
 
 
 async def sample(request):
-    # Get id from query parameter, default to first image if not provided or not found
+    # Get id from query parameter, must be in the database
     id_param = request.query_params.get("id")
-    if id_param not in IMAGES:
+    all_images = db.get_samples()
+    if id_param not in all_images:
         raise ValueError(f"Image with id '{id_param}' not found.")
     image_path = id_param
+    import mimetypes
+
     mime_type, _ = mimetypes.guess_type(image_path)
     if mime_type is None:
         mime_type = "application/octet-stream"
@@ -26,7 +38,8 @@ async def sample(request):
 
 
 async def get_ids(request):
-    return JSONResponse(IMAGES)
+    # Return all sample filepaths from the database
+    return JSONResponse(db.get_samples())
 
 
 app = Starlette(

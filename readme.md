@@ -3,6 +3,8 @@
 
 Annotate images fast with human-in-the-loop learning for annotation.
 
+Run with: `uvicorn src.backend.main:app`
+
 ## Docs
 
 ### Backend API
@@ -44,7 +46,10 @@ Annotate images fast with human-in-the-loop learning for annotation.
 - image viewer (zooming)
 - documentation
 - draft database (multiple images, sqlite)
+- integrate database into app (multiple images, sqlite)
 
 ## TODO
-- integrate database into app (multiple images, sqlite)
+- add class handling in the frontend (add / remove class)
+- write class to backend
+- load class from backend
 - image loader (.zip)

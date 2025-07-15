@@ -1,3 +1,198 @@
+def validate_db_dict(db):
+    """
+    Strictly validate that the db dict matches the required template:
+    {
+        "samples": [ {"filepath": str}, ... ],
+        "annotations": [ { ... }, ... ],
+        "predictions": [ { ... }, ... ]
+    }
+    For coordinates, uses 'row' and 'col' instead of 'x' and 'y'.
+    Raises ValueError if any check fails.
+    """
+    # Top-level keys
+    required_keys = {"samples", "annotations", "predictions"}
+    if not isinstance(db, dict):
+        raise ValueError("Database must be a dict.")
+    if set(db.keys()) != required_keys:
+        raise ValueError(
+            f"Database must have keys {required_keys}, got {set(db.keys())}"
+        )
+
+    # Validate samples
+    if not isinstance(db["samples"], list):
+        raise ValueError("'samples' must be a list.")
+    import os
+
+    sample_filepaths = set()
+    seen_filepaths = set()
+    for s in db["samples"]:
+        if not isinstance(s, dict):
+            raise ValueError("Each sample must be a dict.")
+        if set(s.keys()) != {"filepath"}:
+            raise ValueError(
+                f"Sample dict must have only 'filepath', got {set(s.keys())}"
+            )
+        if not isinstance(s["filepath"], str) or not s["filepath"].strip():
+            raise ValueError("'filepath' must be a non-empty string.")
+        if s["filepath"] in seen_filepaths:
+            raise ValueError(f"Duplicate filepath in samples: {s['filepath']}")
+        if not os.path.isfile(s["filepath"]):
+            raise ValueError(f"Sample filepath does not exist: {s['filepath']}")
+        seen_filepaths.add(s["filepath"])
+        sample_filepaths.add(s["filepath"])
+
+    # Validate annotations
+    if not isinstance(db["annotations"], list):
+        raise ValueError("'annotations' must be a list.")
+    seen_annotations = set()
+    for a in db["annotations"]:
+        if not isinstance(a, dict):
+            raise ValueError("Each annotation must be a dict.")
+        required_ann_keys = {"sample_filepath", "type", "class"}
+        allowed_types = {"label", "bbox", "point"}
+        if not required_ann_keys.issubset(a.keys()):
+            raise ValueError(
+                f"Annotation missing required keys: {required_ann_keys - set(a.keys())}"
+            )
+        if a["type"] not in allowed_types:
+            raise ValueError(
+                f"Annotation type must be one of {allowed_types}, got {a['type']}"
+            )
+        if (
+            not isinstance(a["sample_filepath"], str)
+            or not a["sample_filepath"].strip()
+        ):
+            raise ValueError("'sample_filepath' must be a non-empty string.")
+        if a["sample_filepath"] not in sample_filepaths:
+            raise ValueError(
+                f"Annotation sample_filepath '{a['sample_filepath']}' not found in samples."
+            )
+        if not isinstance(a["class"], str) or not a["class"].strip():
+            raise ValueError("'class' must be a non-empty string.")
+        # Deduplication
+        ann_tuple = tuple(sorted(a.items()))
+        if ann_tuple in seen_annotations:
+            raise ValueError(f"Duplicate annotation: {a}")
+        seen_annotations.add(ann_tuple)
+        # Strictly check coordinates fields
+        if a["type"] == "label":
+            allowed_keys = {"sample_filepath", "type", "class", "timestamp"}
+        elif a["type"] == "point":
+            allowed_keys = {
+                "sample_filepath",
+                "type",
+                "class",
+                "row",
+                "col",
+                "timestamp",
+            }
+            if not ("row" in a and "col" in a):
+                raise ValueError("Point annotation must have 'row' and 'col'.")
+            if not (isinstance(a["row"], int) and isinstance(a["col"], int)):
+                raise ValueError(
+                    "'row' and 'col' must be integers for point annotation."
+                )
+            if a["row"] < 0 or a["col"] < 0:
+                raise ValueError(
+                    "'row' and 'col' must be non-negative for point annotation."
+                )
+        elif a["type"] == "bbox":
+            allowed_keys = {
+                "sample_filepath",
+                "type",
+                "class",
+                "row",
+                "col",
+                "width",
+                "height",
+                "timestamp",
+            }
+            for k in ("row", "col", "width", "height"):
+                if k not in a:
+                    raise ValueError(f"Bbox annotation must have '{k}'.")
+                if not isinstance(a[k], int):
+                    raise ValueError(f"'{k}' must be integer for bbox annotation.")
+                if a[k] < 0:
+                    raise ValueError(f"'{k}' must be non-negative for bbox annotation.")
+        if not set(a.keys()).issubset(allowed_keys):
+            raise ValueError(
+                f"Annotation keys for type {a['type']} must be subset of {allowed_keys}, got {set(a.keys())}"
+            )
+        if "timestamp" in a and not (
+            isinstance(a["timestamp"], int) or a["timestamp"] is None
+        ):
+            raise ValueError("'timestamp' must be integer or None if present.")
+
+    # Validate predictions
+    if not isinstance(db["predictions"], list):
+        raise ValueError("'predictions' must be a list.")
+    seen_predictions = set()
+    for p in db["predictions"]:
+        if not isinstance(p, dict):
+            raise ValueError("Each prediction must be a dict.")
+        required_pred_keys = {"sample_filepath", "type", "class"}
+        allowed_types = {"label", "bbox"}
+        if not required_pred_keys.issubset(p.keys()):
+            raise ValueError(
+                f"Prediction missing required keys: {required_pred_keys - set(p.keys())}"
+            )
+        if p["type"] not in allowed_types:
+            raise ValueError(
+                f"Prediction type must be one of {allowed_types}, got {p['type']}"
+            )
+        if (
+            not isinstance(p["sample_filepath"], str)
+            or not p["sample_filepath"].strip()
+        ):
+            raise ValueError("'sample_filepath' must be a non-empty string.")
+        if p["sample_filepath"] not in sample_filepaths:
+            raise ValueError(
+                f"Prediction sample_filepath '{p['sample_filepath']}' not found in samples."
+            )
+        if not isinstance(p["class"], str) or not p["class"].strip():
+            raise ValueError("'class' must be a non-empty string.")
+        # Deduplication
+        pred_tuple = tuple(sorted(p.items()))
+        if pred_tuple in seen_predictions:
+            raise ValueError(f"Duplicate prediction: {p}")
+        seen_predictions.add(pred_tuple)
+        if p["type"] == "label":
+            allowed_keys = {"sample_filepath", "type", "class", "probability"}
+            if "probability" not in p:
+                raise ValueError("Label prediction must have 'probability'.")
+            if not (
+                isinstance(p["probability"], float) or isinstance(p["probability"], int)
+            ):
+                raise ValueError(
+                    "'probability' must be a float or int for label prediction."
+                )
+            if not (0.0 <= float(p["probability"]) <= 1.0):
+                raise ValueError(
+                    f"'probability' must be between 0 and 1 for label prediction, got {p['probability']}"
+                )
+        elif p["type"] == "bbox":
+            allowed_keys = {
+                "sample_filepath",
+                "type",
+                "class",
+                "row",
+                "col",
+                "width",
+                "height",
+            }
+            for k in ("row", "col", "width", "height"):
+                if k not in p:
+                    raise ValueError(f"Bbox prediction must have '{k}'.")
+                if not isinstance(p[k], int):
+                    raise ValueError(f"'{k}' must be integer for bbox prediction.")
+                if p[k] < 0:
+                    raise ValueError(f"'{k}' must be non-negative for bbox prediction.")
+        if not set(p.keys()).issubset(allowed_keys):
+            raise ValueError(
+                f"Prediction keys for type {p['type']} must be subset of {allowed_keys}, got {set(p.keys())}"
+            )
+
+
 # Database connection and query functions
 # the database is composed of three tables, samples, annotations and predictions
 # samples contains the images
@@ -27,6 +222,53 @@ import sqlite3
 
 
 class DatabaseAPI:
+
+    def export_db_as_json(self, out_path):
+        """
+        Export the current database to a JSON file in the strict validated format.
+        """
+        # Gather all samples
+        samples = [{"filepath": fp} for fp in self.get_samples()]
+        # Gather all annotations
+        annotations = []
+        for fp in self.get_samples():
+            anns = self.get_annotations(fp)
+            for ann in anns:
+                # Convert x/y to row/col if present
+                ann_out = {k: v for k, v in ann.items() if k not in ("id", "sample_id")}
+                if "x" in ann_out:
+                    ann_out["col"] = ann_out.pop("x")
+                if "y" in ann_out:
+                    ann_out["row"] = ann_out.pop("y")
+                # Remove None values
+                ann_out = {k: v for k, v in ann_out.items() if v is not None}
+                annotations.append(ann_out)
+        # Gather all predictions
+        predictions = []
+        for fp in self.get_samples():
+            preds = self.get_predictions(fp)
+            for pred in preds:
+                pred_out = {
+                    k: v for k, v in pred.items() if k not in ("id", "sample_id")
+                }
+                if "x" in pred_out:
+                    pred_out["col"] = pred_out.pop("x")
+                if "y" in pred_out:
+                    pred_out["row"] = pred_out.pop("y")
+                # Remove None values
+                pred_out = {k: v for k, v in pred_out.items() if v is not None}
+                predictions.append(pred_out)
+        db_dict = {
+            "samples": samples,
+            "annotations": annotations,
+            "predictions": predictions,
+        }
+        validate_db_dict(db_dict)
+        import json
+
+        with open(out_path, "w", encoding="utf-8") as f:
+            json.dump(db_dict, f, indent=2, ensure_ascii=False)
+
     def set_annotations(self, filepath, annotations):
         """
         Overwrite annotations for the given sample filepath.
@@ -198,6 +440,8 @@ class DatabaseAPI:
             db_path = os.path.join(os.path.dirname(__file__), "annotation.db")
         self.db_path = db_path
         self.conn = sqlite3.connect(self.db_path)
+        # Enable WAL mode for better concurrency
+        self.conn.execute("PRAGMA journal_mode=WAL;")
         self._create_tables()
 
     def _create_tables(self):
