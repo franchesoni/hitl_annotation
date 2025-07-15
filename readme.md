@@ -43,7 +43,8 @@ Annotate images fast with human-in-the-loop learning for annotation.
 - image viewer (panning)
 - image viewer (zooming)
 - documentation
+- draft database (multiple images, sqlite)
 
 ## TODO
+- integrate database into app (multiple images, sqlite)
 - image loader (.zip)
-- database (multiple images, sqlite)
