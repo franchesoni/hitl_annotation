@@ -47,9 +47,10 @@ Run with: `uvicorn src.backend.main:app`
 - documentation
 - draft database (multiple images, sqlite)
 - integrate database into app (multiple images, sqlite)
-
-## TODO
-- add class handling in the frontend (add / remove class)
+- add class handling in the frontend (add class)
 - write class to backend
 - load class from backend
+
+## TODO
+- support class removal 
 - image loader (.zip)

@@ -435,6 +435,32 @@ class DatabaseAPI:
         self.conn.commit()
         return {"added": list(to_add), "removed": list(to_remove), "kept": list(kept)}
 
+    def save_label_annotation(self, filepath, class_name):
+        """
+        Save or update a 'label' annotation for the given image filepath with the given class.
+        If a label annotation exists for this image, it is replaced. Otherwise, it is inserted.
+        """
+        import time
+        cursor = self.conn.cursor()
+        # Get sample id for the filepath
+        cursor.execute("SELECT id FROM samples WHERE filepath = ?", (filepath,))
+        row = cursor.fetchone()
+        if not row:
+            raise ValueError(f"Sample filepath not found in database: {filepath}")
+        sample_id = row[0]
+        # Remove previous label annotation for this sample
+        cursor.execute(
+            "DELETE FROM annotations WHERE sample_id = ? AND type = 'label'",
+            (sample_id,)
+        )
+        # Insert new label annotation
+        now = int(time.time())
+        cursor.execute(
+            "INSERT INTO annotations (sample_id, sample_filepath, type, class, timestamp) VALUES (?, ?, 'label', ?, ?)",
+            (sample_id, filepath, class_name, now)
+        )
+        self.conn.commit()
+
     def __init__(self, db_path=None):
         if db_path is None:
             db_path = os.path.join(os.path.dirname(__file__), "annotation.db")
@@ -492,3 +518,19 @@ class DatabaseAPI:
 
     def close(self):
         self.conn.close()
+
+    def delete_label_annotation(self, filepath):
+        """
+        Delete the 'label' annotation for the given image filepath, if it exists.
+        """
+        cursor = self.conn.cursor()
+        cursor.execute("SELECT id FROM samples WHERE filepath = ?", (filepath,))
+        row = cursor.fetchone()
+        if not row:
+            raise ValueError(f"Sample filepath not found in database: {filepath}")
+        sample_id = row[0]
+        cursor.execute(
+            "DELETE FROM annotations WHERE sample_id = ? AND type = 'label'",
+            (sample_id,)
+        )
+        self.conn.commit()

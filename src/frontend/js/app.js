@@ -1,3 +1,23 @@
+async function saveCurrentImageClassAnnotation() {
+    const imgId = imageIds[currentIdx];
+    if (!imgId) return;
+    const selectedClass = imageSelectedClass[imgId];
+    if (selectedClass) {
+        // Save or update annotation
+        await fetch('/api/save_label', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ filepath: imgId, class: selectedClass })
+        });
+    } else {
+        // Delete annotation if unselected
+        await fetch('/api/save_label', {
+            method: 'DELETE',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ filepath: imgId })
+        });
+    }
+}
 
 // =====================
 // State & DOM Refs
@@ -21,6 +41,11 @@ const MAX_SCALE = 10;
 let dragging = false, startX = 0, startY = 0;
 let panZoomEnabled = true;
 
+// Global class list state
+let globalClasses = []; // [class1, class2, ...]
+// Per-image selected class
+let imageSelectedClass = {}; // { imageId: className }
+
 
 // =====================
 // UI Helpers
@@ -40,6 +65,37 @@ function updateIdDisplay() {
     if (idDiv) {
         idDiv.innerHTML = `<b>Image ID [${currentIdx + 1}/${imageIds.length}]:</b><br><div>${imageIds[currentIdx] || ''}</div>`;
     }
+    updateClassListDisplay();
+}
+
+function updateClassListDisplay() {
+    const classListDiv = document.getElementById('class-list-container');
+    if (!classListDiv) return;
+    if (globalClasses.length === 0) {
+        classListDiv.innerHTML = '<b>Classes:</b> <i>None</i>';
+        return;
+    }
+    const imgId = imageIds[currentIdx];
+    const selected = imgId ? imageSelectedClass[imgId] : undefined;
+    classListDiv.innerHTML = '<b>Classes:</b> ' + globalClasses.map(c => {
+        const isSelected = c === selected;
+        return `<button class="class-btn" data-class="${c}" style="display:inline-block;background:${isSelected ? '#b3e5fc' : '#eee'};border-radius:4px;padding:2px 8px;margin:2px;border:${isSelected ? '2px solid #0288d1' : '1px solid #ccc'};cursor:pointer;">${c}</button>`;
+    }).join(' ');
+
+    // Add click listeners for class selection
+    Array.from(classListDiv.querySelectorAll('.class-btn')).forEach(btn => {
+        btn.addEventListener('click', () => {
+            if (!imgId) return;
+            const className = btn.dataset.class;
+            if (imageSelectedClass[imgId] === className) {
+                // Unselect if already selected
+                delete imageSelectedClass[imgId];
+            } else {
+                imageSelectedClass[imgId] = className;
+            }
+            updateClassListDisplay();
+        });
+    });
 }
 
 // =====================
@@ -47,8 +103,8 @@ function updateIdDisplay() {
 // =====================
 function drawImageToCanvas() {
     // Set canvas to viewport size (fixed)
-    const maxWidth = window.innerWidth * 0.90;
-    const maxHeight = window.innerHeight * 0.90;
+    const maxWidth = window.innerWidth * 0.75;
+    const maxHeight = window.innerHeight * 0.75;
     canvas.width = maxWidth;
     canvas.height = maxHeight;
     ctx.setTransform(1, 0, 0, 1, 0, 0);
@@ -74,10 +130,26 @@ img.onload = function () {
     drawImageToCanvas();
 };
 
-function updateImage() {
+async function updateImage() {
     if (imageIds.length === 0) return;
     setLoading(true);
-    img.src = '/api/sample?id=' + encodeURIComponent(imageIds[currentIdx]);
+    const imgId = imageIds[currentIdx];
+    img.src = '/api/sample?id=' + encodeURIComponent(imgId);
+    // Fetch annotation for this image
+    try {
+        const resp = await fetch('/api/get_label_annotation?filepath=' + encodeURIComponent(imgId));
+        const data = await resp.json();
+        if (data && Object.prototype.hasOwnProperty.call(data, 'class')) {
+            if (data.class) {
+                imageSelectedClass[imgId] = data.class;
+            } else {
+                delete imageSelectedClass[imgId];
+            }
+        }
+    } catch (e) {
+        // On error, clear selection
+        delete imageSelectedClass[imgId];
+    }
     updateIdDisplay();
 }
 
@@ -101,9 +173,10 @@ function fetchImageList() {
         });
 }
 
-function goToPrev() {
+async function goToPrev() {
     if (isLoading) return;
     if (currentIdx > 0) {
+        await saveCurrentImageClassAnnotation();
         currentIdx--;
         updateImage();
         updateNavButtons();
@@ -112,9 +185,10 @@ function goToPrev() {
     }
 }
 
-function goToNext() {
+async function goToNext() {
     if (isLoading) return;
     if (currentIdx < imageIds.length - 1) {
+        await saveCurrentImageClassAnnotation();
         currentIdx++;
         updateImage();
         updateNavButtons();
@@ -130,6 +204,26 @@ document.addEventListener('DOMContentLoaded', () => {
     fetchImageList().then(() => updateImage());
     if (prevBtn) prevBtn.addEventListener('click', goToPrev);
     if (nextBtn) nextBtn.addEventListener('click', goToNext);
+
+    // --- Add Class Button Logic ---
+    const addClassBtn = document.getElementById('add-class-btn');
+    const classInput = document.getElementById('class-input');
+    if (addClassBtn && classInput) {
+        addClassBtn.addEventListener('click', () => {
+            const className = classInput.value.trim();
+            if (!className) return;
+            if (!globalClasses.includes(className)) {
+                globalClasses.push(className);
+                updateClassListDisplay();
+            }
+            classInput.value = '';
+        });
+        classInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') {
+                addClassBtn.click();
+            }
+        });
+    }
 
     // --- Zoom and Pan ---
     // Mouse wheel zoom (zoom around cursor)
