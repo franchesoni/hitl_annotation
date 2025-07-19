@@ -19,7 +19,9 @@ validate_db_dict(db_dict)
 # Initialize the database
 db = DatabaseAPI()
 db.set_samples([s["filepath"] for s in db_dict["samples"]])
-# Optionally, you could also set annotations and predictions here if needed
+
+# In-memory accuracy stats
+accuracy_stats = {"tries": 0, "correct": 0}
 
 
 async def sample(request):
@@ -46,7 +48,7 @@ async def get_ids(request):
 
 
 from starlette.requests import Request
-async def get_label_annotation(request: Request):
+async def get_label_or_prediction(request: Request):
     # Get id from query parameter (filepath)
     filepath = request.query_params.get("filepath")
     if not filepath:
@@ -55,9 +57,21 @@ async def get_label_annotation(request: Request):
     # Find the label annotation (type == 'label')
     label_ann = next((a for a in anns if a.get('type') == 'label'), None)
     if label_ann:
-        return JSONResponse({"class": label_ann.get('class')})
-    else:
-        return JSONResponse({"class": None})
+        return JSONResponse({
+            "class": label_ann.get('class'),
+            "source": "annotation"
+        })
+    # If no annotation, look for prediction in predictions table
+    preds = db.get_predictions(filepath)
+    pred_ann = next((p for p in preds if p.get('type') == 'label' and p.get('probability') is not None), None)
+    if pred_ann:
+        return JSONResponse({
+            "class": pred_ann.get('class'),
+            "probability": pred_ann.get('probability'),
+            "source": "prediction"
+        })
+    # Neither annotation nor prediction found
+    return JSONResponse({"class": None, "source": None})
 
 async def save_label(request: Request):
     if request.method == "POST":
@@ -68,6 +82,14 @@ async def save_label(request: Request):
             return JSONResponse({"error": "Missing or invalid 'filepath' or 'class'"}, status_code=400)
         # Write annotation to DB
         db.save_label_annotation(filepath, class_name)
+
+        # Accuracy tracking: check prediction
+        preds = db.get_predictions(filepath)
+        pred_ann = next((p for p in preds if p.get('type') == 'label' and p.get('probability') is not None), None)
+        if pred_ann:
+            accuracy_stats["tries"] += 1
+            if str(pred_ann.get("class")) == str(class_name):
+                accuracy_stats["correct"] += 1
         return JSONResponse({"status": "ok"})
     elif request.method == "DELETE":
         data = await request.json()
@@ -79,12 +101,23 @@ async def save_label(request: Request):
     else:
         return JSONResponse({"error": "Method not allowed"}, status_code=405)
 
+async def get_accuracy_stats(request: Request):
+    tries = accuracy_stats["tries"]
+    correct = accuracy_stats["correct"]
+    accuracy = (correct / tries) if tries > 0 else None
+    return JSONResponse({
+        "tries": tries,
+        "correct": correct,
+        "accuracy": accuracy
+    })
+
 app = Starlette(
     routes=[
         Route("/api/sample", sample),
         Route("/api/ids", get_ids),
         Route("/api/save_label", save_label, methods=["POST", "DELETE"]),
-        Route("/api/get_label_annotation", get_label_annotation, methods=["GET"]),
+        Route("/api/get_label_or_prediction", get_label_or_prediction, methods=["GET"]),
+        Route("/api/accuracy_stats", get_accuracy_stats, methods=["GET"]),
     ]
 )
 app.mount("/", StaticFiles(directory=FRONTEND_DIR, html=True), name="frontend")

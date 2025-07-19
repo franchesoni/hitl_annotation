@@ -17,6 +17,7 @@ async function saveCurrentImageClassAnnotation() {
             body: JSON.stringify({ filepath: imgId })
         });
     }
+    updateAccuracyDisplay();
 }
 
 // =====================
@@ -66,6 +67,35 @@ function updateIdDisplay() {
         idDiv.innerHTML = `<b>Image ID [${currentIdx + 1}/${imageIds.length}]:</b><br><div>${imageIds[currentIdx] || ''}</div>`;
     }
     updateClassListDisplay();
+}
+
+function updatePredictionDisplay(predictionInfo) {
+    const predDiv = document.getElementById('prediction-container');
+    if (!predDiv) return;
+    if (predictionInfo && predictionInfo.class) {
+        predDiv.innerHTML = `<b>Prediction:</b> <span style="background:#ffe0b2;padding:2px 8px;border-radius:4px;">${predictionInfo.class}</span>` +
+            (typeof predictionInfo.probability === 'number' ? ` <span style="color:#888;">(prob: ${predictionInfo.probability.toFixed(2)})</span>` : '');
+    } else {
+        predDiv.innerHTML = '';
+    }
+}
+
+// Add accuracy display below prediction
+function updateAccuracyDisplay() {
+    const accDiv = document.getElementById('accuracy-container');
+    if (!accDiv) return;
+    fetch('/api/accuracy_stats')
+        .then(r => r.json())
+        .then(stats => {
+            if (typeof stats.accuracy === 'number') {
+                accDiv.innerHTML = `<b>Model Accuracy:</b> <span style="background:#c8e6c9;padding:2px 8px;border-radius:4px;">${(stats.accuracy * 100).toFixed(1)}%</span> <span style="color:#888;">(${stats.correct}/${stats.tries} correct)</span>`;
+            } else {
+                accDiv.innerHTML = `<b>Model Accuracy:</b> <i>Not enough data</i>`;
+            }
+        })
+        .catch(() => {
+            accDiv.innerHTML = `<b>Model Accuracy:</b> <i>Error</i>`;
+        });
 }
 
 function updateClassListDisplay() {
@@ -136,22 +166,34 @@ async function updateImage() {
     setLoading(true);
     const imgId = imageIds[currentIdx];
     img.src = '/api/sample?id=' + encodeURIComponent(imgId);
-    // Fetch annotation for this image
+    // Fetch annotation or prediction for this image
+    let predictionInfo = null;
     try {
-        const resp = await fetch('/api/get_label_annotation?filepath=' + encodeURIComponent(imgId));
+        const resp = await fetch('/api/get_label_or_prediction?filepath=' + encodeURIComponent(imgId));
         const data = await resp.json();
         if (data && Object.prototype.hasOwnProperty.call(data, 'class')) {
-            if (data.class) {
+            if (data.class && data.source === 'annotation') {
                 imageSelectedClass[imgId] = data.class;
+                predictionInfo = null;
+            } else if (data.class && data.source === 'prediction') {
+                delete imageSelectedClass[imgId];
+                predictionInfo = {
+                    class: data.class,
+                    probability: data.probability
+                };
             } else {
                 delete imageSelectedClass[imgId];
+                predictionInfo = null;
             }
         }
     } catch (e) {
         // On error, clear selection
         delete imageSelectedClass[imgId];
+        predictionInfo = null;
     }
     updateIdDisplay();
+    updatePredictionDisplay(predictionInfo);
+    updateAccuracyDisplay();
 }
 
 // =====================
