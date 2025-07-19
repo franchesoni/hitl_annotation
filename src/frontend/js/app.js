@@ -114,7 +114,7 @@ function updateClassListDisplay() {
 
     // Add click listeners for class selection
     Array.from(classListDiv.querySelectorAll('.class-btn')).forEach(btn => {
-        btn.addEventListener('click', () => {
+        btn.addEventListener('click', async () => {
             if (!imgId) return;
             const className = btn.dataset.class;
             if (imageSelectedClass[imgId] === className) {
@@ -124,6 +124,14 @@ function updateClassListDisplay() {
                 imageSelectedClass[imgId] = className;
             }
             updateClassListDisplay();
+            // Save annotation and go to next image, ensuring order
+            await saveCurrentImageClassAnnotation();
+            if (currentIdx < imageIds.length - 1) {
+                currentIdx++;
+                await updateImage();
+                updateNavButtons();
+                fetchImageList();
+            }
         });
     });
 }
