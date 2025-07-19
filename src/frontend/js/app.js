@@ -37,7 +37,7 @@ let isLoading = false;
 let scale = 1;
 let panX = 0, panY = 0;
 let minScale = 1;
-const MAX_SCALE = 10;
+const maxSideScale = 0.75; // Fraction of window size used for canvas and fitting
 let dragging = false, startX = 0, startY = 0;
 let panZoomEnabled = true;
 
@@ -103,8 +103,8 @@ function updateClassListDisplay() {
 // =====================
 function drawImageToCanvas() {
     // Set canvas to viewport size (fixed)
-    const maxWidth = window.innerWidth * 0.75;
-    const maxHeight = window.innerHeight * 0.75;
+    const maxWidth = window.innerWidth * maxSideScale;
+    const maxHeight = window.innerHeight * maxSideScale;
     canvas.width = maxWidth;
     canvas.height = maxHeight;
     ctx.setTransform(1, 0, 0, 1, 0, 0);
@@ -117,11 +117,12 @@ function drawImageToCanvas() {
 
 // Helper to reset view for a new image
 function resetViewToImage() {
-    const maxWidth = window.innerWidth * 0.90;
-    const maxHeight = window.innerHeight * 0.90;
-    const fitScale = Math.min(maxWidth / img.width, maxHeight / img.height, 1);
+    const maxWidth = window.innerWidth * maxSideScale;
+    const maxHeight = window.innerHeight * maxSideScale;
+    const fitScale = Math.min(maxWidth / img.width, maxHeight / img.height);
     scale = fitScale;
-    minScale = fitScale * 0.5;
+    minScale = Math.min(0.5, fitScale * 0.5);
+    maxScale = Math.max(20, fitScale * 20);
     panX = (maxWidth - img.width * scale) / 2;
     panY = (maxHeight - img.height * scale) / 2;
 }
@@ -238,7 +239,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const imgX = (px - panX) / scale;
         const imgY = (py - panY) / scale;
         let newScale = scale * Math.pow(1.2, -e.deltaY / 200);
-        newScale = Math.max(minScale, Math.min(MAX_SCALE, newScale));
+        newScale = Math.max(minScale, Math.min(maxScale, newScale));
         // Update pan so (imgX, imgY) stays under cursor
         panX = px - imgX * newScale;
         panY = py - imgY * newScale;
