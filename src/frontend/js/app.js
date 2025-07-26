@@ -40,7 +40,7 @@ let panX = 0, panY = 0;
 let minScale = 1;
 const maxSideScale = 0.75; // Fraction of window size used for canvas and fitting
 let dragging = false, startX = 0, startY = 0;
-let panZoomEnabled = true;
+window.panZoomEnabled = true;
 
 // Global class list state
 let globalClasses = []; // [class1, class2, ...]
@@ -276,10 +276,39 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
+    // --- Keyboard shortcuts for class selection ---
+    document.addEventListener('keydown', async (e) => {
+        // Allow number keys 1-9 and 0 for class selection (0 = 10th class)
+        if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+        let idx = -1;
+        if (e.key >= '1' && e.key <= '9') {
+            idx = parseInt(e.key, 10) - 1;
+        } else if (e.key === '0') {
+            idx = 9;
+        }
+        if (idx >= 0 && idx < globalClasses.length) {
+            const imgId = imageIds[currentIdx];
+            if (!imgId) return;
+            const className = globalClasses[idx];
+            if (imageSelectedClass[imgId] === className) {
+                delete imageSelectedClass[imgId];
+            } else {
+                imageSelectedClass[imgId] = className;
+            }
+            updateClassListDisplay();
+            await saveCurrentImageClassAnnotation();
+            if (currentIdx < imageIds.length - 1) {
+                currentIdx++;
+                await updateImage();
+                updateNavButtons();
+                fetchImageList();
+            }
+        }
+    });
     // --- Zoom and Pan ---
     // Mouse wheel zoom (zoom around cursor)
     canvas.addEventListener('wheel', (e) => {
-        if (!panZoomEnabled) return;
+        if (!window.panZoomEnabled) return;
         e.preventDefault();
         if (!img.width || !img.height) return;
         const rect = canvas.getBoundingClientRect();
@@ -299,7 +328,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Drag to pan
     canvas.addEventListener('pointerdown', (e) => {
-        if (!panZoomEnabled) return;
+        if (!window.panZoomEnabled) return;
         dragging = true;
         startX = e.clientX;
         startY = e.clientY;
@@ -307,7 +336,7 @@ document.addEventListener('DOMContentLoaded', () => {
         e.preventDefault();
     });
     canvas.addEventListener('pointermove', (e) => {
-        if (!panZoomEnabled) return;
+        if (!window.panZoomEnabled) return;
         if (!dragging) return;
         panX += e.clientX - startX;
         panY += e.clientY - startY;
@@ -317,25 +346,11 @@ document.addEventListener('DOMContentLoaded', () => {
         e.preventDefault();
     });
     canvas.addEventListener('pointerup', (e) => {
-        if (!panZoomEnabled) return;
+        if (!window.panZoomEnabled) return;
         dragging = false;
         canvas.releasePointerCapture(e.pointerId);
     });
     window.addEventListener('pointerup', () => { dragging = false; });
-
-    // Pan/Zoom toggle button
-    const toggleBtn = document.getElementById('toggle-panzoom-btn');
-    if (toggleBtn) {
-        toggleBtn.addEventListener('click', () => {
-            panZoomEnabled = !panZoomEnabled;
-            // Reset view on toggle
-            resetViewToImage();
-            drawImageToCanvas();
-            toggleBtn.textContent = panZoomEnabled ? 'Disable Pan/Zoom' : 'Enable Pan/Zoom';
-        });
-        // Set initial label
-        toggleBtn.textContent = panZoomEnabled ? 'Disable Pan/Zoom' : 'Enable Pan/Zoom';
-    }
 
     // Use existing Reset View button
     const resetBtn = document.getElementById('reset-view-btn');
@@ -350,4 +365,163 @@ document.addEventListener('DOMContentLoaded', () => {
     window.addEventListener('resize', () => {
         drawImageToCanvas();
     });
+});
+
+// =====================
+// Developer Panel Functionality
+// =====================
+
+// Toggle developer checklist
+function setupDeveloperPanel() {
+    const devToggle = document.getElementById('dev-toggle');
+    const devChecklist = document.getElementById('dev-checklist');
+    
+    if (devToggle && devChecklist) {
+        devToggle.addEventListener('click', () => {
+            devChecklist.classList.toggle('collapsed');
+        });
+    }
+}
+
+// Update checklist based on actual implementation
+function updateChecklistStatus() {
+    // Check what's actually implemented in the DOM/JS
+    const checks = {
+        // Configurable UI Elements
+        'check-zoom-pan-reset': (typeof window.panZoomEnabled !== 'undefined') ? window.panZoomEnabled : true,
+        'check-sequential-nav': !!document.getElementById('prev-btn') && document.getElementById('prev-btn').style.display !== 'none',
+        'check-image-id': !!document.getElementById('image-ids') && document.getElementById('image-ids').style.display !== 'none',
+        'check-class-input': !!document.getElementById('class-input'),
+        'check-class-list': !!document.getElementById('class-list-container'),
+        'check-prediction': !!document.getElementById('prediction-container'),
+        
+        // Features implemented in JS
+        'check-keyboard': true, // Keyboard shortcuts in app.js
+        'check-auto-advance': true, // Auto-advance in class selection
+        
+        // Missing features
+        'check-delete-class': false,
+        'check-undo': false,
+        'check-training-curve': false,
+        'check-performance-curve': false,
+        'check-architecture': false,
+        'check-bbox-drawing': false,
+        'check-bbox-editing': false,
+        'check-bbox-class': false,
+        'check-bbox-removal': false,
+        'check-bbox-list': false,
+        'check-skip': false,
+        'check-save': false,
+        'check-export': false,
+        'check-config': false
+    };
+    
+    // Update checkboxes and labels
+    Object.entries(checks).forEach(([id, isImplemented]) => {
+        const checkbox = document.getElementById(id);
+        const label = checkbox?.nextElementSibling;
+        if (checkbox && label) {
+            checkbox.checked = isImplemented;
+            
+            // Update status colors based on actual implementation
+            label.className = '';
+            if (isImplemented) {
+                label.className = 'status-implemented';
+            } else if (label.textContent.includes('◇') || label.textContent.includes('🎛️')) {
+                // Configurable features
+                label.className = 'status-partial';
+            } else {
+                label.className = 'status-missing';
+            }
+        }
+    });
+    
+    // Set initial reset button visibility based on pan/zoom state
+    const resetBtn = document.getElementById('reset-view-btn');
+    if (resetBtn && typeof window.panZoomEnabled !== 'undefined') {
+        resetBtn.style.display = window.panZoomEnabled ? 'inline-block' : 'none';
+    }
+}
+
+// Add interactive functionality for specific checklist items
+function setupChecklistInteractions() {
+    // Image ID Display toggle
+    const imageIdCheckbox = document.getElementById('check-image-id');
+    if (imageIdCheckbox) {
+        imageIdCheckbox.addEventListener('change', () => {
+            const imageIdDiv = document.getElementById('image-ids');
+            if (imageIdDiv) {
+                imageIdDiv.style.display = imageIdCheckbox.checked ? 'block' : 'none';
+                
+                // Update the status color based on new state
+                const label = imageIdCheckbox.nextElementSibling;
+                if (label) {
+                    label.className = imageIdCheckbox.checked ? 'status-implemented' : 'status-partial';
+                }
+            }
+        });
+    }
+    
+    // Zoom/Pan/Reset View toggle (replaces the old toggle button functionality)
+    const zoomPanCheckbox = document.getElementById('check-zoom-pan-reset');
+    if (zoomPanCheckbox) {
+        zoomPanCheckbox.addEventListener('change', () => {
+            // Access the global panZoomEnabled variable from app.js
+            if (typeof window.panZoomEnabled !== 'undefined') {
+                window.panZoomEnabled = zoomPanCheckbox.checked;
+                
+                // Show/hide reset button based on zoom/pan state
+                const resetBtn = document.getElementById('reset-view-btn');
+                if (resetBtn) {
+                    resetBtn.style.display = window.panZoomEnabled ? 'inline-block' : 'none';
+                }
+
+                // If zoom is disabled, reset the view
+                if (!window.panZoomEnabled) {
+                    if (typeof resetViewToImage === 'function' && typeof drawImageToCanvas === 'function') {
+                        resetViewToImage();
+                        drawImageToCanvas();
+                    }
+                }
+                
+                // Update the status color based on new state
+                const label = zoomPanCheckbox.nextElementSibling;
+                if (label) {
+                    label.className = zoomPanCheckbox.checked ? 'status-implemented' : 'status-partial';
+                }
+            }
+        });
+    }
+    
+    // Sequential Navigation toggle (controls prev/next buttons)
+    const sequentialNavCheckbox = document.getElementById('check-sequential-nav');
+    if (sequentialNavCheckbox) {
+        sequentialNavCheckbox.addEventListener('change', () => {
+            const prevBtn = document.getElementById('prev-btn');
+            const nextBtn = document.getElementById('next-btn');
+            
+            // Show/hide both navigation buttons
+            if (prevBtn) {
+                prevBtn.style.display = sequentialNavCheckbox.checked ? 'inline-block' : 'none';
+            }
+            if (nextBtn) {
+                nextBtn.style.display = sequentialNavCheckbox.checked ? 'inline-block' : 'none';
+            }
+            
+            // Update the status color based on new state
+            const label = sequentialNavCheckbox.nextElementSibling;
+            if (label) {
+                label.className = sequentialNavCheckbox.checked ? 'status-implemented' : 'status-partial';
+            }
+        });
+    }
+}
+
+// Initialize developer panel when DOM is ready
+document.addEventListener('DOMContentLoaded', () => {
+    setTimeout(() => {
+        setupDeveloperPanel();
+        updateChecklistStatus();
+        setupChecklistInteractions();
+    }, 100); // Wait for all elements to be ready
 });

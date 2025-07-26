@@ -12,16 +12,182 @@
 			align-items: center;
 			height: 100vh;
 		}
+		#dev-checklist {
+			position: fixed;
+			top: 10px;
+			right: 10px;
+			width: 300px;
+			max-height: 80vh;
+			overflow-y: auto;
+			background: #f5f5f5;
+			border: 1px solid #ccc;
+			border-radius: 5px;
+			padding: 10px;
+			font-family: monospace;
+			font-size: 12px;
+			z-index: 1000;
+			transition: transform 0.3s ease;
+		}
+		#dev-checklist.collapsed {
+			transform: translateX(280px);
+		}
+		#dev-toggle {
+			position: fixed;
+			top: 10px;
+			right: 10px;
+			background: #007acc;
+			color: white;
+			border: none;
+			border-radius: 3px;
+			padding: 5px 10px;
+			cursor: pointer;
+			z-index: 1001;
+			font-size: 12px;
+		}
+		.checklist-item {
+			margin: 3px 0;
+			display: flex;
+			align-items: center;
+		}
+		.checklist-item input[type="checkbox"] {
+			margin-right: 8px;
+		}
+		.checklist-section {
+			font-weight: bold;
+			margin: 10px 0 5px 0;
+			border-bottom: 1px solid #ccc;
+			padding-bottom: 2px;
+		}
+		.status-implemented { color: #28a745; }
+		.status-partial { color: #ffc107; }
+		.status-missing { color: #dc3545; }
 	</style>
 </head>
 
 <body>
+	<!-- Developer Checklist Panel -->
+	<button id="dev-toggle">📋 Spec</button>
+	<div id="dev-checklist" class="collapsed">
+		<div class="checklist-section">Configurable Components</div>
+		
+		<div class="checklist-item">
+			<input type="checkbox" id="check-zoom-pan-reset">
+			<label for="check-zoom-pan-reset" class="status-partial">Zoom/Pan/Reset View (R) ◇</label>
+		</div>
+		
+		<div class="checklist-item">
+			<input type="checkbox" id="check-sequential-nav">
+			<label for="check-sequential-nav" class="status-partial">Sequential Navigation (←/→) ◇</label>
+		</div>
+		
+		<div class="checklist-item">
+			<input type="checkbox" id="check-image-id" checked>
+			<label for="check-image-id" class="status-implemented">Image ID Display 🎛️</label>
+		</div>
+		
+		<div class="checklist-item">
+			<input type="checkbox" id="check-class-input" checked>
+			<label for="check-class-input" class="status-implemented">Class Input + Add Button (Enter) ◇</label>
+		</div>
+		
+		<div class="checklist-item">
+			<input type="checkbox" id="check-delete-class">
+			<label for="check-delete-class" class="status-missing">Delete Class Button ◇</label>
+		</div>
+		
+		<div class="checklist-item">
+			<input type="checkbox" id="check-class-list" checked>
+			<label for="check-class-list" class="status-implemented">Class List (Clickable) 🎛️</label>
+		</div>
+		
+		<div class="checklist-item">
+			<input type="checkbox" id="check-undo">
+			<label for="check-undo" class="status-missing">Undo Button (U) ◇</label>
+		</div>
+		
+		<div class="checklist-item">
+			<input type="checkbox" id="check-prediction" checked>
+			<label for="check-prediction" class="status-implemented">Prediction Display ◇</label>
+		</div>
+		
+		<div class="checklist-item">
+			<input type="checkbox" id="check-training-curve">
+			<label for="check-training-curve" class="status-missing">Training Curve ◇</label>
+		</div>
+		
+		<div class="checklist-item">
+			<input type="checkbox" id="check-performance-curve">
+			<label for="check-performance-curve" class="status-missing">Performance Curve ◇</label>
+		</div>
+		
+		<div class="checklist-item">
+			<input type="checkbox" id="check-architecture">
+			<label for="check-architecture" class="status-missing">Architecture Display ◇</label>
+		</div>
+		
+		<div class="checklist-item">
+			<input type="checkbox" id="check-bbox-drawing">
+			<label for="check-bbox-drawing" class="status-missing">Bbox Drawing (Left Click) ◇</label>
+		</div>
+		
+		<div class="checklist-item">
+			<input type="checkbox" id="check-bbox-editing">
+			<label for="check-bbox-editing" class="status-missing">Bbox Editing ◇</label>
+		</div>
+		
+		<div class="checklist-item">
+			<input type="checkbox" id="check-bbox-class">
+			<label for="check-bbox-class" class="status-missing">Bbox Class Assignment ◇</label>
+		</div>
+		
+		<div class="checklist-item">
+			<input type="checkbox" id="check-bbox-removal">
+			<label for="check-bbox-removal" class="status-missing">Bbox Removal (Delete Key) ◇</label>
+		</div>
+		
+		<div class="checklist-item">
+			<input type="checkbox" id="check-bbox-list">
+			<label for="check-bbox-list" class="status-missing">Bbox List ◇</label>
+		</div>
+		
+		<div class="checklist-item">
+			<input type="checkbox" id="check-skip">
+			<label for="check-skip" class="status-missing">Skip Button (S) ◇</label>
+		</div>
+		
+		<div class="checklist-item">
+			<input type="checkbox" id="check-save">
+			<label for="check-save" class="status-missing">Save Button ◇</label>
+		</div>
+		
+		<div class="checklist-item">
+			<input type="checkbox" id="check-export">
+			<label for="check-export" class="status-missing">Export Button ◇</label>
+		</div>
+		
+		<div class="checklist-item">
+			<input type="checkbox" id="check-config">
+			<label for="check-config" class="status-missing">Config Panel ◇</label>
+		</div>
+
+		<div class="checklist-section">Behavior & Features</div>
+		
+		<div class="checklist-item">
+			<input type="checkbox" id="check-auto-advance">
+			<label for="check-auto-advance" class="status-partial">Auto-advance ◇</label>
+		</div>
+		
+		<div class="checklist-item">
+			<input type="checkbox" id="check-keyboard" checked>
+			<label for="check-keyboard" class="status-implemented">Keyboard Shortcuts 🎛️</label>
+		</div>
+	</div>
+
 	<div style="display:flex;flex-direction:column;align-items:center;width:100vw;">
 		<div style="margin-bottom:10px;">
 			<button id="prev-btn">Prev</button>
 			<button id="next-btn">Next</button>
 			<button id="reset-view-btn" style="margin-left:10px;">Reset view</button>
-			<button id="toggle-panzoom-btn" style="margin-left:10px;">Disable Pan/Zoom</button>
 			<input id="class-input" type="text" placeholder="Add class..." style="margin-left:10px;">
 			<button id="add-class-btn" style="margin-left:5px;">Add Class</button>
 		</div>
