@@ -41,6 +41,8 @@ let minScale = 1;
 const maxSideScale = 0.75; // Fraction of window size used for canvas and fitting
 let dragging = false, startX = 0, startY = 0;
 window.panZoomEnabled = true;
+window.keyboardShortcutsEnabled = true;
+window.autoAdvanceEnabled = true;
 
 // Global class list state
 let globalClasses = []; // [class1, class2, ...]
@@ -64,7 +66,7 @@ function updateNavButtons() {
 
 function updateIdDisplay() {
     if (idDiv) {
-        idDiv.innerHTML = `<b>Image ID [${currentIdx + 1}/${imageIds.length}]:</b><br><div>${imageIds[currentIdx] || ''}</div>`;
+        idDiv.innerHTML = `<b>[${currentIdx + 1}/${imageIds.length}]</b><br><div style="word-break: break-all; font-size: 12px; color: #6c757d;">${imageIds[currentIdx] || ''}</div>`;
     }
     updateClassListDisplay();
 }
@@ -73,10 +75,10 @@ function updatePredictionDisplay(predictionInfo) {
     const predDiv = document.getElementById('prediction-container');
     if (!predDiv) return;
     if (predictionInfo && predictionInfo.class) {
-        predDiv.innerHTML = `<b>Prediction:</b> <span style="background:#ffe0b2;padding:2px 8px;border-radius:4px;">${predictionInfo.class}</span>` +
-            (typeof predictionInfo.probability === 'number' ? ` <span style="color:#888;">(prob: ${predictionInfo.probability.toFixed(2)})</span>` : '');
+        predDiv.innerHTML = `<span class="prediction-badge">${predictionInfo.class}</span>` +
+            (typeof predictionInfo.probability === 'number' ? ` <span style="color:#6c757d;">(${predictionInfo.probability.toFixed(2)})</span>` : '');
     } else {
-        predDiv.innerHTML = '';
+        predDiv.innerHTML = '<span style="color: #6c757d; font-style: italic;">No prediction available</span>';
     }
 }
 
@@ -88,13 +90,13 @@ function updateAccuracyDisplay() {
         .then(r => r.json())
         .then(stats => {
             if (typeof stats.accuracy === 'number') {
-                accDiv.innerHTML = `<b>Model Accuracy:</b> <span style="background:#c8e6c9;padding:2px 8px;border-radius:4px;">${(stats.accuracy * 100).toFixed(1)}%</span> <span style="color:#888;">(${stats.correct}/${stats.tries} correct)</span>`;
+                accDiv.innerHTML = `<span class="accuracy-badge">${(stats.accuracy * 100).toFixed(1)}%</span> <span style="color:#6c757d;">(${stats.correct}/${stats.tries} correct)</span>`;
             } else {
-                accDiv.innerHTML = `<b>Model Accuracy:</b> <i>Not enough data</i>`;
+                accDiv.innerHTML = `<span style="color: #6c757d; font-style: italic;">Not enough data</span>`;
             }
         })
         .catch(() => {
-            accDiv.innerHTML = `<b>Model Accuracy:</b> <i>Error</i>`;
+            accDiv.innerHTML = `<span style="color: #dc3545; font-style: italic;">Error loading stats</span>`;
         });
 }
 
@@ -102,15 +104,18 @@ function updateClassListDisplay() {
     const classListDiv = document.getElementById('class-list-container');
     if (!classListDiv) return;
     if (globalClasses.length === 0) {
-        classListDiv.innerHTML = '<b>Classes:</b> <i>None</i>';
+        classListDiv.innerHTML = '<div style="color: #6c757d; font-style: italic;">No classes added yet</div>';
         return;
     }
     const imgId = imageIds[currentIdx];
     const selected = imgId ? imageSelectedClass[imgId] : undefined;
-    classListDiv.innerHTML = '<b>Classes:</b> ' + globalClasses.map(c => {
+    
+    classListDiv.innerHTML = globalClasses.map((c, index) => {
         const isSelected = c === selected;
-        return `<button class="class-btn" data-class="${c}" style="display:inline-block;background:${isSelected ? '#b3e5fc' : '#eee'};border-radius:4px;padding:2px 8px;margin:2px;border:${isSelected ? '2px solid #0288d1' : '1px solid #ccc'};cursor:pointer;">${c}</button>`;
-    }).join(' ');
+        const shortcut = index < 9 ? (index + 1).toString() : (index === 9 ? '0' : '');
+        const displayText = shortcut ? `${c} (${shortcut})` : c;
+        return `<button class="class-btn ${isSelected ? 'selected' : ''}" data-class="${c}">${displayText}</button>`;
+    }).join('');
 
     // Add click listeners for class selection
     Array.from(classListDiv.querySelectorAll('.class-btn')).forEach(btn => {
@@ -124,9 +129,9 @@ function updateClassListDisplay() {
                 imageSelectedClass[imgId] = className;
             }
             updateClassListDisplay();
-            // Save annotation and go to next image, ensuring order
+            // Save annotation and go to next image if auto-advance is enabled
             await saveCurrentImageClassAnnotation();
-            if (currentIdx < imageIds.length - 1) {
+            if (window.autoAdvanceEnabled && currentIdx < imageIds.length - 1) {
                 currentIdx++;
                 await updateImage();
                 updateNavButtons();
@@ -140,9 +145,12 @@ function updateClassListDisplay() {
 // Image Logic
 // =====================
 function drawImageToCanvas() {
-    // Set canvas to viewport size (fixed)
-    const maxWidth = window.innerWidth * maxSideScale;
-    const maxHeight = window.innerHeight * maxSideScale;
+    // Get left panel dimensions
+    const leftPanel = document.querySelector('.left-panel');
+    const leftPanelRect = leftPanel.getBoundingClientRect();
+    const maxWidth = leftPanelRect.width * 0.9; // Leave some margin
+    const maxHeight = leftPanelRect.height * 0.9; // Leave some margin
+    
     canvas.width = maxWidth;
     canvas.height = maxHeight;
     ctx.setTransform(1, 0, 0, 1, 0, 0);
@@ -155,8 +163,11 @@ function drawImageToCanvas() {
 
 // Helper to reset view for a new image
 function resetViewToImage() {
-    const maxWidth = window.innerWidth * maxSideScale;
-    const maxHeight = window.innerHeight * maxSideScale;
+    const leftPanel = document.querySelector('.left-panel');
+    const leftPanelRect = leftPanel.getBoundingClientRect();
+    const maxWidth = leftPanelRect.width * 0.9;
+    const maxHeight = leftPanelRect.height * 0.9;
+    
     const fitScale = Math.min(maxWidth / img.width, maxHeight / img.height);
     scale = fitScale;
     minScale = Math.min(0.5, fitScale * 0.5);
@@ -278,14 +289,19 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // --- Keyboard shortcuts for class selection ---
     document.addEventListener('keydown', async (e) => {
+        // Check if keyboard shortcuts are enabled
+        if (!window.keyboardShortcutsEnabled) return;
+        
         // Allow number keys 1-9 and 0 for class selection (0 = 10th class)
         if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+        
         let idx = -1;
         if (e.key >= '1' && e.key <= '9') {
             idx = parseInt(e.key, 10) - 1;
         } else if (e.key === '0') {
             idx = 9;
         }
+        
         if (idx >= 0 && idx < globalClasses.length) {
             const imgId = imageIds[currentIdx];
             if (!imgId) return;
@@ -297,11 +313,27 @@ document.addEventListener('DOMContentLoaded', () => {
             }
             updateClassListDisplay();
             await saveCurrentImageClassAnnotation();
-            if (currentIdx < imageIds.length - 1) {
+            if (window.autoAdvanceEnabled && currentIdx < imageIds.length - 1) {
                 currentIdx++;
                 await updateImage();
                 updateNavButtons();
                 fetchImageList();
+            }
+            return;
+        }
+        
+        // Navigation shortcuts
+        if (e.key === 'ArrowLeft') {
+            e.preventDefault();
+            goToPrev();
+        } else if (e.key === 'ArrowRight') {
+            e.preventDefault();
+            goToNext();
+        } else if (e.key.toLowerCase() === 'r') {
+            e.preventDefault();
+            if (typeof resetViewToImage === 'function' && typeof drawImageToCanvas === 'function') {
+                resetViewToImage();
+                drawImageToCanvas();
             }
         }
     });
@@ -387,13 +419,12 @@ function setupDeveloperPanel() {
 function updateChecklistStatus() {
     // Check what's actually implemented in the DOM/JS
     const checks = {
-        // Configurable UI Elements
-        'check-zoom-pan-reset': (typeof window.panZoomEnabled !== 'undefined') ? window.panZoomEnabled : true,
-        'check-sequential-nav': !!document.getElementById('prev-btn') && document.getElementById('prev-btn').style.display !== 'none',
-        'check-image-id': !!document.getElementById('image-ids') && document.getElementById('image-ids').style.display !== 'none',
-        'check-class-input': !!document.getElementById('class-input'),
-        'check-class-list': !!document.getElementById('class-list-container'),
-        'check-prediction': !!document.getElementById('prediction-container'),
+        // Configurable UI Elements - Set defaults to only show Image ID and Class Input
+        'check-zoom-pan-reset': false, // Disabled by default
+        'check-sequential-nav': false, // Disabled by default
+        'check-image-id': true, // Enabled by default
+        'check-class-input': true, // Enabled by default
+        'check-prediction': false, // Disabled by default
         
         // Features implemented in JS
         'check-keyboard': true, // Keyboard shortcuts in app.js
@@ -436,11 +467,39 @@ function updateChecklistStatus() {
         }
     });
     
+    // Set initial section visibility based on checkbox states
+    const imageInfoSection = document.querySelector('.control-section:has(#image-ids)');
+    const navigationSection = document.querySelector('.control-section:has(#prev-btn)');
+    const classSection = document.querySelector('.control-section:has(#class-input)');
+    const predictionSection = document.querySelector('.control-section:has(#prediction-container)');
+    const performanceSection = document.querySelector('.control-section:has(#accuracy-container)');
+    
+    if (imageInfoSection) {
+        imageInfoSection.style.display = checks['check-image-id'] ? 'block' : 'none';
+    }
+    if (navigationSection) {
+        navigationSection.style.display = checks['check-sequential-nav'] ? 'block' : 'none';
+    }
+    if (classSection) {
+        classSection.style.display = checks['check-class-input'] ? 'block' : 'none';
+    }
+    if (predictionSection) {
+        predictionSection.style.display = checks['check-prediction'] ? 'block' : 'none';
+    }
+    if (performanceSection) {
+        performanceSection.style.display = checks['check-performance-curve'] ? 'block' : 'none';
+    }
+    
     // Set initial reset button visibility based on pan/zoom state
     const resetBtn = document.getElementById('reset-view-btn');
     if (resetBtn && typeof window.panZoomEnabled !== 'undefined') {
-        resetBtn.style.display = window.panZoomEnabled ? 'inline-block' : 'none';
+        resetBtn.style.display = window.panZoomEnabled ? 'block' : 'none';
     }
+    
+    // Set panZoomEnabled based on checkbox state
+    window.panZoomEnabled = checks['check-zoom-pan-reset'];
+    window.keyboardShortcutsEnabled = checks['check-keyboard'];
+    window.autoAdvanceEnabled = checks['check-auto-advance'];
 }
 
 // Add interactive functionality for specific checklist items
@@ -449,9 +508,9 @@ function setupChecklistInteractions() {
     const imageIdCheckbox = document.getElementById('check-image-id');
     if (imageIdCheckbox) {
         imageIdCheckbox.addEventListener('change', () => {
-            const imageIdDiv = document.getElementById('image-ids');
-            if (imageIdDiv) {
-                imageIdDiv.style.display = imageIdCheckbox.checked ? 'block' : 'none';
+            const imageInfoSection = document.querySelector('.control-section:has(#image-ids)');
+            if (imageInfoSection) {
+                imageInfoSection.style.display = imageIdCheckbox.checked ? 'block' : 'none';
                 
                 // Update the status color based on new state
                 const label = imageIdCheckbox.nextElementSibling;
@@ -473,7 +532,7 @@ function setupChecklistInteractions() {
                 // Show/hide reset button based on zoom/pan state
                 const resetBtn = document.getElementById('reset-view-btn');
                 if (resetBtn) {
-                    resetBtn.style.display = window.panZoomEnabled ? 'inline-block' : 'none';
+                    resetBtn.style.display = window.panZoomEnabled ? 'block' : 'none';
                 }
 
                 // If zoom is disabled, reset the view
@@ -493,25 +552,98 @@ function setupChecklistInteractions() {
         });
     }
     
-    // Sequential Navigation toggle (controls prev/next buttons)
+    // Sequential Navigation toggle (controls prev/next buttons and entire navigation section)
     const sequentialNavCheckbox = document.getElementById('check-sequential-nav');
     if (sequentialNavCheckbox) {
         sequentialNavCheckbox.addEventListener('change', () => {
-            const prevBtn = document.getElementById('prev-btn');
-            const nextBtn = document.getElementById('next-btn');
-            
-            // Show/hide both navigation buttons
-            if (prevBtn) {
-                prevBtn.style.display = sequentialNavCheckbox.checked ? 'inline-block' : 'none';
+            const navigationSection = document.querySelector('.control-section:has(#prev-btn)');
+            if (navigationSection) {
+                navigationSection.style.display = sequentialNavCheckbox.checked ? 'block' : 'none';
+                
+                // Update the status color based on new state
+                const label = sequentialNavCheckbox.nextElementSibling;
+                if (label) {
+                    label.className = sequentialNavCheckbox.checked ? 'status-implemented' : 'status-partial';
+                }
             }
-            if (nextBtn) {
-                nextBtn.style.display = sequentialNavCheckbox.checked ? 'inline-block' : 'none';
+        });
+    }
+    
+    // Class input toggle (controls entire class management section)
+    const classInputCheckbox = document.getElementById('check-class-input');
+    if (classInputCheckbox) {
+        classInputCheckbox.addEventListener('change', () => {
+            const classSection = document.querySelector('.control-section:has(#class-input)');
+            if (classSection) {
+                classSection.style.display = classInputCheckbox.checked ? 'block' : 'none';
+                
+                // Update the status color based on new state
+                const label = classInputCheckbox.nextElementSibling;
+                if (label) {
+                    label.className = classInputCheckbox.checked ? 'status-implemented' : 'status-partial';
+                }
             }
+        });
+    }
+    
+    // Prediction display toggle (controls entire prediction section)
+    const predictionCheckbox = document.getElementById('check-prediction');
+    if (predictionCheckbox) {
+        predictionCheckbox.addEventListener('change', () => {
+            const predictionSection = document.querySelector('.control-section:has(#prediction-container)');
+            if (predictionSection) {
+                predictionSection.style.display = predictionCheckbox.checked ? 'block' : 'none';
+                
+                // Update the status color based on new state
+                const label = predictionCheckbox.nextElementSibling;
+                if (label) {
+                    label.className = predictionCheckbox.checked ? 'status-implemented' : 'status-partial';
+                }
+            }
+        });
+    }
+    
+    // Performance curve toggle (controls entire model performance section)
+    const performanceCurveCheckbox = document.getElementById('check-performance-curve');
+    if (performanceCurveCheckbox) {
+        performanceCurveCheckbox.addEventListener('change', () => {
+            const performanceSection = document.querySelector('.control-section:has(#accuracy-container)');
+            if (performanceSection) {
+                performanceSection.style.display = performanceCurveCheckbox.checked ? 'block' : 'none';
+                
+                // Update the status color based on new state
+                const label = performanceCurveCheckbox.nextElementSibling;
+                if (label) {
+                    label.className = performanceCurveCheckbox.checked ? 'status-implemented' : 'status-partial';
+                }
+            }
+        });
+    }
+    
+    // Keyboard shortcuts toggle
+    const keyboardCheckbox = document.getElementById('check-keyboard');
+    if (keyboardCheckbox) {
+        keyboardCheckbox.addEventListener('change', () => {
+            window.keyboardShortcutsEnabled = keyboardCheckbox.checked;
             
             // Update the status color based on new state
-            const label = sequentialNavCheckbox.nextElementSibling;
+            const label = keyboardCheckbox.nextElementSibling;
             if (label) {
-                label.className = sequentialNavCheckbox.checked ? 'status-implemented' : 'status-partial';
+                label.className = keyboardCheckbox.checked ? 'status-implemented' : 'status-partial';
+            }
+        });
+    }
+    
+    // Auto-advance toggle
+    const autoAdvanceCheckbox = document.getElementById('check-auto-advance');
+    if (autoAdvanceCheckbox) {
+        autoAdvanceCheckbox.addEventListener('change', () => {
+            window.autoAdvanceEnabled = autoAdvanceCheckbox.checked;
+            
+            // Update the status color based on new state
+            const label = autoAdvanceCheckbox.nextElementSibling;
+            if (label) {
+                label.className = autoAdvanceCheckbox.checked ? 'status-implemented' : 'status-partial';
             }
         });
     }
