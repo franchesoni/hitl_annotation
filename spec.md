@@ -27,3 +27,7 @@ stats: plot training / performance progress
 ### ml:
 - fastapi for training classifier
 - train one epoch, predict on (2 x number of images annotated / number of epochs) images
+
+# to do
+- implement delete annotation
+- implement get next func on db

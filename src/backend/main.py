@@ -24,6 +24,35 @@ db.set_samples([s["filepath"] for s in db_dict["samples"]])
 accuracy_stats = {"tries": 0, "correct": 0}
 
 
+def create_image_response(image_path):
+    """Helper function to create image response with headers"""
+    import mimetypes
+    mime_type, _ = mimetypes.guess_type(image_path)
+    if mime_type is None:
+        mime_type = "application/octet-stream"
+    
+    # Get label or prediction data
+    anns = db.get_annotations(image_path)
+    label_ann = next((a for a in anns if a.get('type') == 'label'), None)
+    
+    headers = {
+        "X-Image-Id": str(image_path)  # Always include the image ID
+    }
+    if label_ann:
+        headers["X-Label-Class"] = str(label_ann.get('class', ''))
+        headers["X-Label-Source"] = "annotation"
+    else:
+        # Look for prediction
+        preds = db.get_predictions(image_path)
+        pred_ann = next((p for p in preds if p.get('type') == 'label' and p.get('probability') is not None), None)
+        if pred_ann:
+            headers["X-Label-Class"] = str(pred_ann.get('class', ''))
+            headers["X-Label-Source"] = "prediction"
+            headers["X-Label-Probability"] = str(pred_ann.get('probability', ''))
+    
+    return FileResponse(image_path, media_type=mime_type, headers=headers)
+
+
 async def sample(request):
     # Get id from query parameter, must be in the database
     id_param = request.query_params.get("id")
@@ -31,13 +60,7 @@ async def sample(request):
     if id_param not in all_images:
         # this check is important, without it the client can access any file in the system
         raise ValueError(f"Image with id '{id_param}' not found.")
-    image_path = id_param
-    import mimetypes
-
-    mime_type, _ = mimetypes.guess_type(image_path)
-    if mime_type is None:
-        mime_type = "application/octet-stream"
-    return FileResponse(image_path, media_type=mime_type)
+    return create_image_response(id_param)
 
 
 async def get_ids(request):
@@ -45,34 +68,22 @@ async def get_ids(request):
     return JSONResponse(db.get_samples())
 
 
+async def next_sample(request):
+    # Find the next unlabeled image, skipping the current one
+    current_id = request.query_params.get("current_id")
+    all_images = db.get_samples()
+    for image_path in all_images:
+        if image_path == current_id:
+            continue
+        anns = db.get_annotations(image_path)
+        label_ann = next((a for a in anns if a.get('type') == 'label'), None)
+        if not label_ann:  # No label annotation found, this is unlabeled
+            return create_image_response(image_path)
+    # No unlabeled images found
+    return JSONResponse({"error": "No unlabeled images available"}, status_code=404)
 
 
 from starlette.requests import Request
-async def get_label_or_prediction(request: Request):
-    # Get id from query parameter (filepath)
-    filepath = request.query_params.get("filepath")
-    if not filepath:
-        return JSONResponse({"error": "Missing 'filepath'"}, status_code=400)
-    anns = db.get_annotations(filepath)
-    # Find the label annotation (type == 'label')
-    label_ann = next((a for a in anns if a.get('type') == 'label'), None)
-    if label_ann:
-        return JSONResponse({
-            "class": label_ann.get('class'),
-            "source": "annotation"
-        })
-    # If no annotation, look for prediction in predictions table
-    preds = db.get_predictions(filepath)
-    pred_ann = next((p for p in preds if p.get('type') == 'label' and p.get('probability') is not None), None)
-    if pred_ann:
-        return JSONResponse({
-            "class": pred_ann.get('class'),
-            "probability": pred_ann.get('probability'),
-            "source": "prediction"
-        })
-    # Neither annotation nor prediction found
-    return JSONResponse({"class": None, "source": None})
-
 async def save_label(request: Request):
     if request.method == "POST":
         data = await request.json()
@@ -114,9 +125,9 @@ async def get_accuracy_stats(request: Request):
 app = Starlette(
     routes=[
         Route("/api/sample", sample),
+        Route("/api/next", next_sample),
         Route("/api/ids", get_ids),
         Route("/api/save_label", save_label, methods=["POST", "DELETE"]),
-        Route("/api/get_label_or_prediction", get_label_or_prediction, methods=["GET"]),
         Route("/api/accuracy_stats", get_accuracy_stats, methods=["GET"]),
     ]
 )
