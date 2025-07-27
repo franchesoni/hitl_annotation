@@ -457,7 +457,7 @@ function updateChecklistStatus() {
     
     // Set initial section visibility based on checkbox states
     const imageInfoSection = document.querySelector('.control-section:has(#image-ids)');
-    const navigationSection = document.querySelector('.control-section:has(#prev-btn)');
+    const navigationSection = document.getElementById('navigation-section');
     const classSection = document.querySelector('.control-section:has(#class-input)');
     const predictionSection = document.querySelector('.control-section:has(#prediction-container)');
     const performanceSection = document.querySelector('.control-section:has(#accuracy-container)');
@@ -466,7 +466,13 @@ function updateChecklistStatus() {
         imageInfoSection.style.display = checks['check-image-id'] ? 'block' : 'none';
     }
     if (navigationSection) {
-        navigationSection.style.display = checks['check-sequential-nav'] ? 'block' : 'none';
+        const showNav = checks['check-sequential-nav'] || checks['check-zoom-pan-reset'];
+        navigationSection.style.display = showNav ? 'block' : 'none';
+        
+        const navButtons = navigationSection.querySelector('.nav-buttons');
+        if (navButtons) {
+            navButtons.style.display = checks['check-sequential-nav'] ? 'flex' : 'none';
+        }
     }
     if (classSection) {
         classSection.style.display = checks['check-class-input'] ? 'block' : 'none';
@@ -480,8 +486,8 @@ function updateChecklistStatus() {
     
     // Set initial reset button visibility based on pan/zoom state
     const resetBtn = document.getElementById('reset-view-btn');
-    if (resetBtn && typeof window.panZoomEnabled !== 'undefined') {
-        resetBtn.style.display = window.panZoomEnabled ? 'block' : 'none';
+    if (resetBtn) {
+        resetBtn.style.display = checks['check-zoom-pan-reset'] ? 'block' : 'none';
     }
     
     // Set panZoomEnabled based on checkbox state
@@ -513,17 +519,14 @@ function setupChecklistInteractions() {
     const zoomPanCheckbox = document.getElementById('check-zoom-pan-reset');
     if (zoomPanCheckbox) {
         zoomPanCheckbox.addEventListener('change', () => {
-            // Access the global panZoomEnabled variable from app.js
             if (typeof window.panZoomEnabled !== 'undefined') {
                 window.panZoomEnabled = zoomPanCheckbox.checked;
                 
-                // Show/hide reset button based on zoom/pan state
                 const resetBtn = document.getElementById('reset-view-btn');
                 if (resetBtn) {
                     resetBtn.style.display = window.panZoomEnabled ? 'block' : 'none';
                 }
 
-                // If zoom is disabled, reset the view
                 if (!window.panZoomEnabled) {
                     if (typeof resetViewToImage === 'function' && typeof drawImageToCanvas === 'function') {
                         resetViewToImage();
@@ -531,28 +534,42 @@ function setupChecklistInteractions() {
                     }
                 }
                 
-                // Update the status color based on new state
                 const label = zoomPanCheckbox.nextElementSibling;
                 if (label) {
                     label.className = zoomPanCheckbox.checked ? 'status-implemented' : 'status-partial';
                 }
             }
+            
+            // Update navigation section visibility
+            const navigationSection = document.getElementById('navigation-section');
+            const sequentialNavCheckbox = document.getElementById('check-sequential-nav');
+            if (navigationSection && sequentialNavCheckbox) {
+                const showNav = zoomPanCheckbox.checked || sequentialNavCheckbox.checked;
+                navigationSection.style.display = showNav ? 'block' : 'none';
+            }
         });
     }
     
-    // Sequential Navigation toggle (controls prev/next buttons and entire navigation section)
+    // Sequential Navigation toggle
     const sequentialNavCheckbox = document.getElementById('check-sequential-nav');
     if (sequentialNavCheckbox) {
         sequentialNavCheckbox.addEventListener('change', () => {
-            const navigationSection = document.querySelector('.control-section:has(#prev-btn)');
-            if (navigationSection) {
-                navigationSection.style.display = sequentialNavCheckbox.checked ? 'block' : 'none';
-                
-                // Update the status color based on new state
-                const label = sequentialNavCheckbox.nextElementSibling;
-                if (label) {
-                    label.className = sequentialNavCheckbox.checked ? 'status-implemented' : 'status-partial';
-                }
+            const navButtons = document.querySelector('.nav-buttons');
+            if (navButtons) {
+                navButtons.style.display = sequentialNavCheckbox.checked ? 'flex' : 'none';
+            }
+            
+            const label = sequentialNavCheckbox.nextElementSibling;
+            if (label) {
+                label.className = sequentialNavCheckbox.checked ? 'status-implemented' : 'status-partial';
+            }
+            
+            // Update navigation section visibility
+            const navigationSection = document.getElementById('navigation-section');
+            const zoomPanCheckbox = document.getElementById('check-zoom-pan-reset');
+            if (navigationSection && zoomPanCheckbox) {
+                const showNav = sequentialNavCheckbox.checked || zoomPanCheckbox.checked;
+                navigationSection.style.display = showNav ? 'block' : 'none';
             }
         });
     }
