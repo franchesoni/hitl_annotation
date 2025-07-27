@@ -14,6 +14,8 @@ async function saveCurrentImageClassAnnotation() {
             body: JSON.stringify({ filepath: currentImageId })
         });
     }
+    // Track annotation history for undo on both save and delete
+    annotationHistory.push(currentImageId);
     updateAccuracyDisplay();
 }
 
@@ -44,6 +46,9 @@ window.autoAdvanceEnabled = true;
 let globalClasses = []; // [class1, class2, ...]
 // Per-image selected class
 let imageSelectedClass = {}; // { imageId: className }
+
+// Undo history stack
+let annotationHistory = [];
 
 
 // =====================
@@ -381,6 +386,39 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
+    // Undo button logic
+    const undoBtn = document.getElementById('undo-btn');
+    if (undoBtn) {
+        undoBtn.addEventListener('click', async () => {
+            if (annotationHistory.length === 0) {
+                alert('No annotation to undo.');
+                return;
+            }
+            const lastAnnotatedId = annotationHistory.pop();
+            if (!lastAnnotatedId) return;
+            setLoading(true);
+            try {
+                // Fetch the sample for the previous image
+                const response = await fetch(`/api/sample?id=${encodeURIComponent(lastAnnotatedId)}`);
+                if (!response.ok) {
+                    alert('Could not load previous annotation.');
+                    setLoading(false);
+                    return;
+                }
+                const blob = await response.blob();
+                const imageUrl = URL.createObjectURL(blob);
+                img.currentResponse = response;
+                img.src = imageUrl;
+                if (img.previousObjectUrl) URL.revokeObjectURL(img.previousObjectUrl);
+                img.previousObjectUrl = imageUrl;
+            } catch (e) {
+                console.error('Error loading previous annotation:', e);
+                alert('Error loading previous annotation.');
+                setLoading(false);
+            }
+        });
+    }
+
     // Redraw on resize
     window.addEventListener('resize', () => {
         drawImageToCanvas();
@@ -488,6 +526,13 @@ function updateChecklistStatus() {
     const resetBtn = document.getElementById('reset-view-btn');
     if (resetBtn) {
         resetBtn.style.display = checks['check-zoom-pan-reset'] ? 'block' : 'none';
+    }
+    
+    // Remove undoBtn display logic
+    // Only control undoSection visibility
+    const undoSection = document.getElementById('undo-section');
+    if (undoSection) {
+        undoSection.style.display = checks['check-undo'] ? 'block' : 'none';
     }
     
     // Set panZoomEnabled based on checkbox state
@@ -621,6 +666,21 @@ function setupChecklistInteractions() {
                 if (label) {
                     label.className = performanceCurveCheckbox.checked ? 'status-implemented' : 'status-partial';
                 }
+            }
+        });
+    }
+    
+    // Undo button toggle
+    const undoCheckbox = document.getElementById('check-undo');
+    if (undoCheckbox) {
+        undoCheckbox.addEventListener('change', () => {
+            const undoSection = document.getElementById('undo-section');
+            if (undoSection) {
+                undoSection.style.display = undoCheckbox.checked ? 'block' : 'none';
+            }
+            const label = undoCheckbox.nextElementSibling;
+            if (label) {
+                label.className = undoCheckbox.checked ? 'status-implemented' : 'status-partial';
             }
         });
     }
