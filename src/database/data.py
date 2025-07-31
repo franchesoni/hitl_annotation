@@ -519,6 +519,14 @@ class DatabaseAPI:
     def close(self):
         self.conn.close()
 
+    def get_annotation_counts(self):
+        """Return a dict mapping label class to number of annotations."""
+        cursor = self.conn.cursor()
+        cursor.execute(
+            "SELECT class, COUNT(*) FROM annotations WHERE type='label' GROUP BY class"
+        )
+        return {row[0]: row[1] for row in cursor.fetchall()}
+
     def delete_label_annotation(self, filepath):
         """
         Delete the 'label' annotation for the given image filepath, if it exists.
