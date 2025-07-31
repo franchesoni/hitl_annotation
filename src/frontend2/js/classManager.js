@@ -62,10 +62,31 @@ export class ClassManager {
     }
 
     // Add a new class if not already present
-    addClass(className) {
+    async addClass(className) {
         if (!className || this.globalClasses.includes(className)) return;
         this.globalClasses.push(className);
+        await this.updateConfig();
         this.render();
+    }
+
+    // Remove a class by name
+    async removeClass(className) {
+        this.globalClasses = this.globalClasses.filter(c => c !== className);
+        await this.updateConfig();
+        this.render();
+    }
+
+    // Update backend config with current class list
+    async updateConfig() {
+        try {
+            await fetch('/config', {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ classes: this.globalClasses })
+            });
+        } catch (e) {
+            console.error('Failed to update class list on server:', e);
+        }
     }
 
     // Render the class manager UI
@@ -107,6 +128,10 @@ export class ClassManager {
             // Create a button for each class
             const selected = this.currentImageId ? this.imageSelectedClass[this.currentImageId] : undefined;
             this.globalClasses.forEach((c, index) => {
+                const classRow = document.createElement('div');
+                classRow.style.display = 'flex';
+                classRow.style.alignItems = 'center';
+
                 const btn = document.createElement('button');
                 btn.className = 'class-btn' + (c === selected ? ' selected' : '');
                 btn.dataset.class = c;
@@ -123,7 +148,24 @@ export class ClassManager {
                     }
                     this.render();
                 };
-                classListDiv.appendChild(btn);
+
+                // Remove button
+                const removeBtn = document.createElement('button');
+                removeBtn.textContent = '✕';
+                removeBtn.title = 'Remove class';
+                removeBtn.style.marginLeft = '8px';
+                removeBtn.style.background = '#dc3545';
+                removeBtn.style.color = 'white';
+                removeBtn.style.border = 'none';
+                removeBtn.style.borderRadius = '4px';
+                removeBtn.style.cursor = 'pointer';
+                removeBtn.onclick = () => {
+                    this.removeClass(c);
+                };
+
+                classRow.appendChild(btn);
+                classRow.appendChild(removeBtn);
+                classListDiv.appendChild(classRow);
             });
         }
         this.container.appendChild(classListDiv);

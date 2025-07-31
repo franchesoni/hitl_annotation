@@ -23,12 +23,12 @@ document.addEventListener('DOMContentLoaded', async () => {
 	});
 	// Get left and right panel containers
 	const leftPanel = document.querySelector('.left-panel');
-	const rightPanel = document.querySelector('.right-panel');
+	const classPanel = document.querySelector('.right-panel');
 	if (!leftPanel) {
 		console.error('Left panel container not found.');
 		return;
 	}
-	if (!rightPanel) {
+	if (!classPanel) {
 		console.error('Class list container not found.');
 		return;
 	}
@@ -37,26 +37,24 @@ document.addEventListener('DOMContentLoaded', async () => {
 	const viewer = new ImageViewer(leftPanel, 'loading-overlay', 'c');
 
 	// Create the class manager instance
-	const classManager = new ClassManager(rightPanel);
+	const classManager = new ClassManager(classPanel);
 
-	// Fetch image IDs from API
-	let imageIds = [];
+	// Fetch the first image from /next endpoint
+	let firstImageId = null;
 	try {
-		const res = await fetch('/api/ids');
-		imageIds = await res.json();
+		const res = await fetch('/next');
+		if (!res.ok) {
+			console.error('No images available from API.');
+			return;
+		}
+		// The response is an image, get the image id from headers
+		firstImageId = res.headers.get('X-Image-Id');
+		const blob = await res.blob();
+		const imageUrl = URL.createObjectURL(blob);
+		viewer.loadImage(imageUrl, firstImageId);
+		classManager.setCurrentImageId(firstImageId);
 	} catch (e) {
-		console.error('Failed to fetch image IDs:', e);
+		console.error('Failed to fetch first image:', e);
 		return;
 	}
-
-	if (!imageIds.length) {
-		console.error('No images available from API.');
-		return;
-	}
-
-	// Load the first image using /api/sample?id=...
-	const firstImageId = imageIds[0];
-	const imageUrl = `/api/sample?id=${encodeURIComponent(firstImageId)}`;
-	viewer.loadImage(imageUrl, firstImageId);
-	classManager.setCurrentImageId(firstImageId);
 });

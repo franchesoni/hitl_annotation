@@ -1,6 +1,6 @@
 from starlette.applications import Starlette
 from starlette.responses import FileResponse, JSONResponse
-import mimetypes
+from starlette.requests import Request
 from starlette.routing import Route
 from starlette.staticfiles import StaticFiles
 from pathlib import Path
@@ -10,7 +10,7 @@ from src.database.data import DatabaseAPI, validate_db_dict
 from src.database.db_init import build_initial_db_dict
 
 BASE_DIR = Path(__file__).resolve().parent
-FRONTEND_DIR = BASE_DIR.parent / "frontend"
+FRONTEND_DIR = BASE_DIR.parent / "frontend2"
 
 # Build and validate the initial db dict
 db_dict = build_initial_db_dict()
@@ -53,7 +53,7 @@ def create_image_response(image_path):
     return FileResponse(image_path, media_type=mime_type, headers=headers)
 
 
-async def sample(request):
+async def get_sample_by_id(request):
     # Get id from query parameter, must be in the database
     id_param = request.query_params.get("id")
     all_images = db.get_samples()
@@ -63,12 +63,8 @@ async def sample(request):
     return create_image_response(id_param)
 
 
-async def get_ids(request):
-    # Return all sample filepaths from the database
-    return JSONResponse(db.get_samples())
 
-
-async def next_sample(request):
+async def get_next_sample(request):
     # Find the next unlabeled image, skipping the current one
     current_id = request.query_params.get("current_id")
     all_images = db.get_samples()
@@ -83,8 +79,7 @@ async def next_sample(request):
     return JSONResponse({"error": "No unlabeled images available"}, status_code=404)
 
 
-from starlette.requests import Request
-async def save_label(request: Request):
+async def handle_annotation(request: Request):
     if request.method == "POST":
         data = await request.json()
         filepath = data.get("filepath")
@@ -122,13 +117,38 @@ async def get_accuracy_stats(request: Request):
         "accuracy": accuracy
     })
 
+config = dict()
+
+async def put_config(request: Request):
+    data = await request.json()
+    if not isinstance(data, dict):
+        return JSONResponse({"error": "Invalid config format"}, status_code=400)
+    
+    # Validate and save the config
+    config.update(data)
+    print("Config updated:", config)
+    return JSONResponse({"status": "Config saved successfully"})
+
+async def get_config(request: Request):
+    if not config:
+        return JSONResponse({"error": "No config set"}, status_code=404)
+    
+    print("Config updated", config)
+    return JSONResponse(config)
+
+async def get_stats(request: Request):
+    # Return the accuracy stats
+    return JSONResponse(accuracy_stats)
+
 app = Starlette(
     routes=[
-        Route("/api/sample", sample),
-        Route("/api/next", next_sample),
-        Route("/api/ids", get_ids),
-        Route("/api/save_label", save_label, methods=["POST", "DELETE"]),
-        Route("/api/accuracy_stats", get_accuracy_stats, methods=["GET"]),
+        Route("/config", put_config, methods=["PUT"]),
+        Route("/config", get_config, methods=["GET"]),
+        Route("/next", get_next_sample, methods=["GET"]),
+        Route("/sample", get_sample_by_id, methods=["GET"]),
+        Route("/annotate", handle_annotation, methods=["POST"]),
+        Route("/annotate", handle_annotation, methods=["DELETE"]),
+        Route("/stats", get_stats, methods=["GET"]),
     ]
 )
 app.mount("/", StaticFiles(directory=FRONTEND_DIR, html=True), name="frontend")
