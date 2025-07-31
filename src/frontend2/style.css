@@ -115,9 +115,19 @@ body {
 }
 
 .class-btn.selected {
-	background: #b3e5fc;
-	border-color: #0288d1;
-	border-width: 2px;
+        background: #b3e5fc;
+        border-color: #0288d1;
+        border-width: 2px;
+}
+
+.undo-btn {
+        padding: 8px 12px;
+        border: 1px solid #ffc107;
+        background: #ffc107;
+        color: black;
+        border-radius: 4px;
+        cursor: pointer;
+        margin-bottom: 10px;
 }
 
 .info-display {

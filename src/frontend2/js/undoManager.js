@@ -1,0 +1,35 @@
+export class UndoManager {
+    constructor(api, viewer, classManager) {
+        this.api = api;
+        this.viewer = viewer;
+        this.classManager = classManager;
+        this.history = [];
+    }
+
+    record(imageId) {
+        if (imageId) {
+            this.history.push(imageId);
+        }
+    }
+
+    async undo() {
+        if (this.history.length === 0) {
+            alert('No more actions to undo');
+            return;
+        }
+        const id = this.history.pop();
+        try {
+            await this.api.deleteAnnotation(id);
+        } catch (e) {
+            console.error('Failed to delete annotation:', e);
+        }
+        try {
+            const { imageUrl, filename, labelClass, labelSource } = await this.api.loadSample(id);
+            this.viewer.loadImage(imageUrl, filename);
+            const cls = labelSource === 'annotation' ? labelClass : null;
+            this.classManager.setCurrentImageFilename(filename, cls);
+        } catch (e) {
+            console.error('Failed to load sample:', e);
+        }
+    }
+}

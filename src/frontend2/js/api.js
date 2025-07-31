@@ -10,9 +10,11 @@ export class API {
         const res = await fetch(url);
         if (!res.ok) throw new Error('No images available');
         const filename = res.headers.get('X-Image-Id') || res.headers.get('X-Filename');
+        const labelClass = res.headers.get('X-Label-Class');
+        const labelSource = res.headers.get('X-Label-Source');
         const blob = await res.blob();
         const imageUrl = URL.createObjectURL(blob);
-        return { imageUrl, filename };
+        return { imageUrl, filename, labelClass, labelSource };
     }
 
     // Annotate a sample (returns JSON status)
@@ -24,6 +26,29 @@ export class API {
         });
         if (!res.ok) throw new Error('Annotation failed');
         return await res.json();
+    }
+
+    // Delete annotation for a sample
+    async deleteAnnotation(filepath) {
+        const res = await fetch('/annotate', {
+            method: 'DELETE',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ filepath })
+        });
+        if (!res.ok) throw new Error('Delete failed');
+        return await res.json();
+    }
+
+    // Load specific sample by id
+    async loadSample(id) {
+        const res = await fetch(`/sample?id=${encodeURIComponent(id)}`);
+        if (!res.ok) throw new Error('Sample not found');
+        const filename = res.headers.get('X-Image-Id') || res.headers.get('X-Filename');
+        const labelClass = res.headers.get('X-Label-Class');
+        const labelSource = res.headers.get('X-Label-Source');
+        const blob = await res.blob();
+        const imageUrl = URL.createObjectURL(blob);
+        return { imageUrl, filename, labelClass, labelSource };
     }
 
     // Get config

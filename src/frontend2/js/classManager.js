@@ -62,9 +62,13 @@ export class ClassManager {
     }
 
     // Setters for state
-    setCurrentImageFilename(filename) {
+    setCurrentImageFilename(filename, selectedClass = null) {
         this.currentImageFilename = filename;
-        this.selectedClass = null;
+        this.selectedClass = selectedClass;
+        this.render();
+    }
+    setSelectedClass(className) {
+        this.selectedClass = className;
         this.render();
     }
     setGlobalClasses(classes) {
