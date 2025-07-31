@@ -2,25 +2,6 @@ import { ImageViewer } from './imageViewer.js';
 import { ClassManager } from './classManager.js';
 
 document.addEventListener('DOMContentLoaded', async () => {
-	// Keyboard shortcuts for class selection
-	document.addEventListener('keydown', (e) => {
-		// Only trigger if not typing in an input/textarea
-		if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
-		let idx = -1;
-		if (e.key >= '1' && e.key <= '9') {
-			idx = parseInt(e.key, 10) - 1;
-		} else if (e.key === '0') {
-			idx = 9;
-		}
-		if (idx >= 0 && idx < classManager.globalClasses.length) {
-			const className = classManager.globalClasses[idx];
-			console.log(`Keyboard shortcut: selected class '${className}'`);
-			classManager.addClass(className); // Ensure class exists (redundant, but safe)
-			classManager.imageSelectedClass[classManager.currentImageId] = className;
-			if (classManager.onClassChange) classManager.onClassChange(classManager.currentImageId, className);
-			classManager.render();
-		}
-	});
 	// Get left and right panel containers
 	const leftPanel = document.querySelector('.left-panel');
 	const classPanel = document.querySelector('.right-panel');
