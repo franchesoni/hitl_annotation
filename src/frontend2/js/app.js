@@ -11,10 +11,6 @@ document.addEventListener('DOMContentLoaded', async () => {
 	// Create the viewer instance, canvas will be created inside leftPanel
 	const viewer = new ImageViewer(leftPanel, 'loading-overlay', 'c');
 
-	// Set canvas size to fit left panel
-	const rect = leftPanel.getBoundingClientRect();
-	viewer.canvas.width = rect.width * 0.9;
-	viewer.canvas.height = rect.height * 0.9;
 
 	// Fetch image IDs from API
 	let imageIds = [];

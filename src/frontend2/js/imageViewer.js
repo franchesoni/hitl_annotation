@@ -29,7 +29,27 @@ export class ImageViewer {
         this.overlay = document.getElementById(overlayId);
         this.currentImageId = null;
         this.isLoading = false;
-        this.img.onload = () => this.drawImageToCanvas();
+
+        // Initial sizing
+        this.resizeCanvasToContainer();
+
+        // Redraw and resize on image load
+        this.img.onload = () => {
+            this.resizeCanvasToContainer();
+            this.drawImageToCanvas();
+        };
+
+        // Redraw and resize on window resize
+        window.addEventListener('resize', () => {
+            this.resizeCanvasToContainer();
+            this.drawImageToCanvas();
+        });
+    }
+
+    resizeCanvasToContainer() {
+        const rect = this.container.getBoundingClientRect();
+        this.canvas.width = rect.width * 0.9;
+        this.canvas.height = rect.height * 0.9;
     }
 
     setLoading(loading) {
