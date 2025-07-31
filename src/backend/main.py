@@ -3,6 +3,7 @@ from starlette.responses import FileResponse, JSONResponse
 from starlette.requests import Request
 from starlette.routing import Route
 from starlette.staticfiles import StaticFiles
+import mimetypes
 from pathlib import Path
 
 # --- Database integration ---
@@ -26,7 +27,6 @@ accuracy_stats = {"tries": 0, "correct": 0}
 
 def create_image_response(image_path):
     """Helper function to create image response with headers"""
-    import mimetypes
     mime_type, _ = mimetypes.guess_type(image_path)
     if mime_type is None:
         mime_type = "application/octet-stream"
