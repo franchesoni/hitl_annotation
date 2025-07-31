@@ -7,21 +7,22 @@
  * Keyboard shortcuts: numbers 1-9,0 select the corresponding class button (if present).
  */
 export class ClassManager {
-    // Keyboard shortcuts are not handled inside this component by default.
-    // You must add a keydown event listener in your main app and call the appropriate ClassManager method.
     /**
      * @param {string|HTMLElement} container - CSS selector or DOM element for the class list UI
+     * @param {function} loadNextImage - callback to load the next image
      */
-    constructor(container) {
+    constructor(container, loadNextImage, api) {
         // Find container element
         this.container = typeof container === 'string' ? document.querySelector(container) : container;
         if (!this.container) throw new Error('ClassManager: container not found');
 
-        // State
-        this.globalClasses = [];
-        this.imageSelectedClass = {};
-        this.currentImageId = null;
-        this.onClassChange = null; // callback(imageId, className)
+    // State
+    this.globalClasses = [];
+    this.selectedClass = null;
+    this.currentImageFilename = null;
+    this.onClassChange = null; // callback(filename, className)
+    this.loadNextImage = loadNextImage;
+    this.api = api;
 
         this.render();
 
@@ -37,24 +38,37 @@ export class ClassManager {
             }
             if (idx >= 0 && idx < this.globalClasses.length) {
                 const className = this.globalClasses[idx];
-                this.imageSelectedClass[this.currentImageId] = className;
-                if (this.onClassChange) this.onClassChange(this.currentImageId, className);
+                this.selectedClass = className;
+                // POST to /annotate using API
+                if (this.currentImageFilename && className) {
+                    this.api.annotateSample(this.currentImageFilename, className)
+                        .then(() => {
+                            console.log('Annotation succeeded, calling loadNextImage (keyboard)');
+                            if (typeof this.loadNextImage === 'function') {
+                                this.loadNextImage();
+                            }
+                            else {
+                                console.warn('loadNextImage callback is not defined');
+                            }
+                        })
+                        .catch(err => {
+                            console.error('Annotation request error:', err);
+                        });
+                }
+                if (this.onClassChange) this.onClassChange(this.currentImageFilename, className);
                 this.render();
             }
         });
     }
 
     // Setters for state
-    setCurrentImageId(imageId) {
-        this.currentImageId = imageId;
+    setCurrentImageFilename(filename) {
+        this.currentImageFilename = filename;
+        this.selectedClass = null;
         this.render();
     }
     setGlobalClasses(classes) {
         this.globalClasses = classes;
-        this.render();
-    }
-    setImageSelectedClass(imageSelectedClass) {
-        this.imageSelectedClass = imageSelectedClass;
         this.render();
     }
     setOnClassChange(callback) {
@@ -126,7 +140,7 @@ export class ClassManager {
             classListDiv.innerHTML = '<div style="color: #6c757d; font-style: italic;">No classes added yet</div>';
         } else {
             // Create a button for each class
-            const selected = this.currentImageId ? this.imageSelectedClass[this.currentImageId] : undefined;
+            const selected = this.selectedClass;
             this.globalClasses.forEach((c, index) => {
                 const classRow = document.createElement('div');
                 classRow.style.display = 'flex';
@@ -137,15 +151,23 @@ export class ClassManager {
                 btn.dataset.class = c;
                 btn.textContent = index < 10 ? `${c} (${index === 9 ? '0' : index + 1})` : c;
                 btn.onclick = () => {
-                    if (!this.currentImageId) return;
-                    // Toggle selection
-                    if (this.imageSelectedClass[this.currentImageId] === c) {
-                        delete this.imageSelectedClass[this.currentImageId];
-                        if (this.onClassChange) this.onClassChange(this.currentImageId, null);
-                    } else {
-                        this.imageSelectedClass[this.currentImageId] = c;
-                        if (this.onClassChange) this.onClassChange(this.currentImageId, c);
-                    }
+                    if (!this.currentImageFilename) return;
+                    // Select class
+                    this.selectedClass = c;
+                    // POST to /annotate using API
+                    this.api.annotateSample(this.currentImageFilename, c)
+                        .then(() => {
+                            console.log('Annotation succeeded, calling loadNextImage (button)');
+                            if (typeof this.loadNextImage === 'function') {
+                                this.loadNextImage();
+                            } else {
+                                console.warn('loadNextImage callback is not defined');
+                            }
+                        })
+                        .catch(err => {
+                            console.error('Annotation request error:', err);
+                        });
+                    if (this.onClassChange) this.onClassChange(this.currentImageFilename, c);
                     this.render();
                 };
 

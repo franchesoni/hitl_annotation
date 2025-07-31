@@ -1,0 +1,53 @@
+// api.js - Centralized frontend API for backend communication
+
+export class API {
+    // Load the next image sample (image response, not JSON)
+    async loadNextImage(currentId = null) {
+        let url = '/next';
+        if (currentId) {
+            url += `?current_id=${encodeURIComponent(currentId)}`;
+        }
+        const res = await fetch(url);
+        if (!res.ok) throw new Error('No images available');
+        const filename = res.headers.get('X-Image-Id') || res.headers.get('X-Filename');
+        const blob = await res.blob();
+        const imageUrl = URL.createObjectURL(blob);
+        return { imageUrl, filename };
+    }
+
+    // Annotate a sample (returns JSON status)
+    async annotateSample(filepath, className) {
+        const res = await fetch('/annotate', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ filepath, class: className })
+        });
+        if (!res.ok) throw new Error('Annotation failed');
+        return await res.json();
+    }
+
+    // Get config
+    async getConfig() {
+        const res = await fetch('/config');
+        if (!res.ok) throw new Error('Failed to get config');
+        return await res.json();
+    }
+
+    // Update config
+    async updateConfig(config) {
+        const res = await fetch('/config', {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(config)
+        });
+        if (!res.ok) throw new Error('Failed to update config');
+        return await res.json();
+    }
+
+    // Get accuracy stats
+    async getStats() {
+        const res = await fetch('/stats');
+        if (!res.ok) throw new Error('Failed to get stats');
+        return await res.json();
+    }
+}

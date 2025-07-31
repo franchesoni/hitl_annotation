@@ -1,5 +1,6 @@
 import { ImageViewer } from './imageViewer.js';
 import { ClassManager } from './classManager.js';
+import { API } from './api.js';
 
 document.addEventListener('DOMContentLoaded', async () => {
 	// Get left and right panel containers
@@ -14,26 +15,33 @@ document.addEventListener('DOMContentLoaded', async () => {
 		return;
 	}
 
+	// Create the API instance
+	const api = new API();
+
 	// Create the viewer instance
 	const viewer = new ImageViewer(leftPanel, 'loading-overlay', 'c');
 
-	// Create the class manager instance
-	const classManager = new ClassManager(classPanel);
-
-	// Fetch the first image from /next endpoint
-	let firstImageId = null;
-	try {
-		const res = await fetch('/next');
-		if (!res.ok) {
-			console.error('No images available from API.');
-			return;
+	// Helper to load next image from API and update viewer/classManager
+	async function loadNextImage() {
+		try {
+			// Pass the current image filename to API.loadNextImage
+			const currentId = classManager.currentImageFilename;
+			const { imageUrl, filename } = await api.loadNextImage(currentId);
+			viewer.loadImage(imageUrl, filename);
+			classManager.setCurrentImageFilename(filename);
+		} catch (e) {
+			console.error('Failed to fetch next image:', e);
 		}
-		// The response is an image, get the image id from headers
-		firstImageId = res.headers.get('X-Image-Id');
-		const blob = await res.blob();
-		const imageUrl = URL.createObjectURL(blob);
-		viewer.loadImage(imageUrl, firstImageId);
-		classManager.setCurrentImageId(firstImageId);
+	}
+
+	// Create the class manager instance, passing loadNextImage and api
+	const classManager = new ClassManager(classPanel, loadNextImage, api);
+
+	// Fetch the first image from API
+	try {
+		const { imageUrl, filename } = await api.loadNextImage();
+		viewer.loadImage(imageUrl, filename);
+		classManager.setCurrentImageFilename(filename);
 	} catch (e) {
 		console.error('Failed to fetch first image:', e);
 		return;
