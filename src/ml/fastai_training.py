@@ -117,6 +117,7 @@ def _run_forever(db_path: str | None, arch: str, sleep_s: int) -> None:
 
     model_arch = resnet18 if arch == "small" else resnet34
     learner = None  # will lazily instantiate when we first have data
+    model_path = Path(db.db_path).with_suffix(".pth")
     cycle = 0
 
     while True:
@@ -133,6 +134,8 @@ def _run_forever(db_path: str | None, arch: str, sleep_s: int) -> None:
 
             if learner is None:
                 learner = vision_learner(dls, model_arch, metrics=accuracy)
+                if model_path.exists():
+                    learner.model.load_state_dict(torch.load(model_path))
             else:
                 # re‑attach fresh DataLoaders to keep dataset up‑to‑date
                 learner.dls = dls
@@ -140,6 +143,12 @@ def _run_forever(db_path: str | None, arch: str, sleep_s: int) -> None:
             t0 = time.time()
             learner.fit(1)
             epoch_time = time.time() - t0
+
+            # Save model checkpoint after each epoch
+            try:
+                torch.save(learner.model.state_dict(), model_path)
+            except Exception as e:
+                print(f"[WARN] Failed to save model checkpoint: {e}")
 
             budget = max(10, int(2 * epoch_time))
             labeled_set = set(paths)
