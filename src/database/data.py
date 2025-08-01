@@ -219,6 +219,7 @@ predictions: id, sample_id, sample_filepath, type (label/bbox), class, coordinat
 
 import os
 import sqlite3
+import json
 
 
 class DatabaseAPI:
@@ -499,20 +500,28 @@ class DatabaseAPI:
         )
         cursor.execute(
             """
-			CREATE TABLE IF NOT EXISTS predictions (
-				id INTEGER PRIMARY KEY AUTOINCREMENT,
-				sample_id INTEGER NOT NULL,
-				sample_filepath TEXT,
-				type TEXT,
-				class TEXT,
-				probability REAL,
-				x INTEGER,
-				y INTEGER,
-				width INTEGER,
-				height INTEGER,
-				FOREIGN KEY(sample_id) REFERENCES samples(id)
-			)
-		"""
+                        CREATE TABLE IF NOT EXISTS predictions (
+                                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                                sample_id INTEGER NOT NULL,
+                                sample_filepath TEXT,
+                                type TEXT,
+                                class TEXT,
+                                probability REAL,
+                                x INTEGER,
+                                y INTEGER,
+                                width INTEGER,
+                                height INTEGER,
+                                FOREIGN KEY(sample_id) REFERENCES samples(id)
+                        )
+                """
+        )
+        cursor.execute(
+            """
+            CREATE TABLE IF NOT EXISTS config (
+                architecture TEXT,
+                classes TEXT
+            )
+            """
         )
         self.conn.commit()
 
@@ -542,6 +551,39 @@ class DatabaseAPI:
             (sample_id,)
         )
         self.conn.commit()
+
+    def get_config(self):
+        """Return the configuration as a dict or empty dict if not set."""
+        cursor = self.conn.cursor()
+        cursor.execute("SELECT architecture, classes FROM config LIMIT 1")
+        row = cursor.fetchone()
+        if not row:
+            return {}
+        architecture, classes_json = row
+        classes = json.loads(classes_json) if classes_json else []
+        return {"architecture": architecture, "classes": classes}
+
+    def update_config(self, config):
+        """Merge and persist the provided config dict."""
+        current = self.get_config()
+        current.update(config)
+        architecture = current.get("architecture")
+        classes_json = json.dumps(current.get("classes", []))
+        cursor = self.conn.cursor()
+        cursor.execute("SELECT COUNT(*) FROM config")
+        exists = cursor.fetchone()[0] > 0
+        if exists:
+            cursor.execute(
+                "UPDATE config SET architecture = ?, classes = ?",
+                (architecture, classes_json),
+            )
+        else:
+            cursor.execute(
+                "INSERT INTO config (architecture, classes) VALUES (?, ?)",
+                (architecture, classes_json),
+            )
+        self.conn.commit()
+        return current
 
     def count_labeled_samples(self):
         """Return the number of unique samples that have a label annotation."""
