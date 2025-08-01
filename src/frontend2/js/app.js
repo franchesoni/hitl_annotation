@@ -26,7 +26,12 @@ document.addEventListener('DOMContentLoaded', async () => {
                 try {
                         const stats = await api.getStats();
                         if (stats && stats.image) {
-                                statsDiv.textContent = `${stats.image} (${stats.annotated}/${stats.total})`;
+                                let text = `${stats.image} (${stats.annotated}/${stats.total})`;
+                                if (typeof stats.accuracy === 'number') {
+                                        const pct = (stats.accuracy * 100).toFixed(1);
+                                        text += ` <span class="accuracy-badge">${pct}%</span>`;
+                                }
+                                statsDiv.innerHTML = text;
                         }
                 } catch (e) {
                         console.error('Failed to fetch stats:', e);
