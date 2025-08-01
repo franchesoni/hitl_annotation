@@ -4,6 +4,15 @@ export class UndoManager {
         this.viewer = viewer;
         this.classManager = classManager;
         this.history = [];
+
+        // Keyboard shortcuts for undo: Backspace or 'u'
+        document.addEventListener('keydown', (e) => {
+            if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+            if (e.key === 'Backspace' || e.key.toLowerCase() === 'u') {
+                e.preventDefault();
+                this.undo();
+            }
+        });
     }
 
     record(imageId) {
