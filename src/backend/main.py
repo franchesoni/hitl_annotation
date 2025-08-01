@@ -77,7 +77,7 @@ async def get_next_sample(request):
     strategy = request.query_params.get("strategy")
 
     # Sequential strategy (existing behaviour)
-    if strategy == "sequential":
+    def sequential_next():
         all_images = db.get_samples()
         for image_path in all_images:
             if image_path == current_id:
@@ -87,6 +87,9 @@ async def get_next_sample(request):
             if not label_ann:
                 return create_image_response(image_path)
         return JSONResponse({"error": "No unlabeled images available"}, status_code=404)
+
+    if strategy == "sequential":
+        return sequential_next()
 
     # Default active learning strategy
     ann_counts = db.get_annotation_counts()
@@ -105,8 +108,9 @@ async def get_next_sample(request):
             prob = float(pred_ann.get('probability'))
             candidate_by_class[cls].append((prob, image_path))
 
+    # Fallback to sequential if no predictions available
     if not candidate_by_class:
-        return JSONResponse({"error": "No unlabeled images available"}, status_code=404)
+        return sequential_next()
 
     all_classes = set(candidate_by_class.keys()) | set(ann_counts.keys())
     for c in all_classes:
