@@ -26,6 +26,9 @@ export class ClassManager {
 
         this.render();
 
+        // Load any persisted classes from the backend
+        this.loadClassesFromConfig();
+
         // Keyboard shortcuts for class selection
         document.addEventListener('keydown', (e) => {
             // Only trigger if not typing in an input/textarea
@@ -61,10 +64,24 @@ export class ClassManager {
         });
     }
 
+    // Load class list from server config
+    async loadClassesFromConfig() {
+        if (!this.api || typeof this.api.getConfig !== 'function') return;
+        try {
+            const cfg = await this.api.getConfig();
+            if (cfg && Array.isArray(cfg.classes)) {
+                this.globalClasses = cfg.classes;
+            }
+        } catch (e) {
+            console.error('Failed to load classes from config:', e);
+        }
+    }
+
     // Setters for state
-    setCurrentImageFilename(filename, selectedClass = null) {
+    async setCurrentImageFilename(filename, selectedClass = null) {
         this.currentImageFilename = filename;
         this.selectedClass = selectedClass;
+        await this.loadClassesFromConfig();
         this.render();
     }
     setSelectedClass(className) {
