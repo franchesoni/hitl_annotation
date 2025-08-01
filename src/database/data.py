@@ -713,7 +713,7 @@ class DatabaseAPI:
         """Store training metrics for an epoch."""
         cursor = self.conn.cursor()
         cursor.execute(
-            "INSERT INTO training_stats (epoch, train_loss, valid_loss, accuracy, timestamp) VALUES (?, ?, ?, ?, ?)",
+            "INSERT OR REPLACE INTO training_stats (epoch, train_loss, valid_loss, accuracy, timestamp) VALUES (?, ?, ?, ?, ?)",
             (epoch, train_loss, valid_loss, accuracy, int(time.time())),
         )
         self.conn.commit()

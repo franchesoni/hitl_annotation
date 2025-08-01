@@ -74,7 +74,7 @@ def _gather_training_items(db: DatabaseAPI) -> List[Tuple[str, str]]:
 def _build_dls(paths: Sequence[str], labels: Sequence[str]):
     """Create ``DataLoaders`` with fixed transforms so we can reuse each cycle."""
     return ImageDataLoaders.from_lists(
-        Path("."), list(paths), list(labels), valid_pct=0.20, seed=42, bs=64, item_tfms=Resize(224)
+        Path("."), list(paths), list(labels), valid_pct=0.20, seed=42, bs=16, item_tfms=Resize(64)
     )
 
 
@@ -118,7 +118,7 @@ def _run_forever(db_path: str | None, arch: str, sleep_s: int) -> None:
     model_arch = resnet18 if arch == "small" else resnet34
     learner = None  # will lazily instantiate when we first have data
     prev_classes = None  # type: set[str] | None
-    model_path = Path(db.db_path).with_suffix(".pth")
+    model_path = Path(db.db_path).with_name("checkpoint.pth")
     cycle = 0
 
     while True:

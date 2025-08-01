@@ -2,6 +2,17 @@
 
 A human-in-the-loop image annotation system with continuous training.
 
+## Run
+
+webapp:
+```
+uvicorn src.backend.main:app --port 8001 --reload
+```
+AI training:
+```
+python -m src.ml.fastai_training --arch small
+```
+
 ## Backend
 - **Framework**: Starlette.
 - **Endpoints**
