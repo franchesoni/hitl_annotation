@@ -43,7 +43,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                         const { imageUrl, filename, labelClass, labelSource } = await api.loadNextImage(currentId);
                         viewer.loadImage(imageUrl, filename);
                         const annClass = labelSource === 'annotation' ? labelClass : null;
-                        classManager.setCurrentImageFilename(filename, annClass);
+                        await classManager.setCurrentImageFilename(filename, annClass);
                         await updateStats();
                 } catch (e) {
                         console.error('Failed to fetch next image:', e);
@@ -65,7 +65,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 const { imageUrl, filename, labelClass, labelSource } = await api.loadNextImage();
                 viewer.loadImage(imageUrl, filename);
                 const annClass = labelSource === 'annotation' ? labelClass : null;
-                classManager.setCurrentImageFilename(filename, annClass);
+                await classManager.setCurrentImageFilename(filename, annClass);
                 await updateStats();
         } catch (e) {
                 console.error('Failed to fetch first image:', e);

@@ -36,7 +36,7 @@ export class UndoManager {
             const { imageUrl, filename, labelClass, labelSource } = await this.api.loadSample(id);
             this.viewer.loadImage(imageUrl, filename);
             const cls = labelSource === 'annotation' ? labelClass : null;
-            this.classManager.setCurrentImageFilename(filename, cls);
+            await this.classManager.setCurrentImageFilename(filename, cls);
         } catch (e) {
             console.error('Failed to load sample:', e);
         }
