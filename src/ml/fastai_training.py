@@ -117,6 +117,7 @@ def _run_forever(db_path: str | None, arch: str, sleep_s: int) -> None:
 
     model_arch = resnet18 if arch == "small" else resnet34
     learner = None  # will lazily instantiate when we first have data
+    prev_classes = None  # type: set[str] | None
     model_path = Path(db.db_path).with_suffix(".pth")
     cycle = 0
 
@@ -132,13 +133,26 @@ def _run_forever(db_path: str | None, arch: str, sleep_s: int) -> None:
             paths, labels = zip(*train_items)
             dls = _build_dls(paths, labels)
 
+            new_classes = set(dls.vocab)
             if learner is None:
                 learner = vision_learner(dls, model_arch, metrics=accuracy)
+                prev_classes = new_classes
                 if model_path.exists():
-                    learner.model.load_state_dict(torch.load(model_path))
+                    try:
+                        learner.model.load_state_dict(torch.load(model_path))
+                    except Exception as e:
+                        print(f"[WARN] Failed to load model checkpoint: {e}")
             else:
-                # re‑attach fresh DataLoaders to keep dataset up‑to‑date
-                learner.dls = dls
+                current_classes = set(learner.dls.vocab)
+                if new_classes != current_classes:
+                    print(
+                        f"[INFO] Detected class change {current_classes} -> {new_classes}; resetting model"
+                    )
+                    learner = vision_learner(dls, model_arch, metrics=accuracy)
+                    prev_classes = new_classes
+                else:
+                    # re‑attach fresh DataLoaders to keep dataset up‑to‑date
+                    learner.dls = dls
 
             t0 = time.time()
             learner.fit(1)
