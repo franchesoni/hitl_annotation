@@ -220,6 +220,7 @@ predictions: id, sample_id, sample_filepath, type (label/bbox), class, coordinat
 import os
 import sqlite3
 import json
+import time
 
 
 class DatabaseAPI:
@@ -531,6 +532,17 @@ class DatabaseAPI:
             )
             """
         )
+        cursor.execute(
+            """
+            CREATE TABLE IF NOT EXISTS training_stats (
+                epoch INTEGER PRIMARY KEY,
+                train_loss REAL,
+                valid_loss REAL,
+                accuracy REAL,
+                timestamp INTEGER
+            )
+            """
+        )
         cursor.execute("SELECT COUNT(*) FROM accuracy_stats")
         if cursor.fetchone()[0] == 0:
             cursor.execute(
@@ -696,4 +708,31 @@ class DatabaseAPI:
         else:
             cursor.execute("UPDATE accuracy_stats SET tries = tries + 1")
         self.conn.commit()
+
+    def add_training_stat(self, epoch: int, train_loss: float | None, valid_loss: float | None, accuracy: float | None) -> None:
+        """Store training metrics for an epoch."""
+        cursor = self.conn.cursor()
+        cursor.execute(
+            "INSERT INTO training_stats (epoch, train_loss, valid_loss, accuracy, timestamp) VALUES (?, ?, ?, ?, ?)",
+            (epoch, train_loss, valid_loss, accuracy, int(time.time())),
+        )
+        self.conn.commit()
+
+    def get_training_stats(self):
+        """Return list of training stats ordered by epoch."""
+        cursor = self.conn.cursor()
+        cursor.execute(
+            "SELECT epoch, train_loss, valid_loss, accuracy, timestamp FROM training_stats ORDER BY epoch"
+        )
+        rows = cursor.fetchall()
+        return [
+            {
+                "epoch": r[0],
+                "train_loss": r[1],
+                "valid_loss": r[2],
+                "accuracy": r[3],
+                "timestamp": r[4],
+            }
+            for r in rows
+        ]
 

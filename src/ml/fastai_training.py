@@ -141,6 +141,16 @@ def _run_forever(db_path: str | None, arch: str, sleep_s: int) -> None:
             learner.fit(1)
             epoch_time = time.time() - t0
 
+            try:
+                valid_res = learner.validate()
+                valid_loss = float(valid_res[0]) if len(valid_res) > 0 else None
+                accuracy_val = float(valid_res[1]) if len(valid_res) > 1 else None
+                train_loss = float(learner.recorder.losses[-1]) if learner.recorder.losses else None
+            except Exception:
+                train_loss = valid_loss = accuracy_val = None
+
+            db.add_training_stat(cycle, train_loss, valid_loss, accuracy_val)
+
             budget = max(10, int(2 * epoch_time))
             labeled_set = set(paths)
             unlabeled = [fp for fp in db.get_samples() if fp not in labeled_set]

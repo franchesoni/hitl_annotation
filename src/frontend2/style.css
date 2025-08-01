@@ -140,7 +140,14 @@ body {
 }
 
 .info-display b {
-	color: #495057;
+        color: #495057;
+}
+
+#training-curve {
+        width: 100%;
+        max-width: 300px;
+        height: 150px;
+        border: 1px solid #ccc;
 }
 
 .prediction-badge {

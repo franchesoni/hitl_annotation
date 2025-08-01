@@ -75,4 +75,10 @@ export class API {
         if (!res.ok) throw new Error('Failed to get stats');
         return await res.json();
     }
+
+    async getTrainingStats() {
+        const res = await fetch('/training_stats');
+        if (!res.ok) throw new Error('Failed to get training stats');
+        return await res.json();
+    }
 }
