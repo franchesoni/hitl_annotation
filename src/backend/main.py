@@ -23,9 +23,6 @@ db = DatabaseAPI()
 db.set_samples([s["filepath"] for s in db_dict["samples"]])
 config = db.get_config() or {}
 
-# In-memory accuracy stats
-accuracy_stats = {"tries": 0, "correct": 0}
-
 # Track the last image served to the client
 last_image_served = None
 
@@ -141,9 +138,8 @@ async def handle_annotation(request: Request):
         preds = db.get_predictions(filepath)
         pred_ann = next((p for p in preds if p.get('type') == 'label' and p.get('probability') is not None), None)
         if pred_ann:
-            accuracy_stats["tries"] += 1
-            if str(pred_ann.get("class")) == str(class_name):
-                accuracy_stats["correct"] += 1
+            was_correct = str(pred_ann.get("class")) == str(class_name)
+            db.increment_accuracy(was_correct)
         return JSONResponse({"status": "ok"})
     elif request.method == "DELETE":
         data = await request.json()
@@ -156,8 +152,9 @@ async def handle_annotation(request: Request):
         return JSONResponse({"error": "Method not allowed"}, status_code=405)
 
 async def get_accuracy_stats(request: Request):
-    tries = accuracy_stats["tries"]
-    correct = accuracy_stats["correct"]
+    stats = db.get_accuracy_counts()
+    tries = stats["tries"]
+    correct = stats["correct"]
     accuracy = (correct / tries) if tries > 0 else None
     return JSONResponse({
         "tries": tries,
@@ -187,11 +184,20 @@ async def get_config(request: Request):
 async def get_stats(request: Request):
     annotated = db.count_labeled_samples()
     total = db.count_total_samples()
+    stats = db.get_accuracy_counts()
+    tries = stats["tries"]
+    correct = stats["correct"]
+    accuracy = (correct / tries) if tries > 0 else None
+    error = (1 - accuracy) if accuracy is not None else None
     return JSONResponse(
         {
             "image": last_image_served,
             "annotated": annotated,
             "total": total,
+            "tries": tries,
+            "correct": correct,
+            "accuracy": accuracy,
+            "error": error,
         }
     )
 
