@@ -4,11 +4,12 @@ import { API } from './api.js';
 import { UndoManager } from './undoManager.js';
 
 document.addEventListener('DOMContentLoaded', async () => {
-	// Get left and right panel containers
+        // Get left and right panel containers
         const leftPanel = document.querySelector('.left-panel');
         const classPanel = document.querySelector('#class-manager');
         const undoBtn = document.getElementById('undo-btn');
         const statsDiv = document.getElementById('stats-display');
+        const trainingCanvas = document.getElementById('training-curve');
         const strategySelect = document.getElementById('strategy-select');
         let currentStrategy = strategySelect ? strategySelect.value : null;
         if (strategySelect) {
@@ -63,6 +64,41 @@ document.addEventListener('DOMContentLoaded', async () => {
                 }
         }
 
+        async function updateTrainingCurve() {
+                if (!trainingCanvas) return;
+                try {
+                        const data = await api.getTrainingStats();
+                        drawCurve(trainingCanvas, data.map(d => ({x: d.epoch, y: d.accuracy ?? 0})));
+                } catch (e) {
+                        console.error('Failed to fetch training stats:', e);
+                }
+        }
+
+        function drawCurve(canvas, points) {
+                const ctx = canvas.getContext('2d');
+                const w = canvas.width;
+                const h = canvas.height;
+                ctx.clearRect(0, 0, w, h);
+                if (!points || points.length === 0) return;
+                const padding = 20;
+                const maxX = points[points.length - 1].x || 1;
+                ctx.strokeStyle = '#ccc';
+                ctx.beginPath();
+                ctx.moveTo(padding, padding);
+                ctx.lineTo(padding, h - padding);
+                ctx.lineTo(w - padding, h - padding);
+                ctx.stroke();
+
+                ctx.strokeStyle = '#007acc';
+                ctx.beginPath();
+                points.forEach((p, idx) => {
+                        const x = padding + (p.x / maxX) * (w - 2 * padding);
+                        const y = h - padding - (p.y) * (h - 2 * padding);
+                        if (idx === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+                });
+                ctx.stroke();
+        }
+
 	// Create the viewer instance
 	const viewer = new ImageViewer(leftPanel, 'loading-overlay', 'c');
 
@@ -75,6 +111,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                         const annClass = labelSource === 'annotation' ? labelClass : null;
                         await classManager.setCurrentImageFilename(filename, annClass);
                         await updateStats();
+                        await updateTrainingCurve();
                 } catch (e) {
                         console.error('Failed to fetch next image:', e);
                 }
@@ -97,8 +134,12 @@ document.addEventListener('DOMContentLoaded', async () => {
                 const annClass = labelSource === 'annotation' ? labelClass : null;
                 await classManager.setCurrentImageFilename(filename, annClass);
                 await updateStats();
+                await updateTrainingCurve();
         } catch (e) {
                 console.error('Failed to fetch first image:', e);
                 return;
         }
+
+        updateTrainingCurve();
+        setInterval(updateTrainingCurve, 5000);
 });

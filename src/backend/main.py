@@ -169,6 +169,10 @@ async def get_stats(request: Request):
         }
     )
 
+async def get_training_stats(request: Request):
+    stats = db.get_training_stats()
+    return JSONResponse(stats)
+
 app = Starlette(
     routes=[
         Route("/config", put_config, methods=["PUT"]),
@@ -178,6 +182,7 @@ app = Starlette(
         Route("/annotate", handle_annotation, methods=["POST"]),
         Route("/annotate", handle_annotation, methods=["DELETE"]),
         Route("/stats", get_stats, methods=["GET"]),
+        Route("/training_stats", get_training_stats, methods=["GET"]),
     ]
 )
 app.mount("/", StaticFiles(directory=FRONTEND_DIR, html=True), name="frontend")
