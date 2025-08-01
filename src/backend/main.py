@@ -150,6 +150,7 @@ async def get_config(request: Request):
 async def get_stats(request: Request):
     annotated = db.count_labeled_samples()
     total = db.count_total_samples()
+    ann_counts = db.get_annotation_counts()
     stats = db.get_accuracy_counts()
     tries = stats["tries"]
     correct = stats["correct"]
@@ -164,6 +165,7 @@ async def get_stats(request: Request):
             "correct": correct,
             "accuracy": accuracy,
             "error": error,
+            "annotation_counts": ann_counts,
         }
     )
 
