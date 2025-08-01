@@ -2,11 +2,17 @@
 
 export class API {
     // Load the next image sample (image response, not JSON)
-    async loadNextImage(currentId = null) {
+    async loadNextImage(currentId = null, strategy = null) {
         let url = '/next';
+        const params = new URLSearchParams();
         if (currentId) {
-            url += `?current_id=${encodeURIComponent(currentId)}`;
+            params.append('current_id', currentId);
         }
+        if (strategy) {
+            params.append('strategy', strategy);
+        }
+        const qs = params.toString();
+        if (qs) url += `?${qs}`;
         const res = await fetch(url);
         if (!res.ok) throw new Error('No images available');
         const filename = res.headers.get('X-Image-Id') || res.headers.get('X-Filename');

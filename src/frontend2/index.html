@@ -16,6 +16,13 @@
                 <!-- Right Panel: Controls -->
                 <div class="right-panel">
                         <button id="undo-btn" class="undo-btn">Undo</button>
+                        <div class="strategy-control">
+                                <label for="strategy-select">Next image strategy:</label>
+                                <select id="strategy-select">
+                                        <option value="least_confident_minority">Least Confident Minority</option>
+                                        <option value="sequential">Sequential</option>
+                                </select>
+                        </div>
                         <div id="stats-display" class="info-display"></div>
                         <div id="class-manager"></div>
                 </div>
