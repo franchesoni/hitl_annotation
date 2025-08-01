@@ -21,6 +21,7 @@ validate_db_dict(db_dict)
 # Initialize the database
 db = DatabaseAPI()
 db.set_samples([s["filepath"] for s in db_dict["samples"]])
+config = db.get_config() or {}
 
 # In-memory accuracy stats
 accuracy_stats = {"tries": 0, "correct": 0}
@@ -154,24 +155,24 @@ async def get_accuracy_stats(request: Request):
         "accuracy": accuracy
     })
 
-config = dict()
-
 async def put_config(request: Request):
     data = await request.json()
     if not isinstance(data, dict):
         return JSONResponse({"error": "Invalid config format"}, status_code=400)
     
-    # Validate and save the config
+    # Merge and save the config in the database
     config.update(data)
+    db.update_config(config)
     print("Config updated:", config)
     return JSONResponse({"status": "Config saved successfully"})
 
 async def get_config(request: Request):
-    if not config:
+    cfg = db.get_config()
+    if not cfg:
         return JSONResponse({"error": "No config set"}, status_code=404)
-    
-    print("Config updated", config)
-    return JSONResponse(config)
+
+    print("Config updated", cfg)
+    return JSONResponse(cfg)
 
 async def get_stats(request: Request):
     # Return the accuracy stats
