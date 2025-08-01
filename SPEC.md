@@ -6,7 +6,9 @@ A human-in-the-loop image annotation system with continuous training.
 - **Framework**: Starlette.
 - **Endpoints**
   - `PUT /config` and `GET /config` manage architecture, class list and preprocessing.
-  - `GET /next?current_id=ID` returns the next unlabeled image; headers describe prediction or existing annotation.
+  - `GET /next?current_id=ID&strategy=STRAT` returns the next unlabeled image.
+    `STRAT` may be `sequential` or `least_confident_minority` (default). Headers
+    describe prediction or existing annotation.
   - `GET /sample?id=ID` serves an image by ID with the same headers.
   - `POST /annotate` stores `{filepath, class}` (and optional bbox/point info).
   - `DELETE /annotate` removes the label annotation for a filepath.

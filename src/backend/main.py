@@ -71,7 +71,7 @@ async def get_sample_by_id(request):
 
 async def get_next_sample(request):
     current_id = request.query_params.get("current_id")
-    strategy = request.query_params.get("strategy")
+    strategy = request.query_params.get("strategy", "least_confident_minority")
 
     # Sequential strategy (existing behaviour)
     def sequential_next():
@@ -82,12 +82,12 @@ async def get_next_sample(request):
 
     if strategy == "sequential":
         return sequential_next()
-
-    # Default active learning strategy using DatabaseAPI
-    filepath = db.get_next_unlabeled_default(current_id)
-    if filepath:
-        return create_image_response(filepath)
-    return sequential_next()
+    if strategy == "least_confident_minority":
+        filepath = db.get_next_unlabeled_default(current_id)
+        if filepath:
+            return create_image_response(filepath)
+        return sequential_next()
+    return JSONResponse({"error": "Invalid strategy"}, status_code=400)
 
 
 async def handle_annotation(request: Request):

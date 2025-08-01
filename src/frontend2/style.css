@@ -201,3 +201,15 @@ body {
 .status-implemented { color: #28a745; }
 .status-partial { color: #ffc107; }
 .status-missing { color: #dc3545; }
+
+.strategy-control {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+}
+
+.strategy-control select {
+        padding: 6px;
+        border: 1px solid #ced4da;
+        border-radius: 4px;
+}
