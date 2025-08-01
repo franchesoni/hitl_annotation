@@ -26,18 +26,30 @@ document.addEventListener('DOMContentLoaded', async () => {
                 try {
                         const stats = await api.getStats();
                         if (stats) {
-                                let text = '';
+                                let html = '';
                                 if (stats.image) {
-                                        text += `${stats.image} `;
+                                        html += `<div><b>Last image:</b> ${stats.image}</div>`;
                                 }
-                                text += `(${stats.annotated}/${stats.total})`;
+                                html += `<div><b>Annotated:</b> ${stats.annotated}/${stats.total}</div>`;
+
+                                if (stats.annotation_counts) {
+                                        const counts = Object.entries(stats.annotation_counts)
+                                                .map(([cls, n]) => `<div>${cls}: ${n}</div>`) 
+                                                .join('');
+                                        html += `<div><b>Annotations per class:</b>${counts}</div>`;
+                                }
+
+                                html += `<div><b>Tries:</b> ${stats.tries}</div>`;
+                                html += `<div><b>Correct:</b> ${stats.correct}</div>`;
+
                                 if (typeof stats.accuracy === 'number') {
                                         const pct = (stats.accuracy * 100).toFixed(1);
-                                        text += ` <span class="accuracy-badge">${pct}%</span>`;
-                                } else if (stats.tries === 0) {
-                                        text += ' <span class="accuracy-badge">0%</span>';
+                                        html += `<div><b>Accuracy:</b> <span class="accuracy-badge">${pct}%</span></div>`;
+                                } else {
+                                        html += `<div><b>Accuracy:</b> <span class="accuracy-badge">0%</span></div>`;
                                 }
-                                statsDiv.innerHTML = text;
+
+                                statsDiv.innerHTML = html;
                         }
                 } catch (e) {
                         console.error('Failed to fetch stats:', e);
