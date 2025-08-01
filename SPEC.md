@@ -26,8 +26,9 @@ A human-in-the-loop image annotation system with continuous training.
 - `src/ml/fastai_training.py` loops forever:
   1. Gather latest label annotations and build `DataLoaders`.
   2. Train one epoch on ResNet (34 or `--arch small` for 18).
-  3. Predict on remaining unlabeled images and write predictions to DB.
-  4. Sleep for a configurable delay and repeat.
+  3. Save the model weights to `<db>.pth` so progress persists across runs.
+  4. Predict on remaining unlabeled images and write predictions to DB.
+  5. Sleep for a configurable delay and repeat.
 
 ## Usage
 1. Start backend: `uvicorn src.backend.main:app`.
