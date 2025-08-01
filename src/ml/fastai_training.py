@@ -74,7 +74,7 @@ def _gather_training_items(db: DatabaseAPI) -> List[Tuple[str, str]]:
 def _build_dls(paths: Sequence[str], labels: Sequence[str]):
     """Create ``DataLoaders`` with fixed transforms so we can reuse each cycle."""
     return ImageDataLoaders.from_lists(
-        Path("."), list(paths), list(labels), valid_pct=0.20, seed=42, bs=64, item_tfms=Resize(224)
+        Path("."), list(paths), list(labels), valid_pct=0.20, seed=42, bs=64, item_tfms=Resize(64)
     )
 
 
