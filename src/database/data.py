@@ -584,3 +584,19 @@ class DatabaseAPI:
             )
         self.conn.commit()
         return current
+
+    def count_labeled_samples(self):
+        """Return the number of unique samples that have a label annotation."""
+        cursor = self.conn.cursor()
+        cursor.execute(
+            "SELECT COUNT(DISTINCT sample_id) FROM annotations WHERE type='label'"
+        )
+        row = cursor.fetchone()
+        return row[0] if row else 0
+
+    def count_total_samples(self):
+        """Return the total number of samples in the database."""
+        cursor = self.conn.cursor()
+        cursor.execute("SELECT COUNT(*) FROM samples")
+        row = cursor.fetchone()
+        return row[0] if row else 0

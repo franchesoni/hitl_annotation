@@ -8,6 +8,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         const leftPanel = document.querySelector('.left-panel');
         const classPanel = document.querySelector('#class-manager');
         const undoBtn = document.getElementById('undo-btn');
+        const statsDiv = document.getElementById('stats-display');
         if (!leftPanel) {
                 console.error('Left panel container not found.');
                 return;
@@ -17,8 +18,20 @@ document.addEventListener('DOMContentLoaded', async () => {
                 return;
         }
 
-	// Create the API instance
+        // Create the API instance
         const api = new API();
+
+        async function updateStats() {
+                if (!statsDiv) return;
+                try {
+                        const stats = await api.getStats();
+                        if (stats && stats.image) {
+                                statsDiv.textContent = `${stats.image} (${stats.annotated}/${stats.total})`;
+                        }
+                } catch (e) {
+                        console.error('Failed to fetch stats:', e);
+                }
+        }
 
 	// Create the viewer instance
 	const viewer = new ImageViewer(leftPanel, 'loading-overlay', 'c');
@@ -31,6 +44,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                         viewer.loadImage(imageUrl, filename);
                         const annClass = labelSource === 'annotation' ? labelClass : null;
                         classManager.setCurrentImageFilename(filename, annClass);
+                        await updateStats();
                 } catch (e) {
                         console.error('Failed to fetch next image:', e);
                 }
@@ -52,6 +66,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 viewer.loadImage(imageUrl, filename);
                 const annClass = labelSource === 'annotation' ? labelClass : null;
                 classManager.setCurrentImageFilename(filename, annClass);
+                await updateStats();
         } catch (e) {
                 console.error('Failed to fetch first image:', e);
                 return;

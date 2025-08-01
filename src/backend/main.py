@@ -26,6 +26,9 @@ config = db.get_config() or {}
 # In-memory accuracy stats
 accuracy_stats = {"tries": 0, "correct": 0}
 
+# Track the last image served to the client
+last_image_served = None
+
 
 def create_image_response(image_path):
     """Helper function to create image response with headers"""
@@ -52,6 +55,9 @@ def create_image_response(image_path):
             headers["X-Label-Source"] = "prediction"
             headers["X-Label-Probability"] = str(pred_ann.get('probability', ''))
     
+    global last_image_served
+    last_image_served = str(image_path)
+
     return FileResponse(image_path, media_type=mime_type, headers=headers)
 
 
@@ -175,8 +181,15 @@ async def get_config(request: Request):
     return JSONResponse(cfg)
 
 async def get_stats(request: Request):
-    # Return the accuracy stats
-    return JSONResponse(accuracy_stats)
+    annotated = db.count_labeled_samples()
+    total = db.count_total_samples()
+    return JSONResponse(
+        {
+            "image": last_image_served,
+            "annotated": annotated,
+            "total": total,
+        }
+    )
 
 app = Starlette(
     routes=[
