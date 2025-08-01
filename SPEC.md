@@ -10,9 +10,11 @@ A human-in-the-loop image annotation system with continuous training.
   - `GET /sample?id=ID` serves an image by ID with the same headers.
   - `POST /annotate` stores `{filepath, class}` (and optional bbox/point info).
   - `DELETE /annotate` removes the label annotation for a filepath.
-  - `GET /stats` reports accuracy from accepted predictions.
+  - `GET /stats` reports image counts, per-class annotation counts, and
+    model performance metrics including tries, correct counts, accuracy
+    and error rate.
 - **DatabaseAPI** (`src/database/data.py`)
-  - SQLite tables: `samples(filepath)`, `annotations(id, sample_id, sample_filepath, type, class, x, y, width, height, timestamp)`, `predictions(id, sample_id, sample_filepath, type, class, probability, x, y, width, height)`, `config(architecture, classes)`.
+  - SQLite tables: `samples(filepath)`, `annotations(id, sample_id, sample_filepath, type, class, x, y, width, height, timestamp)`, `predictions(id, sample_id, sample_filepath, type, class, probability, x, y, width, height)`, `config(architecture, classes)`, `accuracy_stats(tries, correct)`.
   - Methods to set/get samples, annotations, predictions and export DB to JSON.
   - TODO: helper to fetch the next unlabeled sample.
 

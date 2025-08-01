@@ -25,8 +25,25 @@ document.addEventListener('DOMContentLoaded', async () => {
                 if (!statsDiv) return;
                 try {
                         const stats = await api.getStats();
-                        if (stats && stats.image) {
-                                statsDiv.textContent = `${stats.image} (${stats.annotated}/${stats.total})`;
+                        if (stats) {
+                                const lines = [];
+                                if (stats.image) {
+                                        lines.push(`Image: ${stats.image}`);
+                                }
+                                lines.push(`Annotated: ${stats.annotated}/${stats.total}`);
+                                if (stats.class_counts) {
+                                        const pairs = Object.entries(stats.class_counts).map(([c, n]) => `${c}:${n}`);
+                                        lines.push(`Class counts: ${pairs.join(', ')}`);
+                                }
+                                lines.push(`Tries: ${stats.tries} Correct: ${stats.correct}`);
+                                let pct;
+                                if (typeof stats.accuracy === 'number') {
+                                        pct = (stats.accuracy * 100).toFixed(1);
+                                } else {
+                                        pct = '0';
+                                }
+                                lines.push(`Accuracy: <span class="accuracy-badge">${pct}%</span>`);
+                                statsDiv.innerHTML = lines.join('<br>');
                         }
                 } catch (e) {
                         console.error('Failed to fetch stats:', e);
