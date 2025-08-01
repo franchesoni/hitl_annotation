@@ -12,7 +12,7 @@ A human-in-the-loop image annotation system with continuous training.
   - `DELETE /annotate` removes the label annotation for a filepath.
   - `GET /stats` reports accuracy from accepted predictions.
 - **DatabaseAPI** (`src/database/data.py`)
-  - SQLite tables: `samples(filepath)`, `annotations(id, sample_id, sample_filepath, type, class, x, y, width, height, timestamp)`, `predictions(id, sample_id, sample_filepath, type, class, probability, x, y, width, height)`, `config(architecture, classes)`.
+  - SQLite tables: `samples(filepath)`, `annotations(id, sample_id, sample_filepath, type, class, x, y, width, height, timestamp)`, `predictions(id, sample_id, sample_filepath, type, class, probability, x, y, width, height)`, `config(architecture, classes)`, `accuracy_stats(tries, correct)`.
   - Methods to set/get samples, annotations, predictions and export DB to JSON.
   - TODO: helper to fetch the next unlabeled sample.
 

@@ -523,6 +523,19 @@ class DatabaseAPI:
             )
             """
         )
+        cursor.execute(
+            """
+            CREATE TABLE IF NOT EXISTS accuracy_stats (
+                tries INTEGER NOT NULL DEFAULT 0,
+                correct INTEGER NOT NULL DEFAULT 0
+            )
+            """
+        )
+        cursor.execute("SELECT COUNT(*) FROM accuracy_stats")
+        if cursor.fetchone()[0] == 0:
+            cursor.execute(
+                "INSERT INTO accuracy_stats (tries, correct) VALUES (0, 0)"
+            )
         self.conn.commit()
 
     def close(self):
@@ -600,3 +613,23 @@ class DatabaseAPI:
         cursor.execute("SELECT COUNT(*) FROM samples")
         row = cursor.fetchone()
         return row[0] if row else 0
+
+    def get_accuracy_counts(self):
+        """Return {'tries': int, 'correct': int} stored in the accuracy table."""
+        cursor = self.conn.cursor()
+        cursor.execute("SELECT tries, correct FROM accuracy_stats LIMIT 1")
+        row = cursor.fetchone()
+        if not row:
+            return {"tries": 0, "correct": 0}
+        return {"tries": row[0], "correct": row[1]}
+
+    def increment_accuracy(self, was_correct: bool) -> None:
+        """Increment tries and correct counters depending on prediction result."""
+        cursor = self.conn.cursor()
+        if was_correct:
+            cursor.execute(
+                "UPDATE accuracy_stats SET tries = tries + 1, correct = correct + 1"
+            )
+        else:
+            cursor.execute("UPDATE accuracy_stats SET tries = tries + 1")
+        self.conn.commit()
