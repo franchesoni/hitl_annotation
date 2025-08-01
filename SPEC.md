@@ -6,7 +6,9 @@ A human-in-the-loop image annotation system with continuous training.
 - **Framework**: Starlette.
 - **Endpoints**
   - `PUT /config` and `GET /config` manage architecture, class list and preprocessing.
-  - `GET /next?current_id=ID` returns the next unlabeled image; headers describe prediction or existing annotation.
+  - `GET /next?current_id=ID&strategy=STRAT` returns the next unlabeled image.
+    `STRAT` may be `sequential` or `least_confident_minority` (default). Headers
+    describe prediction or existing annotation.
   - `GET /sample?id=ID` serves an image by ID with the same headers.
   - `POST /annotate` stores `{filepath, class}` (and optional bbox/point info).
   - `DELETE /annotate` removes the label annotation for a filepath.
@@ -26,8 +28,9 @@ A human-in-the-loop image annotation system with continuous training.
 - `src/ml/fastai_training.py` loops forever:
   1. Gather latest label annotations and build `DataLoaders`.
   2. Train one epoch on ResNet (34 or `--arch small` for 18).
-  3. Predict on remaining unlabeled images and write predictions to DB.
-  4. Sleep for a configurable delay and repeat.
+  3. Save the model weights to `<db>.pth` so progress persists across runs.
+  4. Predict on remaining unlabeled images and write predictions to DB.
+  5. Sleep for a configurable delay and repeat.
 
 ## Usage
 1. Start backend: `uvicorn src.backend.main:app`.

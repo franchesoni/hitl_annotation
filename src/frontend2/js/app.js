@@ -10,6 +10,13 @@ document.addEventListener('DOMContentLoaded', async () => {
         const undoBtn = document.getElementById('undo-btn');
         const statsDiv = document.getElementById('stats-display');
         const trainingCanvas = document.getElementById('training-curve');
+        const strategySelect = document.getElementById('strategy-select');
+        let currentStrategy = strategySelect ? strategySelect.value : null;
+        if (strategySelect) {
+                strategySelect.addEventListener('change', () => {
+                        currentStrategy = strategySelect.value;
+                });
+        }
         if (!leftPanel) {
                 console.error('Left panel container not found.');
                 return;
@@ -99,7 +106,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         async function loadNextImage() {
                 try {
                         const currentId = classManager.currentImageFilename;
-                        const { imageUrl, filename, labelClass, labelSource } = await api.loadNextImage(currentId);
+                        const { imageUrl, filename, labelClass, labelSource } = await api.loadNextImage(currentId, currentStrategy);
                         viewer.loadImage(imageUrl, filename);
                         const annClass = labelSource === 'annotation' ? labelClass : null;
                         await classManager.setCurrentImageFilename(filename, annClass);
@@ -122,7 +129,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
 	// Fetch the first image from API
         try {
-                const { imageUrl, filename, labelClass, labelSource } = await api.loadNextImage();
+                const { imageUrl, filename, labelClass, labelSource } = await api.loadNextImage(null, currentStrategy);
                 viewer.loadImage(imageUrl, filename);
                 const annClass = labelSource === 'annotation' ? labelClass : null;
                 await classManager.setCurrentImageFilename(filename, annClass);
