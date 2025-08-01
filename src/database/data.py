@@ -696,3 +696,4 @@ class DatabaseAPI:
         else:
             cursor.execute("UPDATE accuracy_stats SET tries = tries + 1")
         self.conn.commit()
+

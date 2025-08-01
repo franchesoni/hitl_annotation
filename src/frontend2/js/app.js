@@ -25,11 +25,17 @@ document.addEventListener('DOMContentLoaded', async () => {
                 if (!statsDiv) return;
                 try {
                         const stats = await api.getStats();
-                        if (stats && stats.image) {
-                                let text = `${stats.image} (${stats.annotated}/${stats.total})`;
+                        if (stats) {
+                                let text = '';
+                                if (stats.image) {
+                                        text += `${stats.image} `;
+                                }
+                                text += `(${stats.annotated}/${stats.total})`;
                                 if (typeof stats.accuracy === 'number') {
                                         const pct = (stats.accuracy * 100).toFixed(1);
                                         text += ` <span class="accuracy-badge">${pct}%</span>`;
+                                } else if (stats.tries === 0) {
+                                        text += ' <span class="accuracy-badge">0%</span>';
                                 }
                                 statsDiv.innerHTML = text;
                         }
