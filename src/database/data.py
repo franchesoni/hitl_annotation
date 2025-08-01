@@ -600,3 +600,66 @@ class DatabaseAPI:
         cursor.execute("SELECT COUNT(*) FROM samples")
         row = cursor.fetchone()
         return row[0] if row else 0
+
+    def get_next_unlabeled_sequential(self, current_filepath=None):
+        """Return the next unlabeled sample filepath in DB order."""
+        cursor = self.conn.cursor()
+        params = []
+        sql = (
+            "SELECT filepath FROM samples WHERE filepath NOT IN ("
+            "SELECT sample_filepath FROM annotations WHERE type='label')"
+        )
+        if current_filepath:
+            sql += " AND filepath <> ?"
+            params.append(current_filepath)
+        sql += " ORDER BY id LIMIT 1"
+        cursor.execute(sql, params)
+        row = cursor.fetchone()
+        return row[0] if row else None
+
+    def get_next_unlabeled_default(self, current_filepath=None):
+        """Return the next unlabeled sample filepath using default strategy."""
+        cursor = self.conn.cursor()
+
+        # Annotation counts per class
+        cursor.execute(
+            "SELECT class, COUNT(*) FROM annotations WHERE type='label' GROUP BY class"
+        )
+        ann_counts = {row[0]: row[1] for row in cursor.fetchall()}
+
+        # Candidate predictions for unlabeled samples
+        params = []
+        sql = """
+            SELECT p.sample_filepath, p.class, p.probability
+            FROM predictions AS p
+            JOIN samples AS s ON p.sample_id = s.id
+            LEFT JOIN annotations AS a
+                ON a.sample_id = s.id AND a.type='label'
+            WHERE p.type='label' AND p.probability IS NOT NULL
+              AND a.id IS NULL
+        """
+        if current_filepath:
+            sql += " AND s.filepath <> ?"
+            params.append(current_filepath)
+
+        cursor.execute(sql, params)
+        rows = cursor.fetchall()
+        if not rows:
+            return self.get_next_unlabeled_sequential(current_filepath)
+
+        from collections import defaultdict
+
+        candidate_by_class = defaultdict(list)
+        for fp, cls, prob in rows:
+            candidate_by_class[str(cls)].append((float(prob), fp))
+
+        all_classes = set(candidate_by_class.keys()) | set(ann_counts.keys())
+        for c in all_classes:
+            ann_counts.setdefault(c, 0)
+
+        minority = min(all_classes, key=lambda c: ann_counts[c])
+        if minority in candidate_by_class:
+            return max(candidate_by_class[minority], key=lambda x: x[0])[1]
+
+        fallback = min(candidate_by_class.keys(), key=lambda c: ann_counts[c])
+        return min(candidate_by_class[fallback], key=lambda x: x[0])[1]

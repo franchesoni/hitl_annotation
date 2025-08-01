@@ -78,53 +78,19 @@ async def get_next_sample(request):
 
     # Sequential strategy (existing behaviour)
     def sequential_next():
-        all_images = db.get_samples()
-        for image_path in all_images:
-            if image_path == current_id:
-                continue
-            anns = db.get_annotations(image_path)
-            label_ann = next((a for a in anns if a.get('type') == 'label'), None)
-            if not label_ann:
-                return create_image_response(image_path)
+        filepath = db.get_next_unlabeled_sequential(current_id)
+        if filepath:
+            return create_image_response(filepath)
         return JSONResponse({"error": "No unlabeled images available"}, status_code=404)
 
     if strategy == "sequential":
         return sequential_next()
 
-    # Default active learning strategy
-    ann_counts = db.get_annotation_counts()
-    candidate_by_class = defaultdict(list)
-    for image_path in db.get_samples():
-        if image_path == current_id:
-            continue
-        anns = db.get_annotations(image_path)
-        label_ann = next((a for a in anns if a.get('type') == 'label'), None)
-        if label_ann:
-            continue
-        preds = db.get_predictions(image_path)
-        pred_ann = next((p for p in preds if p.get('type') == 'label' and p.get('probability') is not None), None)
-        if pred_ann:
-            cls = str(pred_ann.get('class'))
-            prob = float(pred_ann.get('probability'))
-            candidate_by_class[cls].append((prob, image_path))
-
-    # Fallback to sequential if no predictions available
-    if not candidate_by_class:
-        return sequential_next()
-
-    all_classes = set(candidate_by_class.keys()) | set(ann_counts.keys())
-    for c in all_classes:
-        ann_counts.setdefault(c, 0)
-
-    minority_class = min(all_classes, key=lambda c: ann_counts[c])
-
-    if minority_class in candidate_by_class:
-        chosen = max(candidate_by_class[minority_class], key=lambda x: x[0])[1]
-        return create_image_response(chosen)
-
-    fallback_class = min(candidate_by_class.keys(), key=lambda c: ann_counts[c])
-    chosen = min(candidate_by_class[fallback_class], key=lambda x: x[0])[1]
-    return create_image_response(chosen)
+    # Default active learning strategy using DatabaseAPI
+    filepath = db.get_next_unlabeled_default(current_id)
+    if filepath:
+        return create_image_response(filepath)
+    return sequential_next()
 
 
 async def handle_annotation(request: Request):
