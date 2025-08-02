@@ -219,6 +219,4 @@ document.addEventListener('DOMContentLoaded', async () => {
                 return;
         }
 
-        updateTrainingCurve();
-        setInterval(updateTrainingCurve, 5000);
 });
