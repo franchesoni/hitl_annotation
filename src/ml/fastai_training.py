@@ -94,7 +94,7 @@ def _predict_subset(db: DatabaseAPI, learner, unlabeled: List[str], budget: int)
                 {
                     "sample_filepath": fp,
                     "type": "label",
-                    "class": str(pred_class),
+                    "class": str(learner.dls.vocab[pred_class.item()]),
                     "probability": float(pred_tensor[pred_idx]),
                 }
             ],
