@@ -39,6 +39,7 @@ from typing import List, Sequence, Tuple
 import torch
 from fastai.vision.all import (
     ImageDataLoaders,
+    PILImage,
     Resize,
     accuracy,
     resnet18,
@@ -81,13 +82,9 @@ def _predict_subset(db: DatabaseAPI, learner, unlabeled: List[str], budget: int)
     """Predict for *budget* images, return #predicted."""
     if budget <= 0 or not unlabeled:
         return 0
-    subset = unlabeled[:budget]
-    # Use fastai's dataloader to perform batched predictions for efficiency
-    dl = learner.dls.test_dl(subset, bs=learner.dls.bs)
-    preds, _, decoded = learner.get_preds(dl=dl, with_decoded=True)
-
-    for fp, pred_tensor, pred_class in zip(subset, preds, decoded):
-        pred_idx = int(pred_tensor.argmax())
+    count = 0
+    for fp in unlabeled[:budget]:
+        pred_class, pred_idx, probs = learner.predict(PILImage.create(fp))
         db.set_predictions(
             fp,
             [
@@ -95,12 +92,12 @@ def _predict_subset(db: DatabaseAPI, learner, unlabeled: List[str], budget: int)
                     "sample_filepath": fp,
                     "type": "label",
                     "class": str(pred_class),
-                    "probability": float(pred_tensor[pred_idx]),
+                    "probability": float(probs[pred_idx]),
                 }
             ],
         )
-
-    return len(subset)
+        count += 1
+    return count
 
 
 # ---------------------------------------------------------------------------
