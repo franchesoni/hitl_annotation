@@ -17,13 +17,12 @@ from src.database.db_init import build_initial_db_dict
 BASE_DIR = Path(__file__).resolve().parent
 FRONTEND_DIR = BASE_DIR.parent / "frontend2"
 
-# Build and validate the initial db dict
-db_dict = build_initial_db_dict()
-validate_db_dict(db_dict)
-
 # Initialize the database
 db = DatabaseAPI()
-db.set_samples([s["filepath"] for s in db_dict["samples"]])
+if not db.get_samples():
+    db_dict = build_initial_db_dict()
+    validate_db_dict(db_dict)
+    db.set_samples([s["filepath"] for s in db_dict["samples"]])
 config = db.get_config() or {}
 
 # Track the last image served to the client
