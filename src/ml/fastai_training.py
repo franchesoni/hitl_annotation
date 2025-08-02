@@ -74,7 +74,7 @@ def _gather_training_items(db: DatabaseAPI) -> List[Tuple[str, str]]:
 def _build_dls(paths: Sequence[str], labels: Sequence[str]):
     """Create ``DataLoaders`` with fixed transforms so we can reuse each cycle."""
     return ImageDataLoaders.from_lists(
-        Path("."), list(paths), list(labels), valid_pct=0.20, seed=42, bs=16, item_tfms=Resize(256)
+        Path("."), list(paths), list(labels), valid_pct=0.20, seed=42, bs=16, item_tfms=Resize(64)
     )
 
 
@@ -200,7 +200,7 @@ def main() -> None:
     p.add_argument("--budget", "-b", type=int, default=1000, help="Predictions per cycle")
     args = p.parse_args()
 
-    _run_forever(args.db, args.arch, args.sleep)
+    _run_forever(args.db, args.arch, args.sleep, args.budget)
 
 
 if __name__ == "__main__":
