@@ -81,7 +81,9 @@ export class ClassManager {
     // Setters for state
     async setCurrentImageFilename(filename, selectedClass = null) {
         this.currentImageFilename = filename;
-        this.selectedClass = selectedClass;
+        if (selectedClass !== null) {
+            this.selectedClass = selectedClass;
+        }
         await this.loadClassesFromConfig();
         this.render();
     }
