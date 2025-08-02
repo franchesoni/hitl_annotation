@@ -194,27 +194,20 @@ def validate_db_dict(db):
 
 
 # Database connection and query functions
-# the database is composed of three tables, samples, annotations and predictions
-# samples contains the images
-# annotations contains the image classes, bboxes (with class) and points (with class) and the associations to the images
-# predictions contains (for the cls case) the probabilities for each class
-
-# more specifically:
-# samples: id, filepath
-# annotations: id, sample_id, sample_filepath, type (label/bbox/point), class, coordinates (none, point or bbox)
-# predictions: id, sample_id, sample_filepath, type (label/bbox), class, coordinates (probability or bbox)
+#
+# Core tables:
+#   - samples: stored images
+#   - annotations: user-provided labels/points/bboxes
+#   - predictions: model predictions
+#   - stats: training metrics and accuracy log
+# Additional table:
+#   - config: model configuration
 
 """
 Database connection and query functions
-The database is composed of three tables: samples, annotations, and predictions.
-samples contains the images
-annotations contains the image classes, bboxes (with class) and points (with class) and the associations to the images
-predictions contains (for the cls case) the probabilities for each class
-
-More specifically:
-samples: id, filepath
-annotations: id, sample_id, sample_filepath, type (label/bbox/point), class, coordinates (none, point or bbox)
-predictions: id, sample_id, sample_filepath, type (label/bbox), class, coordinates (probability or bbox)
+The database is composed of four main tables: samples, annotations, predictions,
+and stats (for accuracy log and training metrics). A separate config table stores
+model configuration.
 """
 
 import os
@@ -526,25 +519,11 @@ class DatabaseAPI:
         )
         cursor.execute(
             """
-            CREATE TABLE IF NOT EXISTS accuracy_stats (
-                tries INTEGER NOT NULL DEFAULT 0,
-                correct INTEGER NOT NULL DEFAULT 0
-            )
-            """
-        )
-        cursor.execute(
-            """
-            CREATE TABLE IF NOT EXISTS accuracy_log (
+            CREATE TABLE IF NOT EXISTS stats (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
-                correct INTEGER NOT NULL,
-                timestamp INTEGER
-            )
-            """
-        )
-        cursor.execute(
-            """
-            CREATE TABLE IF NOT EXISTS training_stats (
-                epoch INTEGER PRIMARY KEY,
+                stat_type TEXT NOT NULL,
+                correct INTEGER,
+                epoch INTEGER,
                 train_loss REAL,
                 valid_loss REAL,
                 accuracy REAL,
@@ -552,11 +531,6 @@ class DatabaseAPI:
             )
             """
         )
-        cursor.execute("SELECT COUNT(*) FROM accuracy_stats")
-        if cursor.fetchone()[0] == 0:
-            cursor.execute(
-                "INSERT INTO accuracy_stats (tries, correct) VALUES (0, 0)"
-            )
         self.conn.commit()
 
     def close(self):
@@ -720,40 +694,33 @@ class DatabaseAPI:
         return row[0] if row else None
 
     def get_accuracy_counts(self):
-        """Return {'tries': int, 'correct': int} stored in the accuracy table."""
+        """Return {'tries': int, 'correct': int} from the stats table."""
         cursor = self.conn.cursor()
-        cursor.execute("SELECT tries, correct FROM accuracy_stats LIMIT 1")
+        cursor.execute(
+            "SELECT COUNT(*), COALESCE(SUM(correct), 0) FROM stats WHERE stat_type='accuracy'"
+        )
         row = cursor.fetchone()
-        if not row:
-            return {"tries": 0, "correct": 0}
-        return {"tries": row[0], "correct": row[1]}
+        tries = row[0] or 0
+        correct = row[1] or 0
+        return {"tries": tries, "correct": correct}
 
     def increment_accuracy(self, was_correct: bool) -> None:
-        """Increment tries and correct counters depending on prediction result."""
-        cursor = self.conn.cursor()
-        if was_correct:
-            cursor.execute(
-                "UPDATE accuracy_stats SET tries = tries + 1, correct = correct + 1"
-            )
-        else:
-            cursor.execute("UPDATE accuracy_stats SET tries = tries + 1")
-        self.conn.commit()
+        """Alias for log_accuracy to maintain backwards compatibility."""
+        self.log_accuracy(was_correct)
 
     def log_accuracy(self, was_correct: bool) -> None:
-        """Store individual accuracy result in accuracy_log."""
+        """Store individual accuracy result in the unified stats table."""
         cursor = self.conn.cursor()
-        import time
-
         cursor.execute(
-            "INSERT INTO accuracy_log (correct, timestamp) VALUES (?, ?)",
+            "INSERT INTO stats (stat_type, correct, timestamp) VALUES ('accuracy', ?, ?)",
             (1 if was_correct else 0, int(time.time())),
         )
         self.conn.commit()
 
     def get_accuracy_recent_pct(self, pct: float):
-        """Return {'tries': int, 'correct': int} for the last pct percent of samples."""
+        """Return {'tries': int, 'correct': int} for the last pct percent of accuracy rows."""
         cursor = self.conn.cursor()
-        cursor.execute("SELECT COUNT(*) FROM accuracy_log")
+        cursor.execute("SELECT COUNT(*) FROM stats WHERE stat_type='accuracy'")
         total = cursor.fetchone()[0]
         if total == 0:
             return {"tries": 0, "correct": 0}
@@ -765,7 +732,7 @@ class DatabaseAPI:
             import math
             limit = max(1, math.ceil(total * pct / 100.0))
         cursor.execute(
-            "SELECT SUM(correct), COUNT(*) FROM (SELECT correct FROM accuracy_log ORDER BY id DESC LIMIT ?)",
+            "SELECT COALESCE(SUM(correct),0), COUNT(*) FROM (SELECT correct FROM stats WHERE stat_type='accuracy' ORDER BY id DESC LIMIT ?)",
             (limit,),
         )
         row = cursor.fetchone()
@@ -774,10 +741,14 @@ class DatabaseAPI:
         return {"tries": tries, "correct": correct}
 
     def add_training_stat(self, epoch: int, train_loss: float | None, valid_loss: float | None, accuracy: float | None) -> None:
-        """Store training metrics for an epoch."""
+        """Store training metrics for an epoch in the unified stats table."""
         cursor = self.conn.cursor()
         cursor.execute(
-            "INSERT OR REPLACE INTO training_stats (epoch, train_loss, valid_loss, accuracy, timestamp) VALUES (?, ?, ?, ?, ?)",
+            "DELETE FROM stats WHERE stat_type='training' AND epoch=?",
+            (epoch,),
+        )
+        cursor.execute(
+            "INSERT INTO stats (stat_type, epoch, train_loss, valid_loss, accuracy, timestamp) VALUES ('training', ?, ?, ?, ?, ?)",
             (epoch, train_loss, valid_loss, accuracy, int(time.time())),
         )
         self.conn.commit()
@@ -786,7 +757,7 @@ class DatabaseAPI:
         """Return list of training stats ordered by epoch."""
         cursor = self.conn.cursor()
         cursor.execute(
-            "SELECT epoch, train_loss, valid_loss, accuracy, timestamp FROM training_stats ORDER BY epoch"
+            "SELECT epoch, train_loss, valid_loss, accuracy, timestamp FROM stats WHERE stat_type='training' ORDER BY epoch"
         )
         rows = cursor.fetchall()
         return [
