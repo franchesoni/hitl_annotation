@@ -534,6 +534,15 @@ class DatabaseAPI:
         )
         cursor.execute(
             """
+            CREATE TABLE IF NOT EXISTS accuracy_log (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                correct INTEGER NOT NULL,
+                timestamp INTEGER
+            )
+            """
+        )
+        cursor.execute(
+            """
             CREATE TABLE IF NOT EXISTS training_stats (
                 epoch INTEGER PRIMARY KEY,
                 train_loss REAL,
@@ -729,6 +738,40 @@ class DatabaseAPI:
         else:
             cursor.execute("UPDATE accuracy_stats SET tries = tries + 1")
         self.conn.commit()
+
+    def log_accuracy(self, was_correct: bool) -> None:
+        """Store individual accuracy result in accuracy_log."""
+        cursor = self.conn.cursor()
+        import time
+
+        cursor.execute(
+            "INSERT INTO accuracy_log (correct, timestamp) VALUES (?, ?)",
+            (1 if was_correct else 0, int(time.time())),
+        )
+        self.conn.commit()
+
+    def get_accuracy_recent_pct(self, pct: float):
+        """Return {'tries': int, 'correct': int} for the last pct percent of samples."""
+        cursor = self.conn.cursor()
+        cursor.execute("SELECT COUNT(*) FROM accuracy_log")
+        total = cursor.fetchone()[0]
+        if total == 0:
+            return {"tries": 0, "correct": 0}
+        if pct <= 0:
+            limit = 1
+        elif pct >= 100:
+            limit = total
+        else:
+            import math
+            limit = max(1, math.ceil(total * pct / 100.0))
+        cursor.execute(
+            "SELECT SUM(correct), COUNT(*) FROM (SELECT correct FROM accuracy_log ORDER BY id DESC LIMIT ?)",
+            (limit,),
+        )
+        row = cursor.fetchone()
+        correct = row[0] or 0
+        tries = row[1] or 0
+        return {"tries": tries, "correct": correct}
 
     def add_training_stat(self, epoch: int, train_loss: float | None, valid_loss: float | None, accuracy: float | None) -> None:
         """Store training metrics for an epoch."""

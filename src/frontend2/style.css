@@ -220,3 +220,10 @@ body {
         border: 1px solid #ced4da;
         border-radius: 4px;
 }
+
+.accuracy-filter {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        font-size: 14px;
+}
