@@ -11,10 +11,25 @@ document.addEventListener('DOMContentLoaded', async () => {
         const statsDiv = document.getElementById('stats-display');
         const trainingCanvas = document.getElementById('training-curve');
         const strategySelect = document.getElementById('strategy-select');
+        const specificClassSelect = document.getElementById('specific-class-select');
+        const specificClassLabel = document.getElementById('specific-class-label');
         let currentStrategy = strategySelect ? strategySelect.value : null;
+        let currentSpecificClass = specificClassSelect ? specificClassSelect.value : null;
+        function toggleSpecificClassSelect() {
+                const show = currentStrategy === 'specific_class';
+                if (specificClassSelect) specificClassSelect.style.display = show ? 'inline-block' : 'none';
+                if (specificClassLabel) specificClassLabel.style.display = show ? 'inline-block' : 'none';
+        }
+        toggleSpecificClassSelect();
         if (strategySelect) {
                 strategySelect.addEventListener('change', () => {
                         currentStrategy = strategySelect.value;
+                        toggleSpecificClassSelect();
+                });
+        }
+        if (specificClassSelect) {
+                specificClassSelect.addEventListener('change', () => {
+                        currentSpecificClass = specificClassSelect.value;
                 });
         }
         if (!leftPanel) {
@@ -139,11 +154,11 @@ document.addEventListener('DOMContentLoaded', async () => {
 	// Create the viewer instance
 	const viewer = new ImageViewer(leftPanel, 'loading-overlay', 'c');
 
-	// Helper to load next image from API and update viewer/classManager
+        // Helper to load next image from API and update viewer/classManager
         async function loadNextImage() {
                 try {
                         const currentId = classManager.currentImageFilename;
-                        const { imageUrl, filename, labelClass, labelSource } = await api.loadNextImage(currentId, currentStrategy);
+                        const { imageUrl, filename, labelClass, labelSource } = await api.loadNextImage(currentId, currentStrategy, currentSpecificClass);
                         viewer.loadImage(imageUrl, filename);
                         const annClass = labelSource === 'annotation' ? labelClass : null;
                         await classManager.setCurrentImageFilename(filename, annClass);
@@ -163,10 +178,16 @@ document.addEventListener('DOMContentLoaded', async () => {
         classManager.setOnClassChange((filename, cls) => {
                 undoManager.record(filename);
         });
+        classManager.setOnClassesUpdate((classes) => {
+                if (specificClassSelect) {
+                        specificClassSelect.innerHTML = classes.map(c => `<option value="${c}">${c}</option>`).join('');
+                        currentSpecificClass = specificClassSelect.value || null;
+                }
+        });
 
 	// Fetch the first image from API
         try {
-                const { imageUrl, filename, labelClass, labelSource } = await api.loadNextImage(null, currentStrategy);
+                const { imageUrl, filename, labelClass, labelSource } = await api.loadNextImage(null, currentStrategy, currentSpecificClass);
                 viewer.loadImage(imageUrl, filename);
                 const annClass = labelSource === 'annotation' ? labelClass : null;
                 await classManager.setCurrentImageFilename(filename, annClass);
