@@ -125,6 +125,7 @@ async def handle_annotation(request: Request):
         if pred_ann:
             was_correct = str(pred_ann.get("class")) == str(class_name)
             db.increment_accuracy(was_correct)
+            db.log_accuracy(was_correct)
         return JSONResponse({"status": "ok"})
     elif request.method == "DELETE":
         data = await request.json()
@@ -175,7 +176,12 @@ async def get_stats(request: Request):
     annotated = db.count_labeled_samples()
     total = db.count_total_samples()
     ann_counts = db.get_annotation_counts()
-    stats = db.get_accuracy_counts()
+    pct_param = request.query_params.get("pct")
+    try:
+        pct = float(pct_param) if pct_param is not None else 100.0
+    except ValueError:
+        pct = 100.0
+    stats = db.get_accuracy_counts() if pct >= 100 else db.get_accuracy_recent_pct(pct)
     tries = stats["tries"]
     correct = stats["correct"]
     accuracy = (correct / tries) if tries > 0 else None
