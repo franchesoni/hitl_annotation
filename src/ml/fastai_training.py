@@ -74,7 +74,7 @@ def _gather_training_items(db: DatabaseAPI) -> List[Tuple[str, str]]:
 def _build_dls(paths: Sequence[str], labels: Sequence[str]):
     """Create ``DataLoaders`` with fixed transforms so we can reuse each cycle."""
     return ImageDataLoaders.from_lists(
-        Path("."), list(paths), list(labels), valid_pct=0.20, seed=42, bs=16, item_tfms=Resize(64)
+        Path("."), list(paths), list(labels), valid_pct=0.20, seed=42, bs=16, item_tfms=Resize(256)
     )
 
 
@@ -104,7 +104,7 @@ def _predict_subset(db: DatabaseAPI, learner, unlabeled: List[str], budget: int)
 # main loop
 # ---------------------------------------------------------------------------
 
-def _run_forever(db_path: str | None, arch: str, sleep_s: int) -> None:
+def _run_forever(db_path: str | None, arch: str, sleep_s: int, budget: int) -> None:
     db = DatabaseAPI(db_path)
 
     def _exit_handler(*_):
@@ -115,7 +115,7 @@ def _run_forever(db_path: str | None, arch: str, sleep_s: int) -> None:
     signal.signal(signal.SIGINT, _exit_handler)
     signal.signal(signal.SIGTERM, _exit_handler)
 
-    model_arch = resnet18 if arch == "small" else resnet34
+    model_arch = resnet18 if arch == "resnet18" else (resnet34 if arch == "resnet34" else arch)
     learner = None  # will lazily instantiate when we first have data
     prev_classes = None  # type: set[str] | None
     model_path = Path(db.db_path).with_name("checkpoint.pth")
@@ -173,7 +173,6 @@ def _run_forever(db_path: str | None, arch: str, sleep_s: int) -> None:
             except Exception as e:
                 print(f"[WARN] Failed to save model checkpoint: {e}")
 
-            budget = max(10, int(2 * epoch_time))
             labeled_set = set(paths)
             unlabeled = [fp for fp in db.get_samples() if fp not in labeled_set]
             predicted_n = _predict_subset(db, learner, unlabeled, budget)
@@ -196,8 +195,9 @@ def _run_forever(db_path: str | None, arch: str, sleep_s: int) -> None:
 def main() -> None:
     p = argparse.ArgumentParser()
     p.add_argument("--db", "-d", help="Path to annotation SQLite db", default=None)
-    p.add_argument("--arch", "-a", choices=["default", "small"], default="default", help="CNN size")
+    p.add_argument("--arch", "-a", default="resnet18", help="network arch")
     p.add_argument("--sleep", "-s", type=int, default=0, help="Seconds between cycles")
+    p.add_argument("--budget", "-b", type=int, default=1000, help="Predictions per cycle")
     args = p.parse_args()
 
     _run_forever(args.db, args.arch, args.sleep)

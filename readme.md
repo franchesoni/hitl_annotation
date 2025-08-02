@@ -12,7 +12,7 @@ uvicorn src.backend.main:app --port 8001 --reload
 ```
 AI training:
 ```
-python -m src.ml.fastai_training --arch small
+python -m src.ml.fastai_training --arch vit_medium_patch16_reg4_gap_256.sbb_in12k_ft_in1k
 ```
 
 ## Backend
@@ -55,8 +55,6 @@ python -m src.ml.fastai_training --arch small
 # TO-DO
 
 ## next
-- provide the training curve
-- provide the number of annotations per class
 - save and expose error rate curve
 - implement show -> save -> prefetch pattern
 - image loader (.zip)
