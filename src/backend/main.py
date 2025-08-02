@@ -3,7 +3,10 @@ from starlette.responses import FileResponse, JSONResponse
 from starlette.requests import Request
 from starlette.routing import Route
 from starlette.staticfiles import StaticFiles
+from starlette.background import BackgroundTask
 import mimetypes
+import os
+import tempfile
 from pathlib import Path
 from collections import defaultdict, deque
 
@@ -213,6 +216,22 @@ async def get_training_stats(request: Request):
     stats = db.get_training_stats()
     return JSONResponse(stats)
 
+
+async def export_db(request: Request):
+    tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".json")
+    tmp.close()
+    try:
+        db.export_db_as_json(tmp.name)
+    except Exception:
+        os.unlink(tmp.name)
+        raise
+    return FileResponse(
+        tmp.name,
+        media_type="application/json",
+        filename="db_export.json",
+        background=BackgroundTask(lambda: os.remove(tmp.name)),
+    )
+
 app = Starlette(
     routes=[
         Route("/config", put_config, methods=["PUT"]),
@@ -223,6 +242,7 @@ app = Starlette(
         Route("/annotate", handle_annotation, methods=["DELETE"]),
         Route("/stats", get_stats, methods=["GET"]),
         Route("/training_stats", get_training_stats, methods=["GET"]),
+        Route("/export_db", export_db, methods=["GET"]),
     ]
 )
 app.mount("/", StaticFiles(directory=FRONTEND_DIR, html=True), name="frontend")
