@@ -191,7 +191,13 @@ document.addEventListener('DOMContentLoaded', async () => {
         });
         classManager.setOnClassesUpdate((classes) => {
                 if (specificClassSelect) {
+                        const previous = specificClassSelect.value;
                         specificClassSelect.innerHTML = classes.map(c => `<option value="${c}">${c}</option>`).join('');
+                        if (classes.includes(previous)) {
+                                specificClassSelect.value = previous;
+                        } else if (classes.length > 0) {
+                                specificClassSelect.selectedIndex = 0;
+                        }
                         currentSpecificClass = specificClassSelect.value || null;
                 }
         });
