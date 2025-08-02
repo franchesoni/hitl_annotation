@@ -177,9 +177,9 @@ async def put_config(request: Request):
 
 async def get_config(request: Request):
     cfg = db.get_config()
-    if not cfg:
-        return JSONResponse({"error": "No config set"}, status_code=404)
-
+    # Treat an empty configuration as a valid result instead of returning 404.
+    # The database returns an empty dict when no config has been saved yet, so
+    # simply return that to the client.
     print("Config updated", cfg)
     return JSONResponse(cfg)
 
