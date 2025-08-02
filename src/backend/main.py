@@ -136,7 +136,6 @@ async def handle_annotation(request: Request):
         pred_ann = next((p for p in preds if p.get('type') == 'label' and p.get('probability') is not None), None)
         if pred_ann:
             was_correct = str(pred_ann.get("class")) == str(class_name)
-            db.increment_accuracy(was_correct)
             db.log_accuracy(was_correct)
         return JSONResponse({"status": "ok"})
     elif request.method == "DELETE":
