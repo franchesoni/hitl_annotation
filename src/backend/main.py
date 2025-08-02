@@ -5,7 +5,7 @@ from starlette.routing import Route
 from starlette.staticfiles import StaticFiles
 import mimetypes
 from pathlib import Path
-from collections import defaultdict
+from collections import defaultdict, deque
 
 # --- Database integration ---
 from src.database.data import DatabaseAPI, validate_db_dict
@@ -25,6 +25,10 @@ config = db.get_config() or {}
 
 # Track the last image served to the client
 last_image_served = None
+
+# Buffer storing recent annotations (filepath, class)
+ANNOTATION_BUFFER_SIZE = 20
+annotation_buffer = deque(maxlen=ANNOTATION_BUFFER_SIZE)
 
 
 def create_image_response(image_path):
@@ -87,10 +91,22 @@ async def get_next_sample(request):
         if filepath:
             return create_image_response(filepath)
         return sequential_next()
+    if strategy == "last_class":
+        if annotation_buffer:
+            target_class = annotation_buffer[-1][1]
+            filepath = db.get_next_unlabeled_for_class(target_class, current_id)
+            if filepath:
+                return create_image_response(filepath)
+        # Fallbacks if no sample found for last class
+        filepath = db.get_next_unlabeled_default(current_id)
+        if filepath:
+            return create_image_response(filepath)
+        return sequential_next()
     return JSONResponse({"error": "Invalid strategy"}, status_code=400)
 
 
 async def handle_annotation(request: Request):
+    global annotation_buffer
     if request.method == "POST":
         data = await request.json()
         filepath = data.get("filepath")
@@ -99,6 +115,9 @@ async def handle_annotation(request: Request):
             return JSONResponse({"error": "Missing or invalid 'filepath' or 'class'"}, status_code=400)
         # Write annotation to DB
         db.save_label_annotation(filepath, class_name)
+
+        # Store in recent annotation buffer
+        annotation_buffer.append((filepath, class_name))
 
         # Accuracy tracking: check prediction
         preds = db.get_predictions(filepath)
@@ -113,6 +132,11 @@ async def handle_annotation(request: Request):
         if not filepath:
             return JSONResponse({"error": "Missing 'filepath'"}, status_code=400)
         db.delete_label_annotation(filepath)
+        # Remove any occurrences from the annotation buffer
+        annotation_buffer = deque(
+            [p for p in annotation_buffer if p[0] != filepath],
+            maxlen=ANNOTATION_BUFFER_SIZE,
+        )
         return JSONResponse({"status": "deleted"})
     else:
         return JSONResponse({"error": "Method not allowed"}, status_code=405)
