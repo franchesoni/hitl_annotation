@@ -689,6 +689,27 @@ class DatabaseAPI:
         fallback = min(candidate_by_class.keys(), key=lambda c: ann_counts[c])
         return min(candidate_by_class[fallback], key=lambda x: x[0])[1]
 
+    def get_next_unlabeled_for_class(self, class_name, current_filepath=None):
+        """Return unlabeled sample with highest probability for the given class."""
+        cursor = self.conn.cursor()
+        params = [class_name]
+        sql = """
+            SELECT p.sample_filepath
+            FROM predictions AS p
+            JOIN samples AS s ON p.sample_id = s.id
+            LEFT JOIN annotations AS a
+                ON a.sample_id = s.id AND a.type='label'
+            WHERE p.type='label' AND p.class = ? AND p.probability IS NOT NULL
+              AND a.id IS NULL
+        """
+        if current_filepath:
+            sql += " AND s.filepath <> ?"
+            params.append(current_filepath)
+        sql += " ORDER BY p.probability DESC LIMIT 1"
+        cursor.execute(sql, params)
+        row = cursor.fetchone()
+        return row[0] if row else None
+
     def get_accuracy_counts(self):
         """Return {'tries': int, 'correct': int} stored in the accuracy table."""
         cursor = self.conn.cursor()
