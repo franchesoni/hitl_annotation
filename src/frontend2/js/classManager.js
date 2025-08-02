@@ -21,6 +21,7 @@ export class ClassManager {
     this.selectedClass = null;
     this.currentImageFilename = null;
     this.onClassChange = null; // callback(filename, className)
+    this.onClassesUpdate = null; // callback(classes[])
     this.loadNextImage = loadNextImage;
     this.api = api;
 
@@ -94,6 +95,10 @@ export class ClassManager {
     }
     setOnClassChange(callback) {
         this.onClassChange = callback;
+    }
+
+    setOnClassesUpdate(callback) {
+        this.onClassesUpdate = callback;
     }
 
     // Add a new class if not already present
@@ -212,5 +217,8 @@ export class ClassManager {
             });
         }
         this.container.appendChild(classListDiv);
+        if (this.onClassesUpdate) {
+            this.onClassesUpdate([...this.globalClasses]);
+        }
     }
 }
