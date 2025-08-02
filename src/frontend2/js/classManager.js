@@ -203,12 +203,7 @@ export class ClassManager {
                 const removeBtn = document.createElement('button');
                 removeBtn.textContent = '✕';
                 removeBtn.title = 'Remove class';
-                removeBtn.style.marginLeft = '8px';
-                removeBtn.style.background = '#dc3545';
-                removeBtn.style.color = 'white';
-                removeBtn.style.border = 'none';
-                removeBtn.style.borderRadius = '4px';
-                removeBtn.style.cursor = 'pointer';
+                removeBtn.className = 'remove-btn';
                 removeBtn.onclick = () => {
                     this.removeClass(c);
                 };
