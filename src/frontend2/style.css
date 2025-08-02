@@ -1,8 +1,10 @@
 body {
-	margin: 0;
-	display: flex;
-	height: 100vh;
-	font-family: Arial, sans-serif;
+        margin: 0;
+        display: flex;
+        height: 100vh;
+        font-family: Arial, sans-serif;
+        background: #121212;
+        color: #f8f9fa;
 }
 
 .main-container {
@@ -12,37 +14,37 @@ body {
 }
 
 .left-panel {
-	flex: 1;
-	display: flex;
-	justify-content: center;
-	align-items: center;
-	background: #f8f9fa;
-	border-right: 2px solid #dee2e6;
+        flex: 1;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        background: #1e1e1e;
+        border-right: 2px solid #333;
 }
 
 .right-panel {
-	width: 350px;
-	padding: 20px;
-	background: #ffffff;
-	overflow-y: auto;
-	display: flex;
-	flex-direction: column;
-	gap: 20px;
+        width: 350px;
+        padding: 20px;
+        background: #242424;
+        overflow-y: auto;
+        display: flex;
+        flex-direction: column;
+        gap: 20px;
 }
 
 .control-section {
-	background: #f8f9fa;
-	border: 1px solid #dee2e6;
-	border-radius: 8px;
-	padding: 15px;
+        background: #1f1f1f;
+        border: 1px solid #333;
+        border-radius: 8px;
+        padding: 15px;
 }
 
 .control-section h3 {
-	margin: 0 0 10px 0;
-	font-size: 16px;
-	color: #495057;
-	border-bottom: 1px solid #dee2e6;
-	padding-bottom: 5px;
+        margin: 0 0 10px 0;
+        font-size: 16px;
+        color: #e0e0e0;
+        border-bottom: 1px solid #333;
+        padding-bottom: 5px;
 }
 
 .nav-buttons {
@@ -52,17 +54,19 @@ body {
 }
 
 .nav-buttons button {
-	flex: 1;
-	padding: 8px 16px;
-	border: 1px solid #007acc;
-	background: #007acc;
-	color: white;
-	border-radius: 4px;
-	cursor: pointer;
+        flex: 1;
+        padding: 8px 16px;
+        border: none;
+        background: linear-gradient(45deg, #1e88e5, #42a5f5);
+        color: white;
+        border-radius: 4px;
+        cursor: pointer;
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.4);
+        transition: background 0.3s;
 }
 
 .nav-buttons button:hover {
-	background: #005a9e;
+        background: linear-gradient(45deg, #1565c0, #1e88e5);
 }
 
 .nav-buttons button:disabled {
@@ -85,16 +89,18 @@ body {
 }
 
 .class-input-group button {
-	padding: 8px 12px;
-	border: 1px solid #28a745;
-	background: #28a745;
-	color: white;
-	border-radius: 4px;
-	cursor: pointer;
+        padding: 8px 12px;
+        border: none;
+        background: linear-gradient(45deg, #2e7d32, #66bb6a);
+        color: white;
+        border-radius: 4px;
+        cursor: pointer;
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.4);
+        transition: background 0.3s;
 }
 
 .class-input-group button:hover {
-	background: #218838;
+        background: linear-gradient(45deg, #1b5e20, #2e7d32);
 }
 
 .class-buttons {
@@ -104,20 +110,35 @@ body {
 }
 
 .class-btn {
-	padding: 10px 12px;
-	border-radius: 4px;
-	border: 1px solid #ccc;
-	background: #eee;
-	cursor: pointer;
-	font-size: 14px;
-	text-align: left;
-	width: 100%;
+        padding: 10px 12px;
+        border-radius: 4px;
+        border: none;
+        background: linear-gradient(45deg, #424242, #616161);
+        color: #f8f9fa;
+        cursor: pointer;
+        font-size: 14px;
+        text-align: left;
+        width: 100%;
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.4);
+        transition: background 0.3s;
+}
+
+.class-btn:hover {
+        background: linear-gradient(45deg, #616161, #757575);
 }
 
 .class-btn.selected {
-        background: #b3e5fc;
-        border-color: #0288d1;
-        border-width: 2px;
+        background: linear-gradient(45deg, #1565c0, #1e88e5);
+        border: 2px solid #0288d1;
+}
+
+.remove-btn {
+        margin-left: 8px;
+        background: #dc3545;
+        color: white;
+        border: none;
+        border-radius: 4px;
+        cursor: pointer;
 }
 
 .undo-btn {
@@ -140,7 +161,7 @@ body {
 }
 
 .info-display b {
-        color: #495057;
+        color: #e0e0e0;
 }
 
 #training-curve {
@@ -165,14 +186,14 @@ body {
 }
 
 #dev-checklist {
-	background: #f8f9fa;
-	border: 1px solid #dee2e6;
-	border-radius: 8px;
-	padding: 15px;
-	font-family: monospace;
-	font-size: 12px;
-	transition: max-height 0.3s ease;
-	overflow: hidden;
+        background: #1f1f1f;
+        border: 1px solid #333;
+        border-radius: 8px;
+        padding: 15px;
+        font-family: monospace;
+        font-size: 12px;
+        transition: max-height 0.3s ease;
+        overflow: hidden;
 }
 #dev-checklist.collapsed {
 	max-height: 40px;
@@ -181,15 +202,21 @@ body {
 	max-height: 600px;
 }
 #dev-toggle {
-	background: #007acc;
-	color: white;
-	border: none;
-	border-radius: 4px;
-	padding: 8px 12px;
-	cursor: pointer;
-	font-size: 12px;
-	width: 100%;
-	margin-bottom: 10px;
+        background: linear-gradient(45deg, #1e88e5, #42a5f5);
+        color: white;
+        border: none;
+        border-radius: 4px;
+        padding: 8px 12px;
+        cursor: pointer;
+        font-size: 12px;
+        width: 100%;
+        margin-bottom: 10px;
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.4);
+        transition: background 0.3s;
+}
+
+#dev-toggle:hover {
+        background: linear-gradient(45deg, #1565c0, #1e88e5);
 }
 .checklist-item {
 	margin: 3px 0;
