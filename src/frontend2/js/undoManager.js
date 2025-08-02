@@ -1,8 +1,9 @@
 export class UndoManager {
-    constructor(api, viewer, classManager) {
+    constructor(api, viewer, classManager, updatePrediction) {
         this.api = api;
         this.viewer = viewer;
         this.classManager = classManager;
+        this.updatePrediction = updatePrediction;
         this.history = [];
 
         // Keyboard shortcuts for undo: Backspace or 'u'
@@ -33,10 +34,13 @@ export class UndoManager {
             console.error('Failed to delete annotation:', e);
         }
         try {
-            const { imageUrl, filename, labelClass, labelSource } = await this.api.loadSample(id);
+            const { imageUrl, filename, labelClass, labelSource, labelProbability } = await this.api.loadSample(id);
             this.viewer.loadImage(imageUrl, filename);
             const cls = labelSource === 'annotation' ? labelClass : null;
             await this.classManager.setCurrentImageFilename(filename, cls);
+            if (this.updatePrediction) {
+                this.updatePrediction(labelClass, labelProbability, labelSource);
+            }
         } catch (e) {
             console.error('Failed to load sample:', e);
         }

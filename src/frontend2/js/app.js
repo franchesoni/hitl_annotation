@@ -10,6 +10,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         const undoBtn = document.getElementById('undo-btn');
         const exportDBBtn = document.getElementById('export-db-btn');
         const statsDiv = document.getElementById('stats-display');
+        const predictionDiv = document.getElementById('prediction-display');
         const trainingCanvas = document.getElementById('training-curve');
         const strategySelect = document.getElementById('strategy-select');
         const accuracySlider = document.getElementById('accuracy-slider');
@@ -57,6 +58,24 @@ document.addEventListener('DOMContentLoaded', async () => {
         const api = new API();
         if (exportDBBtn) {
                 exportDBBtn.addEventListener('click', () => api.exportDB());
+        }
+
+        function updatePrediction(labelClass, labelProbability, labelSource) {
+                if (!predictionDiv) return;
+                if (labelSource === 'prediction' && labelClass) {
+                        const prob = labelProbability ? Number(labelProbability) : null;
+                        const pct = prob !== null && !isNaN(prob) ? (prob * 100).toFixed(1) : null;
+                        const text = pct !== null ? `${labelClass} (${pct}%)` : labelClass;
+                        predictionDiv.innerHTML = `<b>Prediction:</b> <span class="prediction-badge">${text}</span>`;
+                        if (classManager && typeof classManager.setPrediction === 'function') {
+                                classManager.setPrediction(labelClass);
+                        }
+                } else {
+                        predictionDiv.innerHTML = '';
+                        if (classManager && typeof classManager.setPrediction === 'function') {
+                                classManager.setPrediction(null);
+                        }
+                }
         }
 
         async function updateStats() {
@@ -173,10 +192,11 @@ document.addEventListener('DOMContentLoaded', async () => {
         async function loadNextImage() {
                 try {
                         const currentId = classManager.currentImageFilename;
-                        const { imageUrl, filename, labelClass, labelSource } = await api.loadNextImage(currentId, currentStrategy, currentSpecificClass);
+                        const { imageUrl, filename, labelClass, labelSource, labelProbability } = await api.loadNextImage(currentId, currentStrategy, currentSpecificClass);
                         viewer.loadImage(imageUrl, filename);
                         const annClass = labelSource === 'annotation' ? labelClass : null;
                         await classManager.setCurrentImageFilename(filename, annClass);
+                        updatePrediction(labelClass, labelProbability, labelSource);
                         await updateStats();
                         await updateTrainingCurve();
                 } catch (e) {
@@ -186,7 +206,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
 	// Create the class manager instance, passing loadNextImage and api
         const classManager = new ClassManager(classPanel, loadNextImage, api);
-        const undoManager = new UndoManager(api, viewer, classManager);
+        const undoManager = new UndoManager(api, viewer, classManager, updatePrediction);
         if (undoBtn) {
                 undoBtn.addEventListener('click', () => undoManager.undo());
         }
@@ -208,10 +228,11 @@ document.addEventListener('DOMContentLoaded', async () => {
 
 	// Fetch the first image from API
         try {
-                const { imageUrl, filename, labelClass, labelSource } = await api.loadNextImage(null, currentStrategy, currentSpecificClass);
+                const { imageUrl, filename, labelClass, labelSource, labelProbability } = await api.loadNextImage(null, currentStrategy, currentSpecificClass);
                 viewer.loadImage(imageUrl, filename);
                 const annClass = labelSource === 'annotation' ? labelClass : null;
                 await classManager.setCurrentImageFilename(filename, annClass);
+                updatePrediction(labelClass, labelProbability, labelSource);
                 await updateStats();
                 await updateTrainingCurve();
         } catch (e) {

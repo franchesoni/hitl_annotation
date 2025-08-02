@@ -21,9 +21,10 @@ export class API {
         const filename = res.headers.get('X-Image-Id') || res.headers.get('X-Filename');
         const labelClass = res.headers.get('X-Label-Class');
         const labelSource = res.headers.get('X-Label-Source');
+        const labelProbability = res.headers.get('X-Label-Probability');
         const blob = await res.blob();
         const imageUrl = URL.createObjectURL(blob);
-        return { imageUrl, filename, labelClass, labelSource };
+        return { imageUrl, filename, labelClass, labelSource, labelProbability };
     }
 
     // Annotate a sample (returns JSON status)
@@ -55,9 +56,10 @@ export class API {
         const filename = res.headers.get('X-Image-Id') || res.headers.get('X-Filename');
         const labelClass = res.headers.get('X-Label-Class');
         const labelSource = res.headers.get('X-Label-Source');
+        const labelProbability = res.headers.get('X-Label-Probability');
         const blob = await res.blob();
         const imageUrl = URL.createObjectURL(blob);
-        return { imageUrl, filename, labelClass, labelSource };
+        return { imageUrl, filename, labelClass, labelSource, labelProbability };
     }
 
     // Get config

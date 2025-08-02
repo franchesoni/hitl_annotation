@@ -19,6 +19,7 @@ export class ClassManager {
     // State
     this.globalClasses = [];
     this.selectedClass = null;
+    this.predictionClass = null;
     this.currentImageFilename = null;
     this.onClassChange = null; // callback(filename, className)
     this.onClassesUpdate = null; // callback(classes[])
@@ -103,6 +104,11 @@ export class ClassManager {
         this.onClassesUpdate = callback;
     }
 
+    setPrediction(className) {
+        this.predictionClass = className;
+        this.render();
+    }
+
     // Add a new class if not already present
     async addClass(className) {
         if (!className || this.globalClasses.includes(className)) return;
@@ -175,7 +181,9 @@ export class ClassManager {
                 classRow.style.alignItems = 'center';
 
                 const btn = document.createElement('button');
-                btn.className = 'class-btn' + (c === selected ? ' selected' : '');
+                const isSelected = c === selected;
+                const isPrediction = !isSelected && c === this.predictionClass;
+                btn.className = 'class-btn' + (isSelected ? ' selected' : isPrediction ? ' prediction' : '');
                 btn.dataset.class = c;
                 btn.textContent = index < 10 ? `${c} (${index === 9 ? '0' : index + 1})` : c;
                 btn.onclick = () => {
