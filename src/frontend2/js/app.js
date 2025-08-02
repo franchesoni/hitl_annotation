@@ -8,6 +8,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         const leftPanel = document.querySelector('.left-panel');
         const classPanel = document.querySelector('#class-manager');
         const undoBtn = document.getElementById('undo-btn');
+        const exportDBBtn = document.getElementById('export-db-btn');
         const statsDiv = document.getElementById('stats-display');
         const trainingCanvas = document.getElementById('training-curve');
         const strategySelect = document.getElementById('strategy-select');
@@ -54,6 +55,9 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         // Create the API instance
         const api = new API();
+        if (exportDBBtn) {
+                exportDBBtn.addEventListener('click', () => api.exportDB());
+        }
 
         async function updateStats() {
                 if (!statsDiv) return;
