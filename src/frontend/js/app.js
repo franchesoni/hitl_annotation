@@ -16,7 +16,6 @@ async function saveCurrentImageClassAnnotation() {
     }
     // Track annotation history for undo on both save and delete
     annotationHistory.push(currentImageId);
-    updateAccuracyDisplay();
 }
 
 // =====================
@@ -90,21 +89,20 @@ function updatePredictionDisplay(predictionInfo) {
 }
 
 // Add accuracy display below prediction
-function updateAccuracyDisplay() {
+async function updateAccuracyDisplay() {
     const accDiv = document.getElementById('accuracy-container');
     if (!accDiv) return;
-    fetch('/api/accuracy_stats')
-        .then(r => r.json())
-        .then(stats => {
-            if (typeof stats.accuracy === 'number') {
-                accDiv.innerHTML = `<span class="accuracy-badge">${(stats.accuracy * 100).toFixed(1)}%</span> <span style="color:#6c757d;">(${stats.correct}/${stats.tries} correct)</span>`;
-            } else {
-                accDiv.innerHTML = `<span style="color: #6c757d; font-style: italic;">Not enough data</span>`;
-            }
-        })
-        .catch(() => {
-            accDiv.innerHTML = `<span style="color: #dc3545; font-style: italic;">Error loading stats</span>`;
-        });
+    try {
+        const r = await fetch('/api/accuracy_stats');
+        const stats = await r.json();
+        if (typeof stats.accuracy === 'number') {
+            accDiv.innerHTML = `<span class="accuracy-badge">${(stats.accuracy * 100).toFixed(1)}%</span> <span style="color:#6c757d;">(${stats.correct}/${stats.tries} correct)</span>`;
+        } else {
+            accDiv.innerHTML = `<span style="color: #6c757d; font-style: italic;">Not enough data</span>`;
+        }
+    } catch {
+        accDiv.innerHTML = `<span style="color: #dc3545; font-style: italic;">Error loading stats</span>`;
+    }
 }
 
 function updateClassListDisplay() {
@@ -137,6 +135,7 @@ function updateClassListDisplay() {
             await saveCurrentImageClassAnnotation();
             if (window.autoAdvanceEnabled) {
                 await loadNextImage(currentImageId);
+                await updateAccuracyDisplay();
             }
         });
     });
@@ -206,7 +205,6 @@ img.onload = function () {
         
         updateIdDisplay();
         updatePredictionDisplay(predictionInfo);
-        updateAccuracyDisplay();
     }
 };
 
@@ -252,14 +250,16 @@ async function goToNext() {
     if (isLoading) return;
     await saveCurrentImageClassAnnotation();
     await loadNextImage(currentImageId);
+    await updateAccuracyDisplay();
     updateNavButtons();
 }
 
 // =====================
 // Initialization
 // =====================
-document.addEventListener('DOMContentLoaded', () => {
-    loadNextImage(); // Load first unlabeled image
+document.addEventListener('DOMContentLoaded', async () => {
+    await loadNextImage(); // Load first unlabeled image
+    await updateAccuracyDisplay();
     if (prevBtn) prevBtn.addEventListener('click', goToPrev);
     if (nextBtn) nextBtn.addEventListener('click', goToNext);
     updateNavButtons(); // Set initial button states
@@ -311,6 +311,7 @@ document.addEventListener('DOMContentLoaded', () => {
             await saveCurrentImageClassAnnotation();
             if (window.autoAdvanceEnabled) {
                 await loadNextImage(currentImageId);
+                await updateAccuracyDisplay();
             }
             return;
         }
