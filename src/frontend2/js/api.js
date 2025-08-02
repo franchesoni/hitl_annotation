@@ -2,7 +2,7 @@
 
 export class API {
     // Load the next image sample (image response, not JSON)
-    async loadNextImage(currentId = null, strategy = null) {
+    async loadNextImage(currentId = null, strategy = null, className = null) {
         let url = '/next';
         const params = new URLSearchParams();
         if (currentId) {
@@ -10,6 +10,9 @@ export class API {
         }
         if (strategy) {
             params.append('strategy', strategy);
+        }
+        if (className) {
+            params.append('class', className);
         }
         const qs = params.toString();
         if (qs) url += `?${qs}`;
