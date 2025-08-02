@@ -27,6 +27,7 @@ python -m src.ml.fastai_training --arch vit_medium_patch16_reg4_gap_256.sbb_in12
   - `DELETE /annotate` removes the label annotation for a filepath.
   - `GET /stats` reports image counts, annotations per class and model
     performance metrics such as accuracy and error rates.
+  - `GET /export_db` downloads the current database as JSON.
 - **DatabaseAPI** (`src/database/data.py`)
   - SQLite tables: `samples(filepath)`, `annotations(id, sample_id, sample_filepath, type, class, x, y, width, height, timestamp)`, `predictions(id, sample_id, sample_filepath, type, class, probability, x, y, width, height)`, `config(architecture, classes)`, `accuracy_stats(tries, correct)`.
   - Methods to set/get samples, annotations, predictions and export DB to JSON.
@@ -50,7 +51,7 @@ python -m src.ml.fastai_training --arch vit_medium_patch16_reg4_gap_256.sbb_in12
 2. Open the frontend in a browser.
 3. Annotate using the UI (`/next` fetches an image; `/annotate` saves it).
 4. Run `python -m src.ml.fastai_training` to train and update predictions.
-5. Export the DB with `DatabaseAPI.export_db_as_json(path)` when done.
+5. Export the DB via the "Export DB" button or `GET /export_db` when done.
 
 # TO-DO
 

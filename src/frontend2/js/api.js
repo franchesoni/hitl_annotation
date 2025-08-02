@@ -95,4 +95,18 @@ export class API {
         if (!res.ok) throw new Error('Failed to get training stats');
         return await res.json();
     }
+
+    async exportDB() {
+        const res = await fetch('/export_db');
+        if (!res.ok) throw new Error('Failed to export DB');
+        const blob = await res.blob();
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'db_export.json';
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        URL.revokeObjectURL(url);
+    }
 }
