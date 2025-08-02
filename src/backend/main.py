@@ -102,6 +102,16 @@ async def get_next_sample(request):
         if filepath:
             return create_image_response(filepath)
         return sequential_next()
+    if strategy == "specific_class":
+        target_class = request.query_params.get("class")
+        if target_class:
+            filepath = db.get_next_unlabeled_for_class(target_class, current_id)
+            if filepath:
+                return create_image_response(filepath)
+        filepath = db.get_next_unlabeled_default(current_id)
+        if filepath:
+            return create_image_response(filepath)
+        return sequential_next()
     return JSONResponse({"error": "Invalid strategy"}, status_code=400)
 
 
