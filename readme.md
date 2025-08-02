@@ -55,15 +55,9 @@ python -m src.ml.fastai_training --arch vit_medium_patch16_reg4_gap_256.sbb_in12
 # TO-DO
 
 ## next
-- save and expose error rate curve
-- implement show -> save -> prefetch pattern
+- unify tables in db (there are too many for slides)
 - image loader (.zip)
-- add quick annotation
-- implement `DatabaseAPI.get_next_unlabeled` and update `/next`
-- least confident of least frequent class
-- most confident of lastly annotated class
-- prefetching
-- class persistence
+- implement show -> save -> prefetch pattern
 - user editable preprocessing
 - export button
 
