@@ -11,6 +11,17 @@ document.addEventListener('DOMContentLoaded', async () => {
         const statsDiv = document.getElementById('stats-display');
         const trainingCanvas = document.getElementById('training-curve');
         const strategySelect = document.getElementById('strategy-select');
+        const accuracySlider = document.getElementById('accuracy-slider');
+        const accuracyValue = document.getElementById('accuracy-slider-value');
+        let accuracyPct = accuracySlider ? Number(accuracySlider.value) : 100;
+        if (accuracyValue) accuracyValue.textContent = `${accuracyPct}%`;
+        if (accuracySlider) {
+                accuracySlider.addEventListener('input', () => {
+                        accuracyPct = Number(accuracySlider.value);
+                        if (accuracyValue) accuracyValue.textContent = `${accuracyPct}%`;
+                        updateStats();
+                });
+        }
         const specificClassSelect = document.getElementById('specific-class-select');
         const specificClassLabel = document.getElementById('specific-class-label');
         let currentStrategy = strategySelect ? strategySelect.value : null;
@@ -47,7 +58,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         async function updateStats() {
                 if (!statsDiv) return;
                 try {
-                        const stats = await api.getStats();
+                        const stats = await api.getStats(accuracyPct);
                         if (stats) {
                                 let html = '';
                                 if (stats.image) {
@@ -67,9 +78,9 @@ document.addEventListener('DOMContentLoaded', async () => {
 
                                 if (typeof stats.accuracy === 'number') {
                                         const pct = (stats.accuracy * 100).toFixed(1);
-                                        html += `<div><b>Accuracy:</b> <span class="accuracy-badge">${pct}%</span></div>`;
+                                        html += `<div><b>Test Accuracy:</b> <span class="accuracy-badge">${pct}%</span></div>`;
                                 } else {
-                                        html += `<div><b>Accuracy:</b> <span class="accuracy-badge">0%</span></div>`;
+                                        html += `<div><b>Test Accuracy:</b> <span class="accuracy-badge">0%</span></div>`;
                                 }
 
                                 statsDiv.innerHTML = html;
@@ -114,7 +125,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 ctx.save();
                 ctx.translate(10, h / 2);
                 ctx.rotate(-Math.PI / 2);
-                ctx.fillText('Accuracy', 0, 0);
+                ctx.fillText('Test Accuracy', 0, 0);
                 ctx.restore();
 
                 // tick marks

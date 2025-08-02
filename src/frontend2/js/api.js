@@ -78,9 +78,14 @@ export class API {
         return await res.json();
     }
 
-    // Get accuracy stats
-    async getStats() {
-        const res = await fetch('/stats');
+    // Get accuracy stats with optional window percentage
+    async getStats(pct = 100) {
+        let url = '/stats';
+        if (typeof pct === 'number') {
+            const params = new URLSearchParams({ pct: pct.toString() });
+            url += `?${params.toString()}`;
+        }
+        const res = await fetch(url);
         if (!res.ok) throw new Error('Failed to get stats');
         return await res.json();
     }
