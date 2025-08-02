@@ -60,6 +60,14 @@ document.addEventListener('DOMContentLoaded', async () => {
                 exportDBBtn.addEventListener('click', () => api.exportDB());
         }
 
+        document.addEventListener('keydown', (e) => {
+                if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+                if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'e') {
+                        e.preventDefault();
+                        api.exportDB();
+                }
+        });
+
         function updatePrediction(labelClass, labelProbability, labelSource) {
                 if (!predictionDiv) return;
                 if (labelSource === 'prediction' && labelClass) {
@@ -101,9 +109,9 @@ document.addEventListener('DOMContentLoaded', async () => {
 
                                 if (typeof stats.accuracy === 'number') {
                                         const pct = (stats.accuracy * 100).toFixed(1);
-                                        html += `<div><b>Test Accuracy:</b> <span class="accuracy-badge">${pct}%</span></div>`;
+                                        html += `<div><b>Val Accuracy:</b> <span class="accuracy-badge">${pct}%</span></div>`;
                                 } else {
-                                        html += `<div><b>Test Accuracy:</b> <span class="accuracy-badge">0%</span></div>`;
+                                        html += `<div><b>Val Accuracy:</b> <span class="accuracy-badge">0%</span></div>`;
                                 }
 
                                 statsDiv.innerHTML = html;
@@ -141,14 +149,14 @@ document.addEventListener('DOMContentLoaded', async () => {
                 ctx.lineTo(w - padding, h - padding);
                 ctx.stroke();
 
-                ctx.fillStyle = '#000';
-                ctx.font = '12px sans-serif';
+                ctx.fillStyle = '#e0e0e0';
+                ctx.font = '12px Roboto, sans-serif';
                 ctx.textAlign = 'center';
                 ctx.fillText('Epoch', w / 2, h - 5);
                 ctx.save();
-                ctx.translate(10, h / 2);
+                ctx.translate(padding - 25, h / 2);
                 ctx.rotate(-Math.PI / 2);
-                ctx.fillText('Test Accuracy', 0, 0);
+                ctx.fillText('Val Accuracy', 0, 0);
                 ctx.restore();
 
                 // tick marks

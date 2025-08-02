@@ -2,8 +2,11 @@
 <html lang="en">
 
 <head>
-	<meta charset="utf-8" />
-	<link rel="stylesheet" href="style.css" />
+        <meta charset="utf-8" />
+        <link rel="preconnect" href="https://fonts.googleapis.com">
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500&display=swap" rel="stylesheet">
+        <link rel="stylesheet" href="style.css" />
 </head>
 
 <body>
@@ -27,8 +30,8 @@
                                 <label id="specific-class-label" for="specific-class-select" style="display:none;">Class:</label>
                                 <select id="specific-class-select" style="display:none;"></select>
                         </div>
-                        <button id="undo-btn" class="undo-btn">Undo</button>
-                        <button id="export-db-btn" class="export-btn">Export DB</button>
+                        <button id="undo-btn" class="undo-btn">Undo (Ctrl+Z/U/Backspace)</button>
+                        <button id="export-db-btn" class="export-btn">Export DB (Ctrl+E)</button>
                         <div class="accuracy-filter">
                                 <label for="accuracy-slider">Accuracy window:</label>
                                 <input type="range" id="accuracy-slider" min="0" max="100" value="100">

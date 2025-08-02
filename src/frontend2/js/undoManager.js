@@ -6,10 +6,14 @@ export class UndoManager {
         this.updatePrediction = updatePrediction;
         this.history = [];
 
-        // Keyboard shortcuts for undo: Backspace or 'u'
+        // Keyboard shortcuts for undo
         document.addEventListener('keydown', (e) => {
             if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
-            if (e.key === 'Backspace' || e.key.toLowerCase() === 'u') {
+            const key = e.key.toLowerCase();
+            if ((e.ctrlKey || e.metaKey) && key === 'z') {
+                e.preventDefault();
+                this.undo();
+            } else if (e.key === 'Backspace' || key === 'u') {
                 e.preventDefault();
                 this.undo();
             }
