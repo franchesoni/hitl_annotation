@@ -86,10 +86,13 @@ document.addEventListener('DOMContentLoaded', async () => {
                 }
         }
 
+        let statsRequestId = 0;
         async function updateStats() {
                 if (!statsDiv) return;
+                const requestId = ++statsRequestId;
                 try {
                         const stats = await api.getStats(accuracyPct);
+                        if (requestId !== statsRequestId) return;
                         if (stats) {
                                 let html = '';
                                 if (stats.image) {
@@ -99,7 +102,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
                                 if (stats.annotation_counts) {
                                         const counts = Object.entries(stats.annotation_counts)
-                                                .map(([cls, n]) => `<div>${cls}: ${n}</div>`) 
+                                                .map(([cls, n]) => `<div>${cls}: ${n}</div>`)
                                                 .join('');
                                         html += `<div><b>Annotations per class:</b>${counts}</div>`;
                                 }
@@ -117,17 +120,24 @@ document.addEventListener('DOMContentLoaded', async () => {
                                 statsDiv.innerHTML = html;
                         }
                 } catch (e) {
-                        console.error('Failed to fetch stats:', e);
+                        if (requestId === statsRequestId) {
+                                console.error('Failed to fetch stats:', e);
+                        }
                 }
         }
 
+        let trainingRequestId = 0;
         async function updateTrainingCurve() {
                 if (!trainingCanvas) return;
+                const requestId = ++trainingRequestId;
                 try {
                         const data = await api.getTrainingStats();
+                        if (requestId !== trainingRequestId) return;
                         drawCurve(trainingCanvas, data.map(d => ({x: d.epoch, y: d.accuracy ?? 0})));
                 } catch (e) {
-                        console.error('Failed to fetch training stats:', e);
+                        if (requestId === trainingRequestId) {
+                                console.error('Failed to fetch training stats:', e);
+                        }
                 }
         }
 
@@ -197,10 +207,19 @@ document.addEventListener('DOMContentLoaded', async () => {
 	const viewer = new ImageViewer(leftPanel, 'loading-overlay', 'c');
 
         // Helper to load next image from API and update viewer/classManager
+        let nextImageRequestId = 0;
         async function loadNextImage() {
+                const requestId = ++nextImageRequestId;
+                if (classManager && typeof classManager.setLoading === 'function') {
+                        classManager.setLoading(true);
+                }
                 try {
                         const currentId = classManager.currentImageFilename;
                         const { imageUrl, filename, labelClass, labelSource, labelProbability } = await api.loadNextImage(currentId, currentStrategy, currentSpecificClass);
+                        if (requestId !== nextImageRequestId) {
+                                URL.revokeObjectURL(imageUrl);
+                                return;
+                        }
                         viewer.loadImage(imageUrl, filename);
                         const annClass = labelSource === 'annotation' ? labelClass : null;
                         await classManager.setCurrentImageFilename(filename, annClass);
@@ -209,6 +228,10 @@ document.addEventListener('DOMContentLoaded', async () => {
                         await updateTrainingCurve();
                 } catch (e) {
                         console.error('Failed to fetch next image:', e);
+                } finally {
+                        if (requestId === nextImageRequestId && classManager && typeof classManager.setLoading === 'function') {
+                                classManager.setLoading(false);
+                        }
                 }
         }
 
@@ -234,15 +257,8 @@ document.addEventListener('DOMContentLoaded', async () => {
                 }
         });
 
-	// Fetch the first image from API
         try {
-                const { imageUrl, filename, labelClass, labelSource, labelProbability } = await api.loadNextImage(null, currentStrategy, currentSpecificClass);
-                viewer.loadImage(imageUrl, filename);
-                const annClass = labelSource === 'annotation' ? labelClass : null;
-                await classManager.setCurrentImageFilename(filename, annClass);
-                updatePrediction(labelClass, labelProbability, labelSource);
-                await updateStats();
-                await updateTrainingCurve();
+                await loadNextImage();
         } catch (e) {
                 console.error('Failed to fetch first image:', e);
                 return;
