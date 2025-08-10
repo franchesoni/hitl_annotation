@@ -42,7 +42,7 @@ python -m src.ml.fastai_training --arch vit_medium_patch16_reg4_gap_256.sbb_in12
 - `src/ml/fastai_training.py` loops forever:
   1. Gather latest label annotations and build `DataLoaders`.
   2. Train one epoch on ResNet (34 or `--arch small` for 18).
-  3. Save the model weights to `<db>.pth` so progress persists across runs.
+  3. Export the learner to `<db>.pkl` so progress persists across runs.
   4. Predict on remaining unlabeled images and write predictions to DB.
   5. Sleep for a configurable delay and repeat.
 

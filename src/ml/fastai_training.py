@@ -41,6 +41,7 @@ from fastai.vision.all import (
     ImageDataLoaders,
     Resize,
     accuracy,
+    load_learner,
     resnet18,
     resnet34,
     vision_learner,
@@ -120,8 +121,7 @@ def _run_forever(db_path: str | None, arch: str, sleep_s: int, budget: int) -> N
 
     model_arch = resnet18 if arch == "resnet18" else (resnet34 if arch == "resnet34" else arch)
     learner = None  # will lazily instantiate when we first have data
-    prev_classes = None  # type: set[str] | None
-    model_path = Path(db.db_path).with_name("checkpoint.pth")
+    model_path = Path(db.db_path).with_name("checkpoint.pkl")
     cycle = 0
 
     while True:
@@ -138,13 +138,15 @@ def _run_forever(db_path: str | None, arch: str, sleep_s: int, budget: int) -> N
 
             new_classes = set(dls.vocab)
             if learner is None:
-                learner = vision_learner(dls, model_arch, metrics=accuracy)
-                prev_classes = new_classes
                 if model_path.exists():
                     try:
-                        learner.model.load_state_dict(torch.load(model_path))
+                        learner = load_learner(model_path)
+                        learner.dls = dls
                     except Exception as e:
-                        print(f"[WARN] Failed to load model checkpoint: {e}")
+                        print(f"[WARN] Failed to load exported learner: {e}")
+                        learner = vision_learner(dls, model_arch, metrics=accuracy)
+                else:
+                    learner = vision_learner(dls, model_arch, metrics=accuracy)
             else:
                 current_classes = set(learner.dls.vocab)
                 if new_classes != current_classes:
@@ -152,7 +154,6 @@ def _run_forever(db_path: str | None, arch: str, sleep_s: int, budget: int) -> N
                         f"[INFO] Detected class change {current_classes} -> {new_classes}; resetting model"
                     )
                     learner = vision_learner(dls, model_arch, metrics=accuracy)
-                    prev_classes = new_classes
                 else:
                     # re‑attach fresh DataLoaders to keep dataset up‑to‑date
                     learner.dls = dls
@@ -170,11 +171,11 @@ def _run_forever(db_path: str | None, arch: str, sleep_s: int, budget: int) -> N
                 train_loss = valid_loss = accuracy_val = None
 
             db.add_training_stat(cycle, train_loss, valid_loss, accuracy_val)
-            # Save model checkpoint after each epoch
+            # Export learner after each epoch so it can be reloaded easily
             try:
-                torch.save(learner.model.state_dict(), model_path)
+                learner.export(model_path)
             except Exception as e:
-                print(f"[WARN] Failed to save model checkpoint: {e}")
+                print(f"[WARN] Failed to export learner: {e}")
 
             labeled_set = set(paths)
             unlabeled = [fp for fp in db.get_samples() if fp not in labeled_set]
