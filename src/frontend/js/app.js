@@ -31,6 +31,7 @@ const idDiv = document.getElementById('image-ids');
 
 let currentImageId = null; // Current image being displayed
 let isLoading = false;
+let nextImageRequestId = 0;
 // Zoom & Pan State
 let scale = 1;
 let panX = 0, panY = 0;
@@ -57,6 +58,10 @@ function setLoading(loading) {
     isLoading = loading;
     updateNavButtons();
     if (overlay) overlay.style.display = loading ? 'flex' : 'none';
+    const buttons = document.querySelectorAll('.class-btn');
+    buttons.forEach(btn => {
+        btn.disabled = loading;
+    });
 }
 
 function updateNavButtons() {
@@ -118,13 +123,14 @@ function updateClassListDisplay() {
         const isSelected = c === selected;
         const shortcut = index < 9 ? (index + 1).toString() : (index === 9 ? '0' : '');
         const displayText = shortcut ? `${c} (${shortcut})` : c;
-        return `<button class="class-btn ${isSelected ? 'selected' : ''}" data-class="${c}">${displayText}</button>`;
+        const disabledAttr = isLoading ? 'disabled' : '';
+        return `<button class="class-btn ${isSelected ? 'selected' : ''}" data-class="${c}" ${disabledAttr}>${displayText}</button>`;
     }).join('');
 
     // Add click listeners for class selection
     Array.from(classListDiv.querySelectorAll('.class-btn')).forEach(btn => {
         btn.addEventListener('click', async () => {
-            if (!currentImageId) return;
+            if (!currentImageId || isLoading) return;
             const className = btn.dataset.class;
             if (imageSelectedClass[currentImageId] === className) {
                 delete imageSelectedClass[currentImageId];
@@ -132,10 +138,19 @@ function updateClassListDisplay() {
                 imageSelectedClass[currentImageId] = className;
             }
             updateClassListDisplay();
-            await saveCurrentImageClassAnnotation();
-            if (window.autoAdvanceEnabled) {
-                await loadNextImage(currentImageId);
-                await updateAccuracyDisplay();
+            setLoading(true);
+            try {
+                await saveCurrentImageClassAnnotation();
+                if (window.autoAdvanceEnabled) {
+                    await loadNextImage(currentImageId);
+                    await updateAccuracyDisplay();
+                }
+            } catch (err) {
+                console.error('Annotation error:', err);
+            } finally {
+                if (!window.autoAdvanceEnabled) {
+                    setLoading(false);
+                }
             }
         });
     });
@@ -209,6 +224,7 @@ img.onload = function () {
 };
 
 async function loadNextImage(currentId) {
+    const requestId = ++nextImageRequestId;
     setLoading(true);
     try {
         let url = '/api/next';
@@ -216,16 +232,18 @@ async function loadNextImage(currentId) {
             url += '?current_id=' + encodeURIComponent(currentId);
         }
         const response = await fetch(url);
+        if (requestId !== nextImageRequestId) return;
         if (!response.ok) {
             if (response.status === 404) {
                 alert('No more unlabeled images available!');
             } else {
                 alert('Error loading next image.');
             }
-            setLoading(false);
+            if (requestId === nextImageRequestId) setLoading(false);
             return;
         }
         const blob = await response.blob();
+        if (requestId !== nextImageRequestId) return;
         const imageUrl = URL.createObjectURL(blob);
         img.currentResponse = response;
         img.src = imageUrl;
@@ -234,7 +252,7 @@ async function loadNextImage(currentId) {
     } catch (e) {
         console.error('Error loading next image:', e);
         alert('Error loading next image. Please try again.');
-        setLoading(false);
+        if (requestId === nextImageRequestId) setLoading(false);
     }
 }
 
@@ -248,9 +266,15 @@ async function goToPrev() {
 
 async function goToNext() {
     if (isLoading) return;
-    await saveCurrentImageClassAnnotation();
-    await loadNextImage(currentImageId);
-    await updateAccuracyDisplay();
+    setLoading(true);
+    try {
+        await saveCurrentImageClassAnnotation();
+        await loadNextImage(currentImageId);
+        await updateAccuracyDisplay();
+    } catch (err) {
+        console.error('Failed to go to next image:', err);
+        setLoading(false);
+    }
     updateNavButtons();
 }
 
@@ -300,7 +324,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
         
         if (idx >= 0 && idx < globalClasses.length) {
-            if (!currentImageId) return;
+            if (!currentImageId || isLoading) return;
             const className = globalClasses[idx];
             if (imageSelectedClass[currentImageId] === className) {
                 delete imageSelectedClass[currentImageId];
@@ -308,10 +332,19 @@ document.addEventListener('DOMContentLoaded', async () => {
                 imageSelectedClass[currentImageId] = className;
             }
             updateClassListDisplay();
-            await saveCurrentImageClassAnnotation();
-            if (window.autoAdvanceEnabled) {
-                await loadNextImage(currentImageId);
-                await updateAccuracyDisplay();
+            setLoading(true);
+            try {
+                await saveCurrentImageClassAnnotation();
+                if (window.autoAdvanceEnabled) {
+                    await loadNextImage(currentImageId);
+                    await updateAccuracyDisplay();
+                }
+            } catch (err) {
+                console.error('Annotation error:', err);
+            } finally {
+                if (!window.autoAdvanceEnabled) {
+                    setLoading(false);
+                }
             }
             return;
         }

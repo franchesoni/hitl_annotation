@@ -197,10 +197,16 @@ document.addEventListener('DOMContentLoaded', async () => {
 	const viewer = new ImageViewer(leftPanel, 'loading-overlay', 'c');
 
         // Helper to load next image from API and update viewer/classManager
+        let nextImageRequestId = 0;
         async function loadNextImage() {
+                const requestId = ++nextImageRequestId;
+                if (classManager && typeof classManager.setLoading === 'function') {
+                        classManager.setLoading(true);
+                }
                 try {
                         const currentId = classManager.currentImageFilename;
                         const { imageUrl, filename, labelClass, labelSource, labelProbability } = await api.loadNextImage(currentId, currentStrategy, currentSpecificClass);
+                        if (requestId !== nextImageRequestId) return;
                         viewer.loadImage(imageUrl, filename);
                         const annClass = labelSource === 'annotation' ? labelClass : null;
                         await classManager.setCurrentImageFilename(filename, annClass);
@@ -209,6 +215,10 @@ document.addEventListener('DOMContentLoaded', async () => {
                         await updateTrainingCurve();
                 } catch (e) {
                         console.error('Failed to fetch next image:', e);
+                } finally {
+                        if (requestId === nextImageRequestId && classManager && typeof classManager.setLoading === 'function') {
+                                classManager.setLoading(false);
+                        }
                 }
         }
 
@@ -234,15 +244,8 @@ document.addEventListener('DOMContentLoaded', async () => {
                 }
         });
 
-	// Fetch the first image from API
         try {
-                const { imageUrl, filename, labelClass, labelSource, labelProbability } = await api.loadNextImage(null, currentStrategy, currentSpecificClass);
-                viewer.loadImage(imageUrl, filename);
-                const annClass = labelSource === 'annotation' ? labelClass : null;
-                await classManager.setCurrentImageFilename(filename, annClass);
-                updatePrediction(labelClass, labelProbability, labelSource);
-                await updateStats();
-                await updateTrainingCurve();
+                await loadNextImage();
         } catch (e) {
                 console.error('Failed to fetch first image:', e);
                 return;

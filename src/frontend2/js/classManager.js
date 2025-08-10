@@ -25,6 +25,7 @@ export class ClassManager {
     this.onClassesUpdate = null; // callback(classes[])
     this.loadNextImage = loadNextImage;
     this.api = api;
+    this.isLoading = false;
 
         this.render();
 
@@ -32,9 +33,10 @@ export class ClassManager {
         this.loadClassesFromConfig();
 
         // Keyboard shortcuts for class selection
-        document.addEventListener('keydown', (e) => {
-            // Only trigger if not typing in an input/textarea
+        document.addEventListener('keydown', async (e) => {
+            // Only trigger if not typing in an input/textarea or currently loading
             if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+            if (this.isLoading) return;
             let idx = -1;
             if (e.key >= '1' && e.key <= '9') {
                 idx = parseInt(e.key, 10) - 1;
@@ -44,21 +46,21 @@ export class ClassManager {
             if (idx >= 0 && idx < this.globalClasses.length) {
                 const className = this.globalClasses[idx];
                 this.selectedClass = className;
-                // POST to /annotate using API
                 if (this.currentImageFilename && className) {
-                    this.api.annotateSample(this.currentImageFilename, className)
-                        .then(() => {
-                            console.log('Annotation succeeded, calling loadNextImage (keyboard)');
-                            if (typeof this.loadNextImage === 'function') {
-                                this.loadNextImage();
-                            }
-                            else {
-                                console.warn('loadNextImage callback is not defined');
-                            }
-                        })
-                        .catch(err => {
-                            console.error('Annotation request error:', err);
-                        });
+                    try {
+                        this.setLoading(true);
+                        await this.api.annotateSample(this.currentImageFilename, className);
+                        console.log('Annotation succeeded, calling loadNextImage (keyboard)');
+                        if (typeof this.loadNextImage === 'function') {
+                            await this.loadNextImage();
+                        } else {
+                            console.warn('loadNextImage callback is not defined');
+                        }
+                    } catch (err) {
+                        console.error('Annotation request error:', err);
+                    } finally {
+                        this.setLoading(false);
+                    }
                 }
                 if (this.onClassChange) this.onClassChange(this.currentImageFilename, className);
                 this.render();
@@ -107,6 +109,14 @@ export class ClassManager {
     setPrediction(className) {
         this.predictionClass = className;
         this.render();
+    }
+
+    setLoading(isLoading) {
+        this.isLoading = isLoading;
+        const buttons = this.container.querySelectorAll('.class-btn');
+        buttons.forEach(btn => {
+            btn.disabled = isLoading;
+        });
     }
 
     // Add a new class if not already present
@@ -186,25 +196,26 @@ export class ClassManager {
                 btn.className = 'class-btn' + (isSelected ? ' selected' : isPrediction ? ' prediction' : '');
                 btn.dataset.class = c;
                 btn.textContent = index < 10 ? `${c} (${index === 9 ? '0' : index + 1})` : c;
-                btn.onclick = () => {
-                    if (!this.currentImageFilename) return;
-                    // Select class
+                btn.disabled = this.isLoading;
+                btn.onclick = async () => {
+                    if (!this.currentImageFilename || this.isLoading) return;
                     this.selectedClass = c;
-                    // POST to /annotate using API
-                    this.api.annotateSample(this.currentImageFilename, c)
-                        .then(() => {
-                            console.log('Annotation succeeded, calling loadNextImage (button)');
-                            if (typeof this.loadNextImage === 'function') {
-                                this.loadNextImage();
-                            } else {
-                                console.warn('loadNextImage callback is not defined');
-                            }
-                        })
-                        .catch(err => {
-                            console.error('Annotation request error:', err);
-                        });
                     if (this.onClassChange) this.onClassChange(this.currentImageFilename, c);
                     this.render();
+                    try {
+                        this.setLoading(true);
+                        await this.api.annotateSample(this.currentImageFilename, c);
+                        console.log('Annotation succeeded, calling loadNextImage (button)');
+                        if (typeof this.loadNextImage === 'function') {
+                            await this.loadNextImage();
+                        } else {
+                            console.warn('loadNextImage callback is not defined');
+                        }
+                    } catch (err) {
+                        console.error('Annotation request error:', err);
+                    } finally {
+                        this.setLoading(false);
+                    }
                 };
 
                 // Remove button
