@@ -71,10 +71,10 @@ def _gather_training_items(db: DatabaseAPI) -> List[Tuple[str, str]]:
     return items
 
 
-def _build_dls(paths: Sequence[str], labels: Sequence[str]):
+def _build_dls(paths: Sequence[str], labels: Sequence[str], resize: int):
     """Create ``DataLoaders`` with fixed transforms so we can reuse each cycle."""
     return ImageDataLoaders.from_lists(
-        Path("."), list(paths), list(labels), valid_pct=0.20, seed=42, bs=16, item_tfms=Resize(64)
+        Path("."), list(paths), list(labels), valid_pct=0.20, seed=42, bs=16, item_tfms=Resize(resize)
     )
 
 
@@ -108,7 +108,7 @@ def _predict_subset(db: DatabaseAPI, learner, unlabeled: List[str], budget: int)
 # main loop
 # ---------------------------------------------------------------------------
 
-def _run_forever(db_path: str | None, arch: str, sleep_s: int, budget: int) -> None:
+def _run_forever(db_path: str | None, arch: str, sleep_s: int, budget: int, resize: int) -> None:
     db = DatabaseAPI(db_path)
 
     def _exit_handler(*_):
@@ -134,7 +134,7 @@ def _run_forever(db_path: str | None, arch: str, sleep_s: int, budget: int) -> N
                 continue
 
             paths, labels = zip(*train_items)
-            dls = _build_dls(paths, labels)
+            dls = _build_dls(paths, labels, resize)
 
             new_classes = set(dls.vocab)
             if learner is None:
@@ -202,9 +202,10 @@ def main() -> None:
     p.add_argument("--arch", "-a", default="resnet18", help="network arch")
     p.add_argument("--sleep", "-s", type=int, default=0, help="Seconds between cycles")
     p.add_argument("--budget", "-b", type=int, default=1000, help="Predictions per cycle")
+    p.add_argument("--resize", "-r", type=int, default=64, help="Resize dimension for training images")
     args = p.parse_args()
 
-    _run_forever(args.db, args.arch, args.sleep, args.budget)
+    _run_forever(args.db, args.arch, args.sleep, args.budget, args.resize)
 
 
 if __name__ == "__main__":

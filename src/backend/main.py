@@ -9,6 +9,7 @@ import os
 import tempfile
 from pathlib import Path
 from collections import defaultdict, deque
+import subprocess
 
 # --- Database integration ---
 from src.database.data import DatabaseAPI, validate_db_dict
@@ -31,6 +32,9 @@ last_image_served = None
 # Buffer storing recent annotations (filepath, class)
 ANNOTATION_BUFFER_SIZE = 20
 annotation_buffer = deque(maxlen=ANNOTATION_BUFFER_SIZE)
+
+# Handle external AI training process
+ai_process = None
 
 
 def create_image_response(image_path):
@@ -215,6 +219,44 @@ async def get_training_stats(request: Request):
     return JSONResponse(stats)
 
 
+async def run_ai(request: Request):
+    """Launch the background training process if not already running."""
+    global ai_process
+    if ai_process and ai_process.poll() is None:
+        return JSONResponse({"status": "already running"}, status_code=400)
+
+    data = await request.json()
+    arch = data.get("architecture", "resnet18")
+    sleep = int(data.get("sleep", 0))
+    budget = int(data.get("budget", 1000))
+    resize = int(data.get("resize", 64))
+    cmd = [
+        "python",
+        "-m",
+        "src.ml.fastai_training",
+        "--arch",
+        str(arch),
+        "--sleep",
+        str(sleep),
+        "--budget",
+        str(budget),
+        "--resize",
+        str(resize),
+    ]
+    ai_process = subprocess.Popen(cmd)
+    return JSONResponse({"status": "started"})
+
+
+async def stop_ai(request: Request):
+    """Terminate the background training process if running."""
+    global ai_process
+    if ai_process and ai_process.poll() is None:
+        ai_process.terminate()
+        ai_process = None
+        return JSONResponse({"status": "stopped"})
+    return JSONResponse({"status": "not running"}, status_code=400)
+
+
 async def export_db(request: Request):
     tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".json")
     tmp.close()
@@ -240,6 +282,8 @@ app = Starlette(
         Route("/annotate", handle_annotation, methods=["DELETE"]),
         Route("/stats", get_stats, methods=["GET"]),
         Route("/training_stats", get_training_stats, methods=["GET"]),
+        Route("/run_ai", run_ai, methods=["POST"]),
+        Route("/stop_ai", stop_ai, methods=["POST"]),
         Route("/export_db", export_db, methods=["GET"]),
     ]
 )

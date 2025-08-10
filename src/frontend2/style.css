@@ -283,3 +283,41 @@ body {
         gap: 6px;
         font-size: 14px;
 }
+
+.ai-control {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+}
+
+.ai-control input {
+        padding: 6px;
+        border: 1px solid #ced4da;
+        border-radius: 4px;
+}
+
+.run-ai-btn, .stop-ai-btn {
+        padding: 8px 12px;
+        border: none;
+        color: #f8f9fa;
+        border-radius: 4px;
+        cursor: pointer;
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.4);
+        transition: background 0.3s;
+}
+
+.run-ai-btn {
+        background: linear-gradient(45deg, #2e7d32, #66bb6a);
+}
+
+.run-ai-btn:hover {
+        background: linear-gradient(45deg, #1b5e20, #2e7d32);
+}
+
+.stop-ai-btn {
+        background: linear-gradient(45deg, #c62828, #e57373);
+}
+
+.stop-ai-btn:hover {
+        background: linear-gradient(45deg, #8e0000, #c62828);
+}

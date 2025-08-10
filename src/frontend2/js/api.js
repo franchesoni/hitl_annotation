@@ -98,6 +98,22 @@ export class API {
         return await res.json();
     }
 
+    async runAI(params) {
+        const res = await fetch('/run_ai', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(params)
+        });
+        if (!res.ok) throw new Error('Failed to start AI');
+        return await res.json();
+    }
+
+    async stopAI() {
+        const res = await fetch('/stop_ai', { method: 'POST' });
+        if (!res.ok) throw new Error('Failed to stop AI');
+        return await res.json();
+    }
+
     async exportDB() {
         const res = await fetch('/export_db');
         if (!res.ok) throw new Error('Failed to export DB');

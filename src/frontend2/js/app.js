@@ -9,6 +9,12 @@ document.addEventListener('DOMContentLoaded', async () => {
         const classPanel = document.querySelector('#class-manager');
         const undoBtn = document.getElementById('undo-btn');
         const exportDBBtn = document.getElementById('export-db-btn');
+        const runBtn = document.getElementById('run-ai-btn');
+        const stopBtn = document.getElementById('stop-ai-btn');
+        const archInput = document.getElementById('ai-arch');
+        const sleepInput = document.getElementById('ai-sleep');
+        const budgetInput = document.getElementById('ai-budget');
+        const resizeInput = document.getElementById('ai-resize');
         const statsDiv = document.getElementById('stats-display');
         const predictionDiv = document.getElementById('prediction-display');
         const trainingCanvas = document.getElementById('training-curve');
@@ -58,6 +64,29 @@ document.addEventListener('DOMContentLoaded', async () => {
         const api = new API();
         if (exportDBBtn) {
                 exportDBBtn.addEventListener('click', () => api.exportDB());
+        }
+        if (runBtn) {
+                runBtn.addEventListener('click', async () => {
+                        try {
+                                await api.runAI({
+                                        architecture: archInput?.value || 'resnet18',
+                                        sleep: Number(sleepInput?.value || 0),
+                                        budget: Number(budgetInput?.value || 1000),
+                                        resize: Number(resizeInput?.value || 64)
+                                });
+                        } catch (e) {
+                                console.error('Failed to start AI:', e);
+                        }
+                });
+        }
+        if (stopBtn) {
+                stopBtn.addEventListener('click', async () => {
+                        try {
+                                await api.stopAI();
+                        } catch (e) {
+                                console.error('Failed to stop AI:', e);
+                        }
+                });
         }
 
         document.addEventListener('keydown', (e) => {
