@@ -56,9 +56,9 @@ python -m src.ml.fastai_training --arch vit_medium_patch16_reg4_gap_256.sbb_in12
 # TO-DO
 
 ## next
-- unify tables in db (there are too many for slides)
 - image loader (.zip)
 - implement show -> save -> prefetch pattern
 - user editable preprocessing
-- export button
+- better model export
+- model inference example
 
