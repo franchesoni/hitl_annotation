@@ -29,6 +29,7 @@ export class ImageViewer {
         this.overlay = document.getElementById(overlayId);
         this.currentImageId = null;
         this.isLoading = false;
+        this.previousObjectUrl = null;
 
         // Initial sizing
         this.resizeCanvasToContainer();
@@ -60,6 +61,10 @@ export class ImageViewer {
     async loadImage(imageUrl, imageId = null) {
         this.setLoading(true);
         this.currentImageId = imageId;
+        if (this.previousObjectUrl) {
+            URL.revokeObjectURL(this.previousObjectUrl);
+        }
+        this.previousObjectUrl = imageUrl;
         this.img.src = imageUrl;
     }
 

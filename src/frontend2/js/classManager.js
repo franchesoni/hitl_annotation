@@ -26,6 +26,8 @@ export class ClassManager {
     this.loadNextImage = loadNextImage;
     this.api = api;
     this.isLoading = false;
+    this.annotationRequestId = 0;
+    this.configRequestId = 0;
 
         this.render();
 
@@ -49,7 +51,10 @@ export class ClassManager {
                 if (this.currentImageFilename && className) {
                     try {
                         this.setLoading(true);
+                        const requestId = ++this.annotationRequestId;
                         await this.api.annotateSample(this.currentImageFilename, className);
+                        if (requestId !== this.annotationRequestId) return;
+
                         console.log('Annotation succeeded, calling loadNextImage (keyboard)');
                         if (typeof this.loadNextImage === 'function') {
                             await this.loadNextImage();
@@ -59,6 +64,9 @@ export class ClassManager {
                     } catch (err) {
                         console.error('Annotation request error:', err);
                     } finally {
+                        if (this.annotationRequestId === requestId) {
+                            this.setLoading(false);
+                        }
                         this.setLoading(false);
                     }
                 }
@@ -71,13 +79,17 @@ export class ClassManager {
     // Load class list from server config
     async loadClassesFromConfig() {
         if (!this.api || typeof this.api.getConfig !== 'function') return;
+        const requestId = ++this.configRequestId;
         try {
             const cfg = await this.api.getConfig();
+            if (requestId !== this.configRequestId) return;
             if (cfg && Array.isArray(cfg.classes)) {
                 this.globalClasses = cfg.classes;
             }
         } catch (e) {
-            console.error('Failed to load classes from config:', e);
+            if (requestId === this.configRequestId) {
+                console.error('Failed to load classes from config:', e);
+            }
         }
     }
 
@@ -204,7 +216,9 @@ export class ClassManager {
                     this.render();
                     try {
                         this.setLoading(true);
+                        const requestId = ++this.annotationRequestId;
                         await this.api.annotateSample(this.currentImageFilename, c);
+                        if (requestId !== this.annotationRequestId) return;
                         console.log('Annotation succeeded, calling loadNextImage (button)');
                         if (typeof this.loadNextImage === 'function') {
                             await this.loadNextImage();
@@ -214,7 +228,10 @@ export class ClassManager {
                     } catch (err) {
                         console.error('Annotation request error:', err);
                     } finally {
-                        this.setLoading(false);
+                        if (this.annotationRequestId === requestId) {
+                            this.setLoading(false);
+                        }
+
                     }
                 };
 

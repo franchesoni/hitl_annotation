@@ -1,6 +1,8 @@
+let annotationRequestId = 0;
 async function saveCurrentImageClassAnnotation() {
     if (!currentImageId) return;
     const selectedClass = imageSelectedClass[currentImageId];
+    const requestId = ++annotationRequestId;
     if (selectedClass) {
         await fetch('/api/save_label', {
             method: 'POST',
@@ -14,8 +16,10 @@ async function saveCurrentImageClassAnnotation() {
             body: JSON.stringify({ filepath: currentImageId })
         });
     }
-    // Track annotation history for undo on both save and delete
-    annotationHistory.push(currentImageId);
+    if (requestId === annotationRequestId) {
+        // Track annotation history for undo on both save and delete
+        annotationHistory.push(currentImageId);
+    }
 }
 
 // =====================
@@ -32,6 +36,7 @@ const idDiv = document.getElementById('image-ids');
 let currentImageId = null; // Current image being displayed
 let isLoading = false;
 let nextImageRequestId = 0;
+let accuracyRequestId = 0;
 // Zoom & Pan State
 let scale = 1;
 let panX = 0, panY = 0;
@@ -97,16 +102,21 @@ function updatePredictionDisplay(predictionInfo) {
 async function updateAccuracyDisplay() {
     const accDiv = document.getElementById('accuracy-container');
     if (!accDiv) return;
+    const requestId = ++accuracyRequestId;
     try {
         const r = await fetch('/api/accuracy_stats');
+        if (requestId !== accuracyRequestId) return;
         const stats = await r.json();
+        if (requestId !== accuracyRequestId) return;
         if (typeof stats.accuracy === 'number') {
             accDiv.innerHTML = `<span class="accuracy-badge">${(stats.accuracy * 100).toFixed(1)}%</span> <span style="color:#6c757d;">(${stats.correct}/${stats.tries} correct)</span>`;
         } else {
             accDiv.innerHTML = `<span style="color: #6c757d; font-style: italic;">Not enough data</span>`;
         }
     } catch {
-        accDiv.innerHTML = `<span style="color: #dc3545; font-style: italic;">Error loading stats</span>`;
+        if (requestId === accuracyRequestId) {
+            accDiv.innerHTML = `<span style="color: #dc3545; font-style: italic;">Error loading stats</span>`;
+        }
     }
 }
 
