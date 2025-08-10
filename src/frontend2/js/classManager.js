@@ -54,6 +54,7 @@ export class ClassManager {
                         const requestId = ++this.annotationRequestId;
                         await this.api.annotateSample(this.currentImageFilename, className);
                         if (requestId !== this.annotationRequestId) return;
+
                         console.log('Annotation succeeded, calling loadNextImage (keyboard)');
                         if (typeof this.loadNextImage === 'function') {
                             await this.loadNextImage();
@@ -66,6 +67,7 @@ export class ClassManager {
                         if (this.annotationRequestId === requestId) {
                             this.setLoading(false);
                         }
+                        this.setLoading(false);
                     }
                 }
                 if (this.onClassChange) this.onClassChange(this.currentImageFilename, className);
@@ -229,6 +231,7 @@ export class ClassManager {
                         if (this.annotationRequestId === requestId) {
                             this.setLoading(false);
                         }
+
                     }
                 };
 
