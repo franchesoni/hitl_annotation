@@ -10,6 +10,9 @@ import tempfile
 from pathlib import Path
 from collections import defaultdict, deque
 import subprocess
+import atexit
+import signal
+import timm
 
 # --- Database integration ---
 from src.database.data import DatabaseAPI, validate_db_dict
@@ -35,6 +38,29 @@ annotation_buffer = deque(maxlen=ANNOTATION_BUFFER_SIZE)
 
 # Handle external AI training process
 ai_process = None
+
+
+def terminate_ai_process():
+    """Ensure the AI subprocess and its children are terminated."""
+    global ai_process
+    if ai_process and ai_process.poll() is None:
+        try:
+            os.killpg(ai_process.pid, signal.SIGTERM)
+        except Exception:
+            ai_process.terminate()
+        ai_process = None
+
+
+def _cleanup(*args):
+    terminate_ai_process()
+
+
+atexit.register(_cleanup)
+for _sig in (signal.SIGINT, signal.SIGTERM):
+    try:
+        signal.signal(_sig, _cleanup)
+    except Exception:
+        pass
 
 
 def create_image_response(image_path):
@@ -198,10 +224,7 @@ async def get_stats(request: Request):
     total = db.count_total_samples()
     ann_counts = db.get_annotation_counts()
     pct_param = request.query_params.get("pct")
-    try:
-        pct = float(pct_param) if pct_param is not None else 100.0
-    except ValueError:
-        pct = 100.0
+    pct = float(pct_param) if pct_param is not None else 100.0
     stats = db.get_accuracy_counts() if pct >= 100 else db.get_accuracy_recent_pct(pct)
     tries = stats["tries"]
     correct = stats["correct"]
@@ -228,18 +251,13 @@ async def get_training_stats(request: Request):
 def _list_architectures():
     """Return all allowed model architectures."""
     resnets = ["resnet18", "resnet34"]
-    try:
-        import timm
-
-        models = sorted(timm.list_models())
-    except Exception:
-        models = []
-    return resnets + [m for m in models if m not in resnets]
+    return resnets + [m for m in sorted(timm.list_models()) if m not in resnets]
 
 
 async def get_architectures(request: Request):
     """Return available model architectures for the training process."""
     return JSONResponse({"architectures": _list_architectures()})
+
 
 
 async def run_ai(request: Request):
@@ -277,7 +295,20 @@ async def run_ai(request: Request):
         cmd.append("--no-flip")
     if max_rotate != 10.0:
         cmd.extend(["--max-rotate", str(max_rotate)])
-    ai_process = subprocess.Popen(cmd)
+
+    def _set_death_sig():
+        try:
+            import ctypes
+            libc = ctypes.CDLL("libc.so.6")
+            libc.prctl(1, signal.SIGTERM)
+        except Exception:
+            pass
+
+    ai_process = subprocess.Popen(
+        cmd,
+        start_new_session=True,
+        preexec_fn=_set_death_sig,
+    )
     return JSONResponse({"status": "started"})
 
 
@@ -285,8 +316,7 @@ async def stop_ai(request: Request):
     """Terminate the background training process if running."""
     global ai_process
     if ai_process and ai_process.poll() is None:
-        ai_process.terminate()
-        ai_process = None
+        terminate_ai_process()
         return JSONResponse({"status": "stopped"})
     return JSONResponse({"status": "not running"}, status_code=400)
 
@@ -294,11 +324,7 @@ async def stop_ai(request: Request):
 async def export_db(request: Request):
     tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".json")
     tmp.close()
-    try:
-        db.export_db_as_json(tmp.name)
-    except Exception:
-        os.unlink(tmp.name)
-        raise
+    db.export_db_as_json(tmp.name)
     return FileResponse(
         tmp.name,
         media_type="application/json",
