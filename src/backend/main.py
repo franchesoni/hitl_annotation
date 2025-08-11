@@ -219,6 +219,19 @@ async def get_training_stats(request: Request):
     return JSONResponse(stats)
 
 
+async def get_architectures(request: Request):
+    """Return available model architectures for the training process."""
+    resnets = ["resnet18", "resnet34"]
+    try:
+        import timm
+
+        models = sorted(timm.list_models())
+    except Exception:
+        models = []
+    architectures = resnets + [m for m in models if m not in resnets]
+    return JSONResponse({"architectures": architectures})
+
+
 async def run_ai(request: Request):
     """Launch the background training process if not already running."""
     global ai_process
@@ -282,6 +295,7 @@ app = Starlette(
         Route("/annotate", handle_annotation, methods=["DELETE"]),
         Route("/stats", get_stats, methods=["GET"]),
         Route("/training_stats", get_training_stats, methods=["GET"]),
+        Route("/architectures", get_architectures, methods=["GET"]),
         Route("/run_ai", run_ai, methods=["POST"]),
         Route("/stop_ai", stop_ai, methods=["POST"]),
         Route("/export_db", export_db, methods=["GET"]),

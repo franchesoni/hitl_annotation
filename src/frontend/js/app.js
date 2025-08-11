@@ -18,6 +18,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 if (stopBtn) stopBtn.style.display = aiRunning ? 'inline-block' : 'none';
         }
         const archInput = document.getElementById('ai-arch');
+        const archDatalist = document.getElementById('arch-options');
         const sleepInput = document.getElementById('ai-sleep');
         const budgetInput = document.getElementById('ai-budget');
         const resizeInput = document.getElementById('ai-resize');
@@ -69,6 +70,18 @@ document.addEventListener('DOMContentLoaded', async () => {
         // Create the API instance
         const api = new API();
         updateAIButtons();
+        if (archDatalist) {
+                try {
+                        const archs = await api.getArchitectures();
+                        archs.forEach(a => {
+                                const opt = document.createElement('option');
+                                opt.value = a;
+                                archDatalist.appendChild(opt);
+                        });
+                } catch (e) {
+                        console.error('Failed to load architectures:', e);
+                }
+        }
         if (exportDBBtn) {
                 exportDBBtn.addEventListener('click', () => api.exportDB());
         }
