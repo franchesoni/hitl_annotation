@@ -52,6 +52,8 @@ directory wipes all progress so the app starts from scratch on the next run.
   3. Export the learner to `<db>.pkl` so progress persists across runs.
   4. Predict on remaining unlabeled images and write predictions to DB.
   5. Sleep for a configurable delay and repeat.
+  - Preprocessing options like resize, flip and rotation can be set via `PUT /config` in
+    a `preprocessing` dictionary before launching the trainer.
 
 ## Usage
 1. Start backend: `uvicorn src.backend.main:app`.
@@ -65,7 +67,6 @@ directory wipes all progress so the app starts from scratch on the next run.
 ## next
 - image loader (.zip)
 - implement show -> save -> prefetch pattern
-- user editable preprocessing
 - better model export
 - model inference example
 

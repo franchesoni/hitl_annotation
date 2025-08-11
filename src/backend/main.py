@@ -239,10 +239,13 @@ async def run_ai(request: Request):
         return JSONResponse({"status": "already running"}, status_code=400)
 
     data = await request.json()
-    arch = data.get("architecture", "resnet18")
+    arch = data.get("architecture", config.get("architecture", "resnet18"))
     sleep = int(data.get("sleep", 0))
     budget = int(data.get("budget", 1000))
-    resize = int(data.get("resize", 64))
+    preproc = config.get("preprocessing", {})
+    resize = int(preproc.get("resize", 64))
+    flip = preproc.get("flip", True)
+    max_rotate = float(preproc.get("max_rotate", 10.0))
     cmd = [
         "python",
         "-m",
@@ -256,6 +259,10 @@ async def run_ai(request: Request):
         "--resize",
         str(resize),
     ]
+    if not flip:
+        cmd.append("--no-flip")
+    if max_rotate != 10.0:
+        cmd.extend(["--max-rotate", str(max_rotate)])
     ai_process = subprocess.Popen(cmd)
     return JSONResponse({"status": "started"})
 
