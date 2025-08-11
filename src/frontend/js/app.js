@@ -32,6 +32,12 @@ const prevBtn = document.getElementById('prev-btn');
 const nextBtn = document.getElementById('next-btn');
 const overlay = document.getElementById('loading-overlay');
 const idDiv = document.getElementById('image-ids');
+const runAIBtn = document.getElementById('run-ai-btn');
+const stopAIBtn = document.getElementById('stop-ai-btn');
+const aiArchInput = document.getElementById('ai-arch');
+const aiSleepInput = document.getElementById('ai-sleep');
+const aiBudgetInput = document.getElementById('ai-budget');
+const aiResizeInput = document.getElementById('ai-resize');
 
 let currentImageId = null; // Current image being displayed
 let isLoading = false;
@@ -54,6 +60,35 @@ let imageSelectedClass = {}; // { imageId: className }
 
 // Undo history stack
 let annotationHistory = [];
+
+if (runAIBtn) {
+    runAIBtn.addEventListener('click', async () => {
+        try {
+            await fetch('/run_ai', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    architecture: aiArchInput?.value || 'resnet18',
+                    sleep: Number(aiSleepInput?.value || 0),
+                    budget: Number(aiBudgetInput?.value || 1000),
+                    resize: Number(aiResizeInput?.value || 64)
+                })
+            });
+        } catch (e) {
+            console.error('Failed to start AI', e);
+        }
+    });
+}
+
+if (stopAIBtn) {
+    stopAIBtn.addEventListener('click', async () => {
+        try {
+            await fetch('/stop_ai', { method: 'POST' });
+        } catch (e) {
+            console.error('Failed to stop AI', e);
+        }
+    });
+}
 
 
 // =====================

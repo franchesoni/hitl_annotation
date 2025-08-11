@@ -191,10 +191,46 @@
 			border-bottom: 1px solid #ccc;
 			padding-bottom: 2px;
 		}
-		.status-implemented { color: #28a745; }
-		.status-partial { color: #ffc107; }
-		.status-missing { color: #dc3545; }
-	</style>
+                .status-implemented { color: #28a745; }
+                .status-partial { color: #ffc107; }
+                .status-missing { color: #dc3545; }
+
+                .ai-control {
+                        display: flex;
+                        flex-direction: column;
+                        gap: 6px;
+                }
+
+                .ai-control input {
+                        padding: 6px;
+                        border: 1px solid #ced4da;
+                        border-radius: 4px;
+                }
+
+                .run-ai-btn, .stop-ai-btn {
+                        padding: 8px 12px;
+                        border: none;
+                        color: #fff;
+                        border-radius: 4px;
+                        cursor: pointer;
+                }
+
+                .run-ai-btn {
+                        background: #28a745;
+                }
+
+                .run-ai-btn:hover {
+                        background: #218838;
+                }
+
+                .stop-ai-btn {
+                        background: #dc3545;
+                }
+
+                .stop-ai-btn:hover {
+                        background: #c82333;
+                }
+        </style>
 </head>
 
 <body>
@@ -349,20 +385,33 @@
 			</div>
 			
 			<!-- Class Management Section -->
-			<div class="control-section">
-				<h3>Classes</h3>
-				<div class="class-input-group">
-					<input id="class-input" type="text" placeholder="Add new class...">
-					<button id="add-class-btn">Add (Enter)</button>
-				</div>
-				<div id="class-list-container" class="class-buttons"></div>
-			</div>
-			
-			<!-- Prediction Section -->
-			<div class="control-section">
-				<h3>Prediction</h3>
-				<div id="prediction-container" class="info-display"></div>
-			</div>
+                          <div class="control-section">
+                                  <h3>Classes</h3>
+                                  <div class="class-input-group">
+                                          <input id="class-input" type="text" placeholder="Add new class...">
+                                          <button id="add-class-btn">Add (Enter)</button>
+                                  </div>
+                                  <div id="class-list-container" class="class-buttons"></div>
+                          </div>
+
+                          <!-- AI Control Section -->
+                          <div class="control-section">
+                                  <h3>AI Control</h3>
+                                  <div class="ai-control">
+                                          <input id="ai-arch" placeholder="architecture">
+                                          <input id="ai-sleep" type="number" placeholder="sleep">
+                                          <input id="ai-budget" type="number" placeholder="budget">
+                                          <input id="ai-resize" type="number" placeholder="resize">
+                                          <button id="run-ai-btn" class="run-ai-btn">Run AI</button>
+                                          <button id="stop-ai-btn" class="stop-ai-btn">Stop AI</button>
+                                  </div>
+                          </div>
+
+                          <!-- Prediction Section -->
+                          <div class="control-section">
+                                  <h3>Prediction</h3>
+                                  <div id="prediction-container" class="info-display"></div>
+                          </div>
 			
 			<!-- Accuracy Section -->
 			<div class="control-section">
