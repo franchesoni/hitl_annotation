@@ -458,7 +458,13 @@ class DatabaseAPI:
 
     def __init__(self, db_path=None):
         if db_path is None:
-            db_path = os.path.join(os.path.dirname(__file__), "annotation.db")
+            session_dir = os.environ.get("HITL_SESSION_DIR") or os.path.join(
+                os.path.dirname(__file__), "session"
+            )
+            os.makedirs(session_dir, exist_ok=True)
+            db_path = os.path.join(session_dir, "annotation.db")
+        else:
+            os.makedirs(os.path.dirname(db_path), exist_ok=True)
         self.db_path = db_path
         self.conn = sqlite3.connect(self.db_path)
         # Enable WAL mode for better concurrency
