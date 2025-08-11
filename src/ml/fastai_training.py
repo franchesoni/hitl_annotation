@@ -40,6 +40,7 @@ import torch
 from fastai.vision.all import (
     ImageDataLoaders,
     Resize,
+    aug_transforms,
     accuracy,
     load_learner,
     resnet18,
@@ -71,10 +72,24 @@ def _gather_training_items(db: DatabaseAPI) -> List[Tuple[str, str]]:
     return items
 
 
-def _build_dls(paths: Sequence[str], labels: Sequence[str], resize: int):
+def _build_dls(
+    paths: Sequence[str],
+    labels: Sequence[str],
+    resize: int,
+    flip: bool,
+    max_rotate: float,
+):
     """Create ``DataLoaders`` with fixed transforms so we can reuse each cycle."""
+    batch_tfms = aug_transforms(do_flip=flip, max_rotate=max_rotate)
     return ImageDataLoaders.from_lists(
-        Path("."), list(paths), list(labels), valid_pct=0.20, seed=42, bs=16, item_tfms=Resize(resize)
+        Path("."),
+        list(paths),
+        list(labels),
+        valid_pct=0.20,
+        seed=42,
+        bs=16,
+        item_tfms=Resize(resize),
+        batch_tfms=batch_tfms,
     )
 
 
@@ -108,7 +123,15 @@ def _predict_subset(db: DatabaseAPI, learner, unlabeled: List[str], budget: int)
 # main loop
 # ---------------------------------------------------------------------------
 
-def _run_forever(db_path: str | None, arch: str, sleep_s: int, budget: int, resize: int) -> None:
+def _run_forever(
+    db_path: str | None,
+    arch: str,
+    sleep_s: int,
+    budget: int,
+    resize: int,
+    flip: bool,
+    max_rotate: float,
+) -> None:
     db = DatabaseAPI(db_path)
 
     def _exit_handler(*_):
@@ -134,7 +157,7 @@ def _run_forever(db_path: str | None, arch: str, sleep_s: int, budget: int, resi
                 continue
 
             paths, labels = zip(*train_items)
-            dls = _build_dls(paths, labels, resize)
+            dls = _build_dls(paths, labels, resize, flip, max_rotate)
 
             new_classes = set(dls.vocab)
             if learner is None:
@@ -203,9 +226,22 @@ def main() -> None:
     p.add_argument("--sleep", "-s", type=int, default=0, help="Seconds between cycles")
     p.add_argument("--budget", "-b", type=int, default=1000, help="Predictions per cycle")
     p.add_argument("--resize", "-r", type=int, default=64, help="Resize dimension for training images")
+    p.add_argument(
+        "--no-flip",
+        action="store_false",
+        dest="flip",
+        help="Disable random horizontal flips",
+    )
+    p.add_argument(
+        "--max-rotate",
+        type=float,
+        default=10.0,
+        help="Maximum rotation for data augmentation",
+    )
+    p.set_defaults(flip=True)
     args = p.parse_args()
 
-    _run_forever(args.db, args.arch, args.sleep, args.budget, args.resize)
+    _run_forever(args.db, args.arch, args.sleep, args.budget, args.resize, args.flip, args.max_rotate)
 
 
 if __name__ == "__main__":
