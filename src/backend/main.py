@@ -217,10 +217,7 @@ async def get_stats(request: Request):
     total = db.count_total_samples()
     ann_counts = db.get_annotation_counts()
     pct_param = request.query_params.get("pct")
-    try:
-        pct = float(pct_param) if pct_param is not None else 100.0
-    except ValueError:
-        pct = 100.0
+    pct = float(pct_param) if pct_param is not None else 100.0
     stats = db.get_accuracy_counts() if pct >= 100 else db.get_accuracy_recent_pct(pct)
     tries = stats["tries"]
     correct = stats["correct"]
@@ -247,12 +244,8 @@ async def get_training_stats(request: Request):
 async def get_architectures(request: Request):
     """Return available model architectures for the training process."""
     resnets = ["resnet18", "resnet34"]
-    try:
-        import timm
-
-        models = sorted(timm.list_models())
-    except Exception:
-        models = []
+    import timm
+    models = sorted(timm.list_models())
     architectures = resnets + [m for m in models if m not in resnets]
     return JSONResponse({"architectures": architectures})
 
@@ -317,11 +310,7 @@ async def stop_ai(request: Request):
 async def export_db(request: Request):
     tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".json")
     tmp.close()
-    try:
-        db.export_db_as_json(tmp.name)
-    except Exception:
-        os.unlink(tmp.name)
-        raise
+    db.export_db_as_json(tmp.name)
     return FileResponse(
         tmp.name,
         media_type="application/json",
