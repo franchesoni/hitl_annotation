@@ -269,9 +269,12 @@ class DatabaseAPI:
         Overwrite annotations for the given sample filepath.
         annotations: list of dicts with keys matching the annotations table columns (except id and sample_id, which are set automatically).
         Raises ValueError if the filepath is not in the samples table.
-        Automatically adds a timestamp if not present in the annotation dict.
+        Automatically adds the sample filepath and a timestamp if not present in the annotation dict.
         """
         import time
+
+        if not filepath:
+            raise ValueError("Sample filepath must be provided")
 
         cursor = self.conn.cursor()
         # Get sample id for the filepath
@@ -287,12 +290,15 @@ class DatabaseAPI:
             keys = [k for k in annotations[0] if k not in ("id", "sample_id")]
             if "timestamp" not in keys:
                 keys.append("timestamp")
+            if "sample_filepath" not in keys:
+                keys.append("sample_filepath")
             columns = ["sample_id"] + keys
             values = []
             for ann in annotations:
                 ann = dict(ann)  # copy
                 if "timestamp" not in ann or ann["timestamp"] is None:
                     ann["timestamp"] = int(time.time())
+                ann["sample_filepath"] = filepath
                 values.append(tuple([sample_id] + [ann.get(k) for k in keys]))
             placeholders = ",".join(["?"] * len(columns))
             sql = (
