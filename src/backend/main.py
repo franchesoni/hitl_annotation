@@ -155,6 +155,9 @@ async def handle_annotation(request: Request):
         class_name = data.get("class")
         if not filepath or not isinstance(class_name, str):
             return JSONResponse({"error": "Missing or invalid 'filepath' or 'class'"}, status_code=400)
+        # Ensure the filepath exists in the database and on disk
+        if filepath not in db.get_samples() or not os.path.isfile(filepath):
+            return JSONResponse({"error": "Filepath not found"}, status_code=404)
         # Write annotation to DB
         db.save_label_annotation(filepath, class_name)
 
@@ -173,6 +176,8 @@ async def handle_annotation(request: Request):
         filepath = data.get("filepath")
         if not filepath:
             return JSONResponse({"error": "Missing 'filepath'"}, status_code=400)
+        if filepath not in db.get_samples() or not os.path.isfile(filepath):
+            return JSONResponse({"error": "Filepath not found"}, status_code=404)
         db.delete_label_annotation(filepath)
         # Remove any occurrences from the annotation buffer
         annotation_buffer = deque(
