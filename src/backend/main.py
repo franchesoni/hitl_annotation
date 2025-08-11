@@ -4,6 +4,8 @@ from starlette.requests import Request
 from starlette.routing import Route
 from starlette.staticfiles import StaticFiles
 from starlette.background import BackgroundTask
+from starlette.middleware import Middleware
+from starlette.middleware.base import BaseHTTPMiddleware
 import mimetypes
 import os
 import tempfile
@@ -38,6 +40,21 @@ annotation_buffer = deque(maxlen=ANNOTATION_BUFFER_SIZE)
 
 # Handle external AI training process
 ai_process = None
+
+
+class EnsureSessionDirMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request, call_next):
+        if not os.path.exists(db.db_path):
+            db.reconnect()
+            if not db.get_samples():
+                db_dict = build_initial_db_dict()
+                validate_db_dict(db_dict)
+                db.set_samples([s["filepath"] for s in db_dict["samples"]])
+            global config, annotation_buffer
+            config = db.get_config() or {}
+            annotation_buffer.clear()
+        response = await call_next(request)
+        return response
 
 
 def terminate_ai_process():
@@ -348,7 +365,8 @@ app = Starlette(
         Route("/run_ai", run_ai, methods=["POST"]),
         Route("/stop_ai", stop_ai, methods=["POST"]),
         Route("/export_db", export_db, methods=["GET"]),
-    ]
+    ],
+    middleware=[Middleware(EnsureSessionDirMiddleware)],
 )
 app.mount("/", StaticFiles(directory=FRONTEND_DIR, html=True), name="frontend")
 

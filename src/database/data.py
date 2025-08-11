@@ -477,6 +477,17 @@ class DatabaseAPI:
         self.conn.execute("PRAGMA journal_mode=WAL;")
         self._create_tables()
 
+    def reconnect(self):
+        """Recreate the database connection if the underlying file was removed."""
+        try:
+            self.conn.close()
+        except Exception:
+            pass
+        os.makedirs(os.path.dirname(self.db_path), exist_ok=True)
+        self.conn = sqlite3.connect(self.db_path)
+        self.conn.execute("PRAGMA journal_mode=WAL;")
+        self._create_tables()
+
     def _create_tables(self):
         cursor = self.conn.cursor()
         cursor.execute(
