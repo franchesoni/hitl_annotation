@@ -12,6 +12,7 @@ from collections import defaultdict, deque
 import subprocess
 import atexit
 import signal
+import timm
 
 # --- Database integration ---
 from src.database.data import DatabaseAPI, validate_db_dict
@@ -197,7 +198,13 @@ async def put_config(request: Request):
     data = await request.json()
     if not isinstance(data, dict):
         return JSONResponse({"error": "Invalid config format"}, status_code=400)
-    
+
+    arch = data.get("architecture")
+    if arch and arch not in _list_architectures():
+        return JSONResponse(
+            {"error": f"Unsupported architecture '{arch}'"}, status_code=400
+        )
+
     # Merge and save the config in the database
     config.update(data)
     db.update_config(config)
@@ -241,13 +248,16 @@ async def get_training_stats(request: Request):
     return JSONResponse(stats)
 
 
+def _list_architectures():
+    """Return all allowed model architectures."""
+    resnets = ["resnet18", "resnet34"]
+    return resnets + [m for m in sorted(timm.list_models()) if m not in resnets]
+
+
 async def get_architectures(request: Request):
     """Return available model architectures for the training process."""
-    resnets = ["resnet18", "resnet34"]
-    import timm
-    models = sorted(timm.list_models())
-    architectures = resnets + [m for m in models if m not in resnets]
-    return JSONResponse({"architectures": architectures})
+    return JSONResponse({"architectures": _list_architectures()})
+
 
 
 async def run_ai(request: Request):
@@ -258,6 +268,10 @@ async def run_ai(request: Request):
 
     data = await request.json()
     arch = data.get("architecture", config.get("architecture", "resnet18"))
+    if arch not in _list_architectures():
+        return JSONResponse(
+            {"error": f"Unsupported architecture '{arch}'"}, status_code=400
+        )
     sleep = int(data.get("sleep", 0))
     budget = int(data.get("budget", 1000))
     preproc = config.get("preprocessing", {})
