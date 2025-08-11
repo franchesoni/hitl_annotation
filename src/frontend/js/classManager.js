@@ -49,9 +49,10 @@ export class ClassManager {
                 const className = this.globalClasses[idx];
                 this.selectedClass = className;
                 if (this.currentImageFilename && className) {
+                    let requestId;
                     try {
                         this.setLoading(true);
-                        let requestId = ++this.annotationRequestId; // declare in outer scope for finally access
+                        requestId = ++this.annotationRequestId; // store in outer scope for finally access
                         await this.api.annotateSample(this.currentImageFilename, className);
                         if (requestId !== this.annotationRequestId) return; // stale response
 
