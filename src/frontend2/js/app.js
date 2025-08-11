@@ -11,6 +11,12 @@ document.addEventListener('DOMContentLoaded', async () => {
         const exportDBBtn = document.getElementById('export-db-btn');
         const runBtn = document.getElementById('run-ai-btn');
         const stopBtn = document.getElementById('stop-ai-btn');
+        const aiStatus = document.getElementById('ai-status');
+        let aiRunning = false;
+        function updateAIButtons() {
+                if (runBtn) runBtn.style.display = aiRunning ? 'none' : 'inline-block';
+                if (stopBtn) stopBtn.style.display = aiRunning ? 'inline-block' : 'none';
+        }
         const archInput = document.getElementById('ai-arch');
         const sleepInput = document.getElementById('ai-sleep');
         const budgetInput = document.getElementById('ai-budget');
@@ -62,29 +68,42 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         // Create the API instance
         const api = new API();
+        updateAIButtons();
         if (exportDBBtn) {
                 exportDBBtn.addEventListener('click', () => api.exportDB());
         }
         if (runBtn) {
                 runBtn.addEventListener('click', async () => {
                         try {
-                                await api.runAI({
+                                const res = await api.runAI({
                                         architecture: archInput?.value || 'resnet18',
                                         sleep: Number(sleepInput?.value || 0),
                                         budget: Number(budgetInput?.value || 1000),
                                         resize: Number(resizeInput?.value || 64)
                                 });
+                                aiRunning = true;
+                                if (aiStatus) aiStatus.textContent = res.status;
                         } catch (e) {
+                                if (aiStatus) aiStatus.textContent = e.message;
+                                aiRunning = e.message.includes('already') ? true : false;
                                 console.error('Failed to start AI:', e);
+                        } finally {
+                                updateAIButtons();
                         }
                 });
         }
         if (stopBtn) {
                 stopBtn.addEventListener('click', async () => {
                         try {
-                                await api.stopAI();
+                                const res = await api.stopAI();
+                                aiRunning = false;
+                                if (aiStatus) aiStatus.textContent = res.status;
                         } catch (e) {
+                                if (aiStatus) aiStatus.textContent = e.message;
+                                aiRunning = e.message.includes('not running') ? false : true;
                                 console.error('Failed to stop AI:', e);
+                        } finally {
+                                updateAIButtons();
                         }
                 });
         }
