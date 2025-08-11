@@ -15,6 +15,13 @@ AI training:
 python -m src.ml.fastai_training --arch vit_medium_patch16_reg4_gap_256.sbb_in12k_ft_in1k
 ```
 
+## Data storage
+
+Runtime artifacts such as the SQLite database and model checkpoints are
+written to `src/database/session` by default. To store them elsewhere, set the
+`HITL_SESSION_DIR` environment variable to the desired directory. Removing this
+directory wipes all progress so the app starts from scratch on the next run.
+
 ## Backend
 - **Framework**: Starlette.
 - **Endpoints**
