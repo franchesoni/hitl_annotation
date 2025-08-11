@@ -8,6 +8,15 @@ body {
         color: #f0f0f0;
 }
 
+:root {
+        /* Unified button color palette */
+        --btn-bg: #1e64e5;
+        --btn-bg-hover: #1565c0;
+        --btn-border: #1e88e5;
+        --btn-text: #ffffff;
+        --btn-disabled: #6c757d;
+}
+
 .main-container {
 	display: flex;
 	width: 100%;
@@ -57,9 +66,9 @@ body {
 .nav-buttons button {
         flex: 1;
         padding: 8px 16px;
-        border: none;
-        background: linear-gradient(45deg, #1e88e5, #42a5f5);
-        color: white;
+        border: 1px solid var(--btn-border);
+        background: var(--btn-bg);
+        color: var(--btn-text);
         border-radius: 4px;
         cursor: pointer;
         box-shadow: 0 2px 4px rgba(0, 0, 0, 0.4);
@@ -67,12 +76,12 @@ body {
 }
 
 .nav-buttons button:hover {
-        background: linear-gradient(45deg, #1565c0, #1e88e5);
+        background: var(--btn-bg-hover);
 }
 
 .nav-buttons button:disabled {
-	background: #6c757d;
-	border-color: #6c757d;
+	background: var(--btn-disabled);
+	border-color: var(--btn-disabled);
 	cursor: not-allowed;
 }
 
@@ -91,9 +100,9 @@ body {
 
 .class-input-group button {
         padding: 8px 12px;
-        border: none;
-        background: linear-gradient(45deg, #2e7d32, #66bb6a);
-        color: white;
+        border: 1px solid var(--btn-border);
+        background: var(--btn-bg);
+        color: var(--btn-text);
         border-radius: 4px;
         cursor: pointer;
         box-shadow: 0 2px 4px rgba(0, 0, 0, 0.4);
@@ -101,7 +110,7 @@ body {
 }
 
 .class-input-group button:hover {
-        background: linear-gradient(45deg, #1b5e20, #2e7d32);
+        background: var(--btn-bg-hover);
 }
 
 .class-buttons {
@@ -113,9 +122,9 @@ body {
 .class-btn {
         padding: 10px 12px;
         border-radius: 4px;
-        border: none;
-        background: linear-gradient(45deg, #424242, #616161);
-        color: #f8f9fa;
+        border: 1px solid var(--btn-border);
+        background: var(--btn-bg);
+        color: var(--btn-text);
         cursor: pointer;
         font-size: 14px;
         text-align: left;
@@ -125,32 +134,32 @@ body {
 }
 
 .class-btn:hover {
-        background: linear-gradient(45deg, #616161, #757575);
+        background: var(--btn-bg-hover);
 }
 
 .class-btn.selected {
-        background: linear-gradient(45deg, #1565c0, #1e88e5);
-        border: 2px solid #0288d1;
+        background: var(--btn-bg-hover);
+        border: 2px solid var(--btn-bg-hover);
 }
 
 .class-btn.prediction {
-        border: 2px dashed #ffa000;
+        border: 2px dashed var(--btn-text);
 }
 
 .remove-btn {
         margin-left: 8px;
-        background: #dc3545;
-        color: white;
-        border: none;
+        background: var(--btn-bg);
+        color: var(--btn-text);
+        border: 1px solid var(--btn-border);
         border-radius: 4px;
         cursor: pointer;
 }
 
 .undo-btn {
         padding: 8px 12px;
-        border: none;
-        background: linear-gradient(45deg, #fbc02d, #ffeb3b);
-        color: #212121;
+        border: 1px solid var(--btn-border);
+        background: var(--btn-bg);
+        color: var(--btn-text);
         border-radius: 4px;
         cursor: pointer;
         margin-bottom: 10px;
@@ -159,14 +168,14 @@ body {
 }
 
 .undo-btn:hover {
-        background: linear-gradient(45deg, #f9a825, #fbc02d);
+        background: var(--btn-bg-hover);
 }
 
 .export-btn {
         padding: 8px 12px;
-        border: none;
-        background: linear-gradient(45deg, #8e24aa, #ba68c8);
-        color: #f8f9fa;
+        border: 1px solid var(--btn-border);
+        background: var(--btn-bg);
+        color: var(--btn-text);
         border-radius: 4px;
         cursor: pointer;
         margin-bottom: 10px;
@@ -175,7 +184,7 @@ body {
 }
 
 .export-btn:hover {
-        background: linear-gradient(45deg, #7b1fa2, #8e24aa);
+        background: var(--btn-bg-hover);
 }
 
 .info-display {
@@ -231,9 +240,9 @@ body {
 	max-height: 600px;
 }
 #dev-toggle {
-        background: linear-gradient(45deg, #1e88e5, #42a5f5);
-        color: white;
-        border: none;
+        background: var(--btn-bg);
+        color: var(--btn-text);
+        border: 1px solid var(--btn-border);
         border-radius: 4px;
         padding: 8px 12px;
         cursor: pointer;
@@ -245,7 +254,7 @@ body {
 }
 
 #dev-toggle:hover {
-        background: linear-gradient(45deg, #1565c0, #1e88e5);
+        background: var(--btn-bg-hover);
 }
 .checklist-item {
 	margin: 3px 0;
@@ -298,8 +307,8 @@ body {
 
 .run-ai-btn, .stop-ai-btn {
         padding: 8px 12px;
-        border: none;
-        color: #f8f9fa;
+        border: 1px solid var(--btn-border);
+        color: var(--btn-text);
         border-radius: 4px;
         cursor: pointer;
         box-shadow: 0 2px 4px rgba(0, 0, 0, 0.4);
@@ -307,17 +316,17 @@ body {
 }
 
 .run-ai-btn {
-        background: linear-gradient(45deg, #2e7d32, #66bb6a);
+        background: var(--btn-bg);
 }
 
 .run-ai-btn:hover {
-        background: linear-gradient(45deg, #1b5e20, #2e7d32);
+        background: var(--btn-bg-hover);
 }
 
 .stop-ai-btn {
-        background: linear-gradient(45deg, #c62828, #e57373);
+        background: var(--btn-bg);
 }
 
 .stop-ai-btn:hover {
-        background: linear-gradient(45deg, #8e0000, #c62828);
+        background: var(--btn-bg-hover);
 }
