@@ -10,6 +10,8 @@ import tempfile
 from pathlib import Path
 from collections import defaultdict, deque
 import subprocess
+import atexit
+import signal
 
 # --- Database integration ---
 from src.database.data import DatabaseAPI, validate_db_dict
@@ -35,6 +37,29 @@ annotation_buffer = deque(maxlen=ANNOTATION_BUFFER_SIZE)
 
 # Handle external AI training process
 ai_process = None
+
+
+def terminate_ai_process():
+    """Ensure the AI subprocess and its children are terminated."""
+    global ai_process
+    if ai_process and ai_process.poll() is None:
+        try:
+            os.killpg(ai_process.pid, signal.SIGTERM)
+        except Exception:
+            ai_process.terminate()
+        ai_process = None
+
+
+def _cleanup(*args):
+    terminate_ai_process()
+
+
+atexit.register(_cleanup)
+for _sig in (signal.SIGINT, signal.SIGTERM):
+    try:
+        signal.signal(_sig, _cleanup)
+    except Exception:
+        pass
 
 
 def create_image_response(image_path):
@@ -263,7 +288,20 @@ async def run_ai(request: Request):
         cmd.append("--no-flip")
     if max_rotate != 10.0:
         cmd.extend(["--max-rotate", str(max_rotate)])
-    ai_process = subprocess.Popen(cmd)
+
+    def _set_death_sig():
+        try:
+            import ctypes
+            libc = ctypes.CDLL("libc.so.6")
+            libc.prctl(1, signal.SIGTERM)
+        except Exception:
+            pass
+
+    ai_process = subprocess.Popen(
+        cmd,
+        start_new_session=True,
+        preexec_fn=_set_death_sig,
+    )
     return JSONResponse({"status": "started"})
 
 
@@ -271,8 +309,7 @@ async def stop_ai(request: Request):
     """Terminate the background training process if running."""
     global ai_process
     if ai_process and ai_process.poll() is None:
-        ai_process.terminate()
-        ai_process = None
+        terminate_ai_process()
         return JSONResponse({"status": "stopped"})
     return JSONResponse({"status": "not running"}, status_code=400)
 
