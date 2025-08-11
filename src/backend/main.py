@@ -259,7 +259,6 @@ async def get_architectures(request: Request):
     return JSONResponse({"architectures": _list_architectures()})
 
 
-
 async def run_ai(request: Request):
     """Launch the background training process if not already running."""
     global ai_process
