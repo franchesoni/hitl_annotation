@@ -16,7 +16,7 @@ from src.database.data import DatabaseAPI, validate_db_dict
 from src.database.db_init import build_initial_db_dict
 
 BASE_DIR = Path(__file__).resolve().parent
-FRONTEND_DIR = BASE_DIR.parent / "frontend2"
+FRONTEND_DIR = BASE_DIR.parent / "frontend"
 
 # Initialize the database
 db = DatabaseAPI()

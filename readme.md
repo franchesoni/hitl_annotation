@@ -34,7 +34,7 @@ python -m src.ml.fastai_training --arch vit_medium_patch16_reg4_gap_256.sbb_in12
   - TODO: helper to fetch the next unlabeled sample.
 
 ## Frontend
-- JS interface under `src/frontend2` with image viewer, zoom/pan/reset,
+- JS interface under `src/frontend` with image viewer, zoom/pan/reset,
   keyboard shortcuts, class manager, undo, prediction overlay, and a developer
   checklist.
 
