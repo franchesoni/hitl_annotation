@@ -80,13 +80,18 @@ def create_image_response(image_path):
         headers["X-Label-Class"] = str(label_ann.get('class', ''))
         headers["X-Label-Source"] = "annotation"
     else:
-        # Look for prediction
+        # Look for prediction with the highest probability
         preds = db.get_predictions(image_path)
-        pred_ann = next((p for p in preds if p.get('type') == 'label' and p.get('probability') is not None), None)
-        if pred_ann:
-            headers["X-Label-Class"] = str(pred_ann.get('class', ''))
+        pred_candidates = [
+            p
+            for p in preds
+            if p.get("type") == "label" and p.get("probability") is not None
+        ]
+        if pred_candidates:
+            pred_ann = max(pred_candidates, key=lambda p: p.get("probability"))
+            headers["X-Label-Class"] = str(pred_ann.get("class", ""))
             headers["X-Label-Source"] = "prediction"
-            headers["X-Label-Probability"] = str(pred_ann.get('probability', ''))
+            headers["X-Label-Probability"] = str(pred_ann.get("probability", ""))
     
     global last_image_served
     last_image_served = str(image_path)
@@ -164,10 +169,15 @@ async def handle_annotation(request: Request):
         # Store in recent annotation buffer
         annotation_buffer.append((filepath, class_name))
 
-        # Accuracy tracking: check prediction
+        # Accuracy tracking: check prediction using highest-probability label
         preds = db.get_predictions(filepath)
-        pred_ann = next((p for p in preds if p.get('type') == 'label' and p.get('probability') is not None), None)
-        if pred_ann:
+        pred_candidates = [
+            p
+            for p in preds
+            if p.get("type") == "label" and p.get("probability") is not None
+        ]
+        if pred_candidates:
+            pred_ann = max(pred_candidates, key=lambda p: p.get("probability"))
             was_correct = str(pred_ann.get("class")) == str(class_name)
             db.log_accuracy(was_correct)
         return JSONResponse({"status": "ok"})
