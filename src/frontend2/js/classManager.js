@@ -51,9 +51,9 @@ export class ClassManager {
                 if (this.currentImageFilename && className) {
                     try {
                         this.setLoading(true);
-                        const requestId = ++this.annotationRequestId;
+                        let requestId = ++this.annotationRequestId; // declare in outer scope for finally access
                         await this.api.annotateSample(this.currentImageFilename, className);
-                        if (requestId !== this.annotationRequestId) return;
+                        if (requestId !== this.annotationRequestId) return; // stale response
 
                         console.log('Annotation succeeded, calling loadNextImage (keyboard)');
                         if (typeof this.loadNextImage === 'function') {
@@ -64,10 +64,8 @@ export class ClassManager {
                     } catch (err) {
                         console.error('Annotation request error:', err);
                     } finally {
-                        if (this.annotationRequestId === requestId) {
-                            this.setLoading(false);
-                        }
-                        this.setLoading(false);
+                        // Only clear loading if this request is still the latest
+                        if (this.annotationRequestId === requestId) this.setLoading(false);
                     }
                 }
                 if (this.onClassChange) this.onClassChange(this.currentImageFilename, className);
@@ -214,11 +212,12 @@ export class ClassManager {
                     this.selectedClass = c;
                     if (this.onClassChange) this.onClassChange(this.currentImageFilename, c);
                     this.render();
+                    let requestId;
                     try {
                         this.setLoading(true);
-                        const requestId = ++this.annotationRequestId;
+                        requestId = ++this.annotationRequestId; // make visible to finally
                         await this.api.annotateSample(this.currentImageFilename, c);
-                        if (requestId !== this.annotationRequestId) return;
+                        if (requestId !== this.annotationRequestId) return; // stale response
                         console.log('Annotation succeeded, calling loadNextImage (button)');
                         if (typeof this.loadNextImage === 'function') {
                             await this.loadNextImage();
@@ -228,10 +227,7 @@ export class ClassManager {
                     } catch (err) {
                         console.error('Annotation request error:', err);
                     } finally {
-                        if (this.annotationRequestId === requestId) {
-                            this.setLoading(false);
-                        }
-
+                        if (this.annotationRequestId === requestId) this.setLoading(false);
                     }
                 };
 
