@@ -104,14 +104,16 @@ export class API {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(params)
         });
-        if (!res.ok) throw new Error('Failed to start AI');
-        return await res.json();
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.status || 'Failed to start AI');
+        return data;
     }
 
     async stopAI() {
         const res = await fetch('/stop_ai', { method: 'POST' });
-        if (!res.ok) throw new Error('Failed to stop AI');
-        return await res.json();
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.status || 'Failed to stop AI');
+        return data;
     }
 
     async exportDB() {

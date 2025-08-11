@@ -34,6 +34,13 @@ const overlay = document.getElementById('loading-overlay');
 const idDiv = document.getElementById('image-ids');
 const runAIBtn = document.getElementById('run-ai-btn');
 const stopAIBtn = document.getElementById('stop-ai-btn');
+const aiStatusDiv = document.getElementById('ai-status');
+let aiRunning = false;
+function updateAIButtons() {
+    if (runAIBtn) runAIBtn.style.display = aiRunning ? 'none' : 'inline-block';
+    if (stopAIBtn) stopAIBtn.style.display = aiRunning ? 'inline-block' : 'none';
+}
+updateAIButtons();
 const aiArchInput = document.getElementById('ai-arch');
 const aiSleepInput = document.getElementById('ai-sleep');
 const aiBudgetInput = document.getElementById('ai-budget');
@@ -64,7 +71,7 @@ let annotationHistory = [];
 if (runAIBtn) {
     runAIBtn.addEventListener('click', async () => {
         try {
-            await fetch('/run_ai', {
+            const res = await fetch('/run_ai', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -74,8 +81,16 @@ if (runAIBtn) {
                     resize: Number(aiResizeInput?.value || 64)
                 })
             });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.status || 'Failed to start AI');
+            aiRunning = true;
+            if (aiStatusDiv) aiStatusDiv.textContent = data.status;
         } catch (e) {
+            if (aiStatusDiv) aiStatusDiv.textContent = e.message;
+            aiRunning = e.message.includes('already') ? true : false;
             console.error('Failed to start AI', e);
+        } finally {
+            updateAIButtons();
         }
     });
 }
@@ -83,9 +98,17 @@ if (runAIBtn) {
 if (stopAIBtn) {
     stopAIBtn.addEventListener('click', async () => {
         try {
-            await fetch('/stop_ai', { method: 'POST' });
+            const res = await fetch('/stop_ai', { method: 'POST' });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.status || 'Failed to stop AI');
+            aiRunning = false;
+            if (aiStatusDiv) aiStatusDiv.textContent = data.status;
         } catch (e) {
+            if (aiStatusDiv) aiStatusDiv.textContent = e.message;
+            aiRunning = e.message.includes('not running') ? false : true;
             console.error('Failed to stop AI', e);
+        } finally {
+            updateAIButtons();
         }
     });
 }
