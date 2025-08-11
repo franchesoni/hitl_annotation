@@ -214,6 +214,7 @@ import os
 import sqlite3
 import json
 import time
+from typing import List, Optional
 
 
 class DatabaseAPI:
@@ -542,6 +543,81 @@ class DatabaseAPI:
                 timestamp INTEGER
             )
             """
+        )
+        cursor.execute(
+            """
+            CREATE TABLE IF NOT EXISTS app_state (
+                scope TEXT NOT NULL,
+                k TEXT NOT NULL,
+                v TEXT NOT NULL,
+                version INTEGER NOT NULL DEFAULT 0,
+                updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                PRIMARY KEY (scope, k)
+            )
+            """
+        )
+        cursor.execute(
+            """
+            CREATE TABLE IF NOT EXISTS event_log (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                scope TEXT NOT NULL,
+                type TEXT NOT NULL,
+                payload TEXT NOT NULL,
+                ts DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+            )
+            """
+        )
+        cursor.execute(
+            "CREATE INDEX IF NOT EXISTS idx_event_scope_ts ON event_log(scope, ts DESC)"
+        )
+        self.conn.commit()
+
+    def set_state(self, scope: str, key: str, value: str) -> None:
+        cursor = self.conn.cursor()
+        cursor.execute(
+            """
+            INSERT INTO app_state(scope, k, v, updated_at)
+            VALUES(?, ?, ?, CURRENT_TIMESTAMP)
+            ON CONFLICT(scope, k) DO UPDATE SET
+                v=excluded.v,
+                version=app_state.version + 1,
+                updated_at=CURRENT_TIMESTAMP
+            """,
+            (scope, key, value),
+        )
+        self.conn.commit()
+
+    def get_state(self, scope: str, key: str) -> Optional[str]:
+        cursor = self.conn.cursor()
+        cursor.execute(
+            "SELECT v FROM app_state WHERE scope = ? AND k = ?",
+            (scope, key),
+        )
+        row = cursor.fetchone()
+        return row[0] if row else None
+
+    def log_event(self, scope: str, type_: str, payload: dict) -> None:
+        cursor = self.conn.cursor()
+        cursor.execute(
+            "INSERT INTO event_log(scope, type, payload) VALUES(?, ?, ?)",
+            (scope, type_, json.dumps(payload)),
+        )
+        self.conn.commit()
+
+    def get_recent_events(self, scope: str, type_: str, limit: int) -> List[dict]:
+        cursor = self.conn.cursor()
+        cursor.execute(
+            "SELECT payload FROM event_log WHERE scope = ? AND type = ? ORDER BY ts DESC LIMIT ?",
+            (scope, type_, limit),
+        )
+        rows = cursor.fetchall()
+        return [json.loads(r[0]) for r in reversed(rows)]
+
+    def delete_event_by_field(self, scope: str, type_: str, field: str, value: str) -> None:
+        cursor = self.conn.cursor()
+        cursor.execute(
+            "DELETE FROM event_log WHERE scope = ? AND type = ? AND json_extract(payload, ?) = ?",
+            (scope, type_, f'$.{field}', value),
         )
         self.conn.commit()
 

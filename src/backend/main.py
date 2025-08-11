@@ -8,10 +8,10 @@ import mimetypes
 import os
 import tempfile
 from pathlib import Path
-from collections import defaultdict, deque
 import subprocess
 import atexit
 import signal
+import json
 import timm
 
 # --- Database integration ---
@@ -29,26 +29,37 @@ if not db.get_samples():
     db.set_samples([s["filepath"] for s in db_dict["samples"]])
 config = db.get_config() or {}
 
-# Track the last image served to the client
-last_image_served = None
-
-# Buffer storing recent annotations (filepath, class)
-ANNOTATION_BUFFER_SIZE = 20
-annotation_buffer = deque(maxlen=ANNOTATION_BUFFER_SIZE)
-
-# Handle external AI training process
-ai_process = None
+if not db.get_state("global", "trainer_status"):
+    db.set_state("global", "trainer_status", json.dumps({"status": "idle"}))
 
 
 def terminate_ai_process():
     """Ensure the AI subprocess and its children are terminated."""
-    global ai_process
-    if ai_process and ai_process.poll() is None:
+    status_json = db.get_state("global", "trainer_status")
+    if not status_json:
+        return False
+    try:
+        status = json.loads(status_json)
+    except Exception:
+        status = {}
+    pid = status.get("pid")
+    pgid = status.get("pgid", pid)
+    killed = False
+    if pid:
         try:
-            os.killpg(ai_process.pid, signal.SIGTERM)
+            os.killpg(int(pgid), signal.SIGTERM)
+            killed = True
         except Exception:
-            ai_process.terminate()
-        ai_process = None
+            try:
+                os.kill(int(pid), signal.SIGTERM)
+                killed = True
+            except Exception:
+                pass
+    status.update({"status": "idle"})
+    status.pop("pid", None)
+    status.pop("pgid", None)
+    db.set_state("global", "trainer_status", json.dumps(status))
+    return killed
 
 
 def _cleanup(*args):
@@ -88,8 +99,7 @@ def create_image_response(image_path):
             headers["X-Label-Source"] = "prediction"
             headers["X-Label-Probability"] = str(pred_ann.get('probability', ''))
     
-    global last_image_served
-    last_image_served = str(image_path)
+    db.set_state("global", "last_image_id", str(image_path))
 
     return FileResponse(image_path, media_type=mime_type, headers=headers)
 
@@ -124,12 +134,12 @@ async def get_next_sample(request):
             return create_image_response(filepath)
         return sequential_next()
     if strategy == "last_class":
-        if annotation_buffer:
-            target_class = annotation_buffer[-1][1]
+        events = db.get_recent_events("global", "annotation", 20)
+        if events:
+            target_class = events[-1].get("class")
             filepath = db.get_next_unlabeled_for_class(target_class, current_id)
             if filepath:
                 return create_image_response(filepath)
-        # Fallbacks if no sample found for last class
         filepath = db.get_next_unlabeled_default(current_id)
         if filepath:
             return create_image_response(filepath)
@@ -148,7 +158,6 @@ async def get_next_sample(request):
 
 
 async def handle_annotation(request: Request):
-    global annotation_buffer
     if request.method == "POST":
         data = await request.json()
         filepath = data.get("filepath")
@@ -161,8 +170,8 @@ async def handle_annotation(request: Request):
         # Write annotation to DB
         db.save_label_annotation(filepath, class_name)
 
-        # Store in recent annotation buffer
-        annotation_buffer.append((filepath, class_name))
+        # Log annotation event
+        db.log_event("global", "annotation", {"filepath": filepath, "class": class_name})
 
         # Accuracy tracking: check prediction
         preds = db.get_predictions(filepath)
@@ -179,11 +188,7 @@ async def handle_annotation(request: Request):
         if filepath not in db.get_samples() or not os.path.isfile(filepath):
             return JSONResponse({"error": "Filepath not found"}, status_code=404)
         db.delete_label_annotation(filepath)
-        # Remove any occurrences from the annotation buffer
-        annotation_buffer = deque(
-            [p for p in annotation_buffer if p[0] != filepath],
-            maxlen=ANNOTATION_BUFFER_SIZE,
-        )
+        db.delete_event_by_field("global", "annotation", "filepath", filepath)
         return JSONResponse({"status": "deleted"})
     else:
         return JSONResponse({"error": "Method not allowed"}, status_code=405)
@@ -235,7 +240,7 @@ async def get_stats(request: Request):
     error = (1 - accuracy) if accuracy is not None else None
     return JSONResponse(
         {
-            "image": last_image_served,
+            "image": db.get_state("global", "last_image_id"),
             "annotated": annotated,
             "total": total,
             "tries": tries,
@@ -264,9 +269,18 @@ async def get_architectures(request: Request):
 
 async def run_ai(request: Request):
     """Launch the background training process if not already running."""
-    global ai_process
-    if ai_process and ai_process.poll() is None:
-        return JSONResponse({"status": "already running"}, status_code=400)
+    status_json = db.get_state("global", "trainer_status")
+    if status_json:
+        try:
+            status = json.loads(status_json)
+            if status.get("status") == "running" and status.get("pid"):
+                try:
+                    os.kill(int(status.get("pid")), 0)
+                    return JSONResponse({"status": "already running"}, status_code=400)
+                except Exception:
+                    pass
+        except Exception:
+            pass
 
     data = await request.json()
     arch = data.get("architecture", config.get("architecture", "resnet18"))
@@ -311,14 +325,18 @@ async def run_ai(request: Request):
         start_new_session=True,
         preexec_fn=_set_death_sig,
     )
+    status = {
+        "pid": ai_process.pid,
+        "pgid": os.getpgid(ai_process.pid),
+        "status": "running",
+    }
+    db.set_state("global", "trainer_status", json.dumps(status))
     return JSONResponse({"status": "started"})
 
 
 async def stop_ai(request: Request):
     """Terminate the background training process if running."""
-    global ai_process
-    if ai_process and ai_process.poll() is None:
-        terminate_ai_process()
+    if terminate_ai_process():
         return JSONResponse({"status": "stopped"})
     return JSONResponse({"status": "not running"}, status_code=400)
 
