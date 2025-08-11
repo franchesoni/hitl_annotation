@@ -98,6 +98,13 @@ export class API {
         return await res.json();
     }
 
+    async getArchitectures() {
+        const res = await fetch('/architectures');
+        if (!res.ok) throw new Error('Failed to get architectures');
+        const data = await res.json();
+        return Array.isArray(data.architectures) ? data.architectures : [];
+    }
+
     async runAI(params) {
         const res = await fetch('/run_ai', {
             method: 'POST',
