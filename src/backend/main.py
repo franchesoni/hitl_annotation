@@ -10,6 +10,9 @@ import tempfile
 from pathlib import Path
 from collections import defaultdict, deque
 import subprocess
+import atexit
+import signal
+import timm
 
 # --- Database integration ---
 from src.database.data import DatabaseAPI, validate_db_dict
@@ -35,6 +38,29 @@ annotation_buffer = deque(maxlen=ANNOTATION_BUFFER_SIZE)
 
 # Handle external AI training process
 ai_process = None
+
+
+def terminate_ai_process():
+    """Ensure the AI subprocess and its children are terminated."""
+    global ai_process
+    if ai_process and ai_process.poll() is None:
+        try:
+            os.killpg(ai_process.pid, signal.SIGTERM)
+        except Exception:
+            ai_process.terminate()
+        ai_process = None
+
+
+def _cleanup(*args):
+    terminate_ai_process()
+
+
+atexit.register(_cleanup)
+for _sig in (signal.SIGINT, signal.SIGTERM):
+    try:
+        signal.signal(_sig, _cleanup)
+    except Exception:
+        pass
 
 
 def create_image_response(image_path):
@@ -172,7 +198,13 @@ async def put_config(request: Request):
     data = await request.json()
     if not isinstance(data, dict):
         return JSONResponse({"error": "Invalid config format"}, status_code=400)
-    
+
+    arch = data.get("architecture")
+    if arch and arch not in _list_architectures():
+        return JSONResponse(
+            {"error": f"Unsupported architecture '{arch}'"}, status_code=400
+        )
+
     # Merge and save the config in the database
     config.update(data)
     db.update_config(config)
@@ -216,13 +248,15 @@ async def get_training_stats(request: Request):
     return JSONResponse(stats)
 
 
+def _list_architectures():
+    """Return all allowed model architectures."""
+    resnets = ["resnet18", "resnet34"]
+    return resnets + [m for m in sorted(timm.list_models()) if m not in resnets]
+
+
 async def get_architectures(request: Request):
     """Return available model architectures for the training process."""
-    resnets = ["resnet18", "resnet34"]
-    import timm
-    models = sorted(timm.list_models())
-    architectures = resnets + [m for m in models if m not in resnets]
-    return JSONResponse({"architectures": architectures})
+    return JSONResponse({"architectures": _list_architectures()})
 
 
 async def run_ai(request: Request):
@@ -233,6 +267,10 @@ async def run_ai(request: Request):
 
     data = await request.json()
     arch = data.get("architecture", config.get("architecture", "resnet18"))
+    if arch not in _list_architectures():
+        return JSONResponse(
+            {"error": f"Unsupported architecture '{arch}'"}, status_code=400
+        )
     sleep = int(data.get("sleep", 0))
     budget = int(data.get("budget", 1000))
     preproc = config.get("preprocessing", {})
@@ -256,7 +294,20 @@ async def run_ai(request: Request):
         cmd.append("--no-flip")
     if max_rotate != 10.0:
         cmd.extend(["--max-rotate", str(max_rotate)])
-    ai_process = subprocess.Popen(cmd)
+
+    def _set_death_sig():
+        try:
+            import ctypes
+            libc = ctypes.CDLL("libc.so.6")
+            libc.prctl(1, signal.SIGTERM)
+        except Exception:
+            pass
+
+    ai_process = subprocess.Popen(
+        cmd,
+        start_new_session=True,
+        preexec_fn=_set_death_sig,
+    )
     return JSONResponse({"status": "started"})
 
 
@@ -264,8 +315,7 @@ async def stop_ai(request: Request):
     """Terminate the background training process if running."""
     global ai_process
     if ai_process and ai_process.poll() is None:
-        ai_process.terminate()
-        ai_process = None
+        terminate_ai_process()
         return JSONResponse({"status": "stopped"})
     return JSONResponse({"status": "not running"}, status_code=400)
 
