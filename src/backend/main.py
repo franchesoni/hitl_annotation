@@ -208,7 +208,6 @@ async def put_config(request: Request):
     # Merge and save the config in the database
     config.update(data)
     db.update_config(config)
-    print("Config updated:", config)
     return JSONResponse({"status": "Config saved successfully"})
 
 async def get_config(request: Request):
@@ -216,7 +215,6 @@ async def get_config(request: Request):
     # Treat an empty configuration as a valid result instead of returning 404.
     # The database returns an empty dict when no config has been saved yet, so
     # simply return that to the client.
-    print("Config updated", cfg)
     return JSONResponse(cfg)
 
 async def get_stats(request: Request):
