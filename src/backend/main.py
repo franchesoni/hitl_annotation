@@ -12,6 +12,7 @@ from collections import defaultdict, deque
 import subprocess
 import atexit
 import signal
+from functools import lru_cache
 import timm
 
 # --- Database integration ---
@@ -251,6 +252,7 @@ async def get_training_stats(request: Request):
     return JSONResponse(stats)
 
 
+@lru_cache(maxsize=1)
 def _list_architectures():
     """Return all allowed model architectures."""
     resnets = ["resnet18", "resnet34"]
