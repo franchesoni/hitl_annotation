@@ -177,42 +177,68 @@ def get_next_sample(request):
         return JSONResponse({"error": "Invalid strategy"}, status_code=400)
 
 
-def handle_annotation(request: Request):
+def _add_annotation(data):
+    """Add a new annotation for a given filepath and class."""
     with DatabaseAPI() as db:
-        if request.method == "POST":
-            data = anyio.from_thread.run(request.json)
-            filepath = data.get("filepath")
-            class_name = data.get("class")
-            if not filepath or not isinstance(class_name, str):
-                return JSONResponse({"error": "Missing or invalid 'filepath' or 'class'"}, status_code=400)
-            # Ensure the filepath exists in the database and on disk
-            if filepath not in db.get_samples() or not os.path.isfile(filepath):
-                return JSONResponse({"error": "Filepath not found"}, status_code=404)
-            # Write annotation to DB
-            db.save_label_annotation(filepath, class_name)
+        filepath = data["filepath"]
+        class_name = data.get("class")
+        if not filepath or not isinstance(class_name, str):
+            return JSONResponse(
+                {"error": "Missing or invalid 'class'"}, status_code=400
+            )
+        # Ensure the filepath exists in the database and on disk
+        if filepath not in db.get_samples() or not os.path.isfile(filepath):
+            return JSONResponse({"error": "Filepath not found"}, status_code=404)
+        # Write annotation to DB
+        db.save_label_annotation(filepath, class_name)
 
-            # Log annotation event
-            db.log_event("global", "annotation", {"filepath": filepath, "class": class_name})
+        # Log annotation event
+        db.log_event("global", "annotation", {"filepath": filepath, "class": class_name})
 
-            # Accuracy tracking: check prediction
-            preds = db.get_predictions(filepath)
-            pred_ann = next((p for p in preds if p.get('type') == 'label' and p.get('probability') is not None), None)
-            if pred_ann:
-                was_correct = str(pred_ann.get("class")) == str(class_name)
-                db.log_accuracy(was_correct)
-            return JSONResponse({"status": "ok"})
-        elif request.method == "DELETE":
-            data = anyio.from_thread.run(request.json)
-            filepath = data.get("filepath")
-            if not filepath:
-                return JSONResponse({"error": "Missing 'filepath'"}, status_code=400)
-            if filepath not in db.get_samples() or not os.path.isfile(filepath):
-                return JSONResponse({"error": "Filepath not found"}, status_code=404)
-            db.delete_label_annotation(filepath)
-            db.delete_event_by_field("global", "annotation", "filepath", filepath)
-            return JSONResponse({"status": "deleted"})
-        else:
-            return JSONResponse({"error": "Method not allowed"}, status_code=405)
+    # Accuracy tracking: check prediction
+    preds = db.get_predictions(filepath)
+    pred_ann = next(
+        (p for p in preds if p.get("type") == "label" and p.get("probability") is not None),
+        None,
+    )
+    if pred_ann:
+        was_correct = str(pred_ann.get("class")) == str(class_name)
+        db.log_accuracy(was_correct)
+
+    return JSONResponse({"status": "ok"})
+
+
+def _remove_annotation(data):
+    """Remove an annotation for a given filepath."""
+    with DatabaseAPI() as db:
+        filepath = data["filepath"]
+        if not filepath:
+            return JSONResponse({"error": "Missing 'filepath'"}, status_code=400)
+        if filepath not in db.get_samples() or not os.path.isfile(filepath):
+            return JSONResponse({"error": "Filepath not found"}, status_code=404)
+        db.delete_label_annotation(filepath)
+
+        # Remove any occurrences from the annotation buffer
+        db.delete_event_by_field("global", "annotation", "filepath", filepath)
+    return JSONResponse({"status": "deleted"})
+
+
+async def handle_annotation(request: Request):
+    data = anyio.from_thread.run(request.json)
+    filepath = data.get("filepath")
+    if not filepath:
+        return JSONResponse({"error": "Missing 'filepath'"}, status_code=400)
+
+    # Ensure the filepath exists in the database and on disk
+    if filepath not in db.get_samples() or not os.path.isfile(filepath):
+        return JSONResponse({"error": "Filepath not found"}, status_code=404)
+
+    if request.method == "POST":
+        return _add_annotation(data)
+    elif request.method == "DELETE":
+        return _remove_annotation(data)
+    else:
+        return JSONResponse({"error": "Method not allowed"}, status_code=405)
 
 def get_accuracy_stats(request: Request):
     with DatabaseAPI() as db:
