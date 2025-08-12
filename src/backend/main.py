@@ -80,15 +80,16 @@ def create_image_response(image_path):
         headers["X-Label-Class"] = str(label_ann.get('class', ''))
         headers["X-Label-Source"] = "annotation"
     else:
-        # Look for prediction with the highest probability
+        # Use prediction if available; there should be at most one per image
         preds = db.get_predictions(image_path)
         pred_candidates = [
             p
             for p in preds
             if p.get("type") == "label" and p.get("probability") is not None
         ]
+        assert len(pred_candidates) <= 1, "Expected at most one prediction per image"
         if pred_candidates:
-            pred_ann = max(pred_candidates, key=lambda p: p.get("probability"))
+            pred_ann = pred_candidates[0]
             headers["X-Label-Class"] = str(pred_ann.get("class", ""))
             headers["X-Label-Source"] = "prediction"
             headers["X-Label-Probability"] = str(pred_ann.get("probability", ""))
@@ -169,15 +170,16 @@ async def handle_annotation(request: Request):
         # Store in recent annotation buffer
         annotation_buffer.append((filepath, class_name))
 
-        # Accuracy tracking: check prediction using highest-probability label
+        # Accuracy tracking: ensure at most one prediction and compare it
         preds = db.get_predictions(filepath)
         pred_candidates = [
             p
             for p in preds
             if p.get("type") == "label" and p.get("probability") is not None
         ]
+        assert len(pred_candidates) <= 1, "Expected at most one prediction per image"
         if pred_candidates:
-            pred_ann = max(pred_candidates, key=lambda p: p.get("probability"))
+            pred_ann = pred_candidates[0]
             was_correct = str(pred_ann.get("class")) == str(class_name)
             db.log_accuracy(was_correct)
         return JSONResponse({"status": "ok"})
