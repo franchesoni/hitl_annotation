@@ -473,10 +473,17 @@ class DatabaseAPI:
         else:
             os.makedirs(os.path.dirname(db_path), exist_ok=True)
         self.db_path = db_path
+        self.conn = None
+
+    def __enter__(self):
         self.conn = sqlite3.connect(self.db_path)
         # Enable WAL mode for better concurrency
         self.conn.execute("PRAGMA journal_mode=WAL;")
         self._create_tables()
+        return self
+
+    def __exit__(self, exc_type, exc, tb):
+        self.close()
 
     def reconnect(self):
         """Recreate the database connection if the underlying file was removed."""
@@ -633,7 +640,9 @@ class DatabaseAPI:
         self.conn.commit()
 
     def close(self):
-        self.conn.close()
+        if self.conn:
+            self.conn.close()
+            self.conn = None
 
     def get_annotation_counts(self):
         """Return a dict mapping label class to number of annotations."""

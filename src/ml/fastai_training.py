@@ -132,87 +132,86 @@ def _run_forever(
     flip: bool,
     max_rotate: float,
 ) -> None:
-    db = DatabaseAPI(db_path)
+    with DatabaseAPI(db_path) as db:
 
-    def _exit_handler(*_):
-        print("\n[INFO] Exiting…")
-        db.close()
-        sys.exit(0)
+        def _exit_handler(*_):
+            print("\n[INFO] Exiting…")
+            sys.exit(0)
 
-    signal.signal(signal.SIGINT, _exit_handler)
-    signal.signal(signal.SIGTERM, _exit_handler)
+        signal.signal(signal.SIGINT, _exit_handler)
+        signal.signal(signal.SIGTERM, _exit_handler)
 
-    model_arch = resnet18 if arch == "resnet18" else (resnet34 if arch == "resnet34" else arch)
-    learner = None  # will lazily instantiate when we first have data
-    model_path = Path(db.db_path).with_name("checkpoint.pkl")
-    cycle = 0
+        model_arch = resnet18 if arch == "resnet18" else (resnet34 if arch == "resnet34" else arch)
+        learner = None  # will lazily instantiate when we first have data
+        model_path = Path(db.db_path).with_name("checkpoint.pkl")
+        cycle = 0
 
-    while True:
-        cycle += 1
-        try:
-            train_items = _gather_training_items(db)
-            if not train_items:
-                print("[WARN] No label annotations available — sleeping…")
-                time.sleep(max(1, sleep_s))
-                continue
+        while True:
+            cycle += 1
+            try:
+                train_items = _gather_training_items(db)
+                if not train_items:
+                    print("[WARN] No label annotations available — sleeping…")
+                    time.sleep(max(1, sleep_s))
+                    continue
 
-            paths, labels = zip(*train_items)
-            dls = _build_dls(paths, labels, resize, flip, max_rotate)
+                paths, labels = zip(*train_items)
+                dls = _build_dls(paths, labels, resize, flip, max_rotate)
 
-            new_classes = set(dls.vocab)
-            if learner is None:
-                if model_path.exists():
-                    try:
-                        learner = load_learner(model_path)
-                        learner.dls = dls
-                    except Exception as e:
-                        print(f"[WARN] Failed to load exported learner: {e}")
+                new_classes = set(dls.vocab)
+                if learner is None:
+                    if model_path.exists():
+                        try:
+                            learner = load_learner(model_path)
+                            learner.dls = dls
+                        except Exception as e:
+                            print(f"[WARN] Failed to load exported learner: {e}")
+                            learner = vision_learner(dls, model_arch, metrics=accuracy)
+                    else:
                         learner = vision_learner(dls, model_arch, metrics=accuracy)
                 else:
-                    learner = vision_learner(dls, model_arch, metrics=accuracy)
-            else:
-                current_classes = set(learner.dls.vocab)
-                if new_classes != current_classes:
-                    print(
-                        f"[INFO] Detected class change {current_classes} -> {new_classes}; resetting model"
-                    )
-                    learner = vision_learner(dls, model_arch, metrics=accuracy)
-                else:
-                    # re‑attach fresh DataLoaders to keep dataset up‑to‑date
-                    learner.dls = dls
+                    current_classes = set(learner.dls.vocab)
+                    if new_classes != current_classes:
+                        print(
+                            f"[INFO] Detected class change {current_classes} -> {new_classes}; resetting model"
+                        )
+                        learner = vision_learner(dls, model_arch, metrics=accuracy)
+                    else:
+                        # re‑attach fresh DataLoaders to keep dataset up‑to‑date
+                        learner.dls = dls
 
-            t0 = time.time()
-            learner.fit(1)
-            epoch_time = time.time() - t0
+                t0 = time.time()
+                learner.fit(1)
+                epoch_time = time.time() - t0
 
-            try:
-                valid_res = learner.validate()
-                valid_loss = float(valid_res[0]) if len(valid_res) > 0 else None
-                accuracy_val = float(valid_res[1]) if len(valid_res) > 1 else None
-                train_loss = float(learner.recorder.losses[-1]) if learner.recorder.losses else None
-            except Exception:
-                train_loss = valid_loss = accuracy_val = None
+                try:
+                    valid_res = learner.validate()
+                    valid_loss = float(valid_res[0]) if len(valid_res) > 0 else None
+                    accuracy_val = float(valid_res[1]) if len(valid_res) > 1 else None
+                    train_loss = float(learner.recorder.losses[-1]) if learner.recorder.losses else None
+                except Exception:
+                    train_loss = valid_loss = accuracy_val = None
 
-            db.add_training_stat(cycle, train_loss, valid_loss, accuracy_val)
-            # Export learner after each epoch so it can be reloaded easily
-            try:
-                learner.export(model_path)
+                db.add_training_stat(cycle, train_loss, valid_loss, accuracy_val)
+                # Export learner after each epoch so it can be reloaded easily
+                try:
+                    learner.export(model_path)
+                except Exception as e:
+                    print(f"[WARN] Failed to export learner: {e}")
+
+                labeled_set = set(paths)
+                unlabeled = [fp for fp in db.get_samples() if fp not in labeled_set]
+                predicted_n = _predict_subset(db, learner, unlabeled, budget)
+
+                print(
+                    f"[cycle {cycle}] epoch {epoch_time:.1f}s — predicted {predicted_n}/{len(unlabeled)} "
+                    f"unlabeled — sleeping {sleep_s}s"
+                )
             except Exception as e:
-                print(f"[WARN] Failed to export learner: {e}")
-
-            labeled_set = set(paths)
-            unlabeled = [fp for fp in db.get_samples() if fp not in labeled_set]
-            predicted_n = _predict_subset(db, learner, unlabeled, budget)
-
-            print(
-                f"[cycle {cycle}] epoch {epoch_time:.1f}s — predicted {predicted_n}/{len(unlabeled)} "
-                f"unlabeled — sleeping {sleep_s}s"
-            )
-        except Exception as e:
-            print(f"[ERR][cycle {cycle}] {e}", file=sys.stderr)
-        finally:
-            torch.cuda.empty_cache()
-            time.sleep(max(1, sleep_s))
+                print(f"[ERR][cycle {cycle}] {e}", file=sys.stderr)
+            finally:
+                torch.cuda.empty_cache()
+                time.sleep(max(1, sleep_s))
 
 
 # ---------------------------------------------------------------------------
