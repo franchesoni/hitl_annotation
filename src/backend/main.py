@@ -382,8 +382,7 @@ def export_db(request: Request):
         filename="db_export.json",
         background=BackgroundTask(lambda: os.remove(tmp.name)),
     )
-
-app = Starlette(
+api = Starlette(
     routes=[
         Route("/config", put_config, methods=["PUT"]),
         Route("/config", get_config, methods=["GET"]),
@@ -400,6 +399,9 @@ app = Starlette(
     ],
     middleware=[Middleware(EnsureSessionDirMiddleware)],
 )
+
+app = Starlette()
+app.mount("/api", api)
 app.mount("/", StaticFiles(directory=FRONTEND_DIR, html=True), name="frontend")
 
 
