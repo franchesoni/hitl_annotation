@@ -4,6 +4,7 @@ from starlette.requests import Request
 from starlette.routing import Route
 from starlette.staticfiles import StaticFiles
 from starlette.background import BackgroundTask
+import anyio
 import mimetypes
 import os
 import tempfile
@@ -94,7 +95,7 @@ def create_image_response(image_path):
     return FileResponse(image_path, media_type=mime_type, headers=headers)
 
 
-async def get_sample_by_id(request):
+def get_sample_by_id(request):
     # Get id from query parameter, must be in the database
     id_param = request.query_params.get("id")
     all_images = db.get_samples()
@@ -105,7 +106,7 @@ async def get_sample_by_id(request):
 
 
 
-async def get_next_sample(request):
+def get_next_sample(request):
     current_id = request.query_params.get("current_id")
     strategy = request.query_params.get("strategy", "least_confident_minority")
 
@@ -147,10 +148,10 @@ async def get_next_sample(request):
     return JSONResponse({"error": "Invalid strategy"}, status_code=400)
 
 
-async def handle_annotation(request: Request):
+def handle_annotation(request: Request):
     global annotation_buffer
     if request.method == "POST":
-        data = await request.json()
+        data = anyio.from_thread.run(request.json)
         filepath = data.get("filepath")
         class_name = data.get("class")
         if not filepath or not isinstance(class_name, str):
@@ -172,7 +173,7 @@ async def handle_annotation(request: Request):
             db.log_accuracy(was_correct)
         return JSONResponse({"status": "ok"})
     elif request.method == "DELETE":
-        data = await request.json()
+        data = anyio.from_thread.run(request.json)
         filepath = data.get("filepath")
         if not filepath:
             return JSONResponse({"error": "Missing 'filepath'"}, status_code=400)
@@ -188,7 +189,7 @@ async def handle_annotation(request: Request):
     else:
         return JSONResponse({"error": "Method not allowed"}, status_code=405)
 
-async def get_accuracy_stats(request: Request):
+def get_accuracy_stats(request: Request):
     stats = db.get_accuracy_counts()
     tries = stats["tries"]
     correct = stats["correct"]
@@ -199,8 +200,8 @@ async def get_accuracy_stats(request: Request):
         "accuracy": accuracy
     })
 
-async def put_config(request: Request):
-    data = await request.json()
+def put_config(request: Request):
+    data = anyio.from_thread.run(request.json)
     if not isinstance(data, dict):
         return JSONResponse({"error": "Invalid config format"}, status_code=400)
 
@@ -215,14 +216,14 @@ async def put_config(request: Request):
     db.update_config(config)
     return JSONResponse({"status": "Config saved successfully"})
 
-async def get_config(request: Request):
+def get_config(request: Request):
     cfg = db.get_config()
     # Treat an empty configuration as a valid result instead of returning 404.
     # The database returns an empty dict when no config has been saved yet, so
     # simply return that to the client.
     return JSONResponse(cfg)
 
-async def get_stats(request: Request):
+def get_stats(request: Request):
     annotated = db.count_labeled_samples()
     total = db.count_total_samples()
     ann_counts = db.get_annotation_counts()
@@ -246,7 +247,7 @@ async def get_stats(request: Request):
         }
     )
 
-async def get_training_stats(request: Request):
+def get_training_stats(request: Request):
     stats = db.get_training_stats()
     return JSONResponse(stats)
 
@@ -257,18 +258,18 @@ def _list_architectures():
     return resnets + [m for m in sorted(timm.list_models()) if m not in resnets]
 
 
-async def get_architectures(request: Request):
+def get_architectures(request: Request):
     """Return available model architectures for the training process."""
     return JSONResponse({"architectures": _list_architectures()})
 
 
-async def run_ai(request: Request):
+def run_ai(request: Request):
     """Launch the background training process if not already running."""
     global ai_process
     if ai_process and ai_process.poll() is None:
         return JSONResponse({"status": "already running"}, status_code=400)
 
-    data = await request.json()
+    data = anyio.from_thread.run(request.json)
     arch = data.get("architecture", config.get("architecture", "resnet18"))
     if arch not in _list_architectures():
         return JSONResponse(
@@ -314,7 +315,7 @@ async def run_ai(request: Request):
     return JSONResponse({"status": "started"})
 
 
-async def stop_ai(request: Request):
+def stop_ai(request: Request):
     """Terminate the background training process if running."""
     global ai_process
     if ai_process and ai_process.poll() is None:
@@ -323,7 +324,7 @@ async def stop_ai(request: Request):
     return JSONResponse({"status": "not running"}, status_code=400)
 
 
-async def export_db(request: Request):
+def export_db(request: Request):
     tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".json")
     tmp.close()
     db.export_db_as_json(tmp.name)
