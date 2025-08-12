@@ -110,14 +110,19 @@ def create_image_response(image_path, db):
         headers["X-Label-Class"] = str(label_ann.get('class', ''))
         headers["X-Label-Source"] = "annotation"
     else:
-        # Look for prediction
+        # Use prediction if available; there should be at most one per image
         preds = db.get_predictions(image_path)
-        pred_ann = next((p for p in preds if p.get('type') == 'label' and p.get('probability') is not None), None)
-        if pred_ann:
-            headers["X-Label-Class"] = str(pred_ann.get('class', ''))
+        pred_candidates = [
+            p
+            for p in preds
+            if p.get("type") == "label" and p.get("probability") is not None
+        ]
+        assert len(pred_candidates) <= 1, "Expected at most one prediction per image"
+        if pred_candidates:
+            pred_ann = pred_candidates[0]
+            headers["X-Label-Class"] = str(pred_ann.get("class", ""))
             headers["X-Label-Source"] = "prediction"
-            headers["X-Label-Probability"] = str(pred_ann.get('probability', ''))
-
+            headers["X-Label-Probability"] = str(pred_ann.get("probability", ""))
     
     db.set_state("global", "last_image_id", str(image_path))
 
@@ -195,17 +200,19 @@ def _add_annotation(data):
         # Log annotation event
         db.log_event("global", "annotation", {"filepath": filepath, "class": class_name})
 
-    # Accuracy tracking: check prediction
-    preds = db.get_predictions(filepath)
-    pred_ann = next(
-        (p for p in preds if p.get("type") == "label" and p.get("probability") is not None),
-        None,
-    )
-    if pred_ann:
-        was_correct = str(pred_ann.get("class")) == str(class_name)
-        db.log_accuracy(was_correct)
-
-    return JSONResponse({"status": "ok"})
+        # Accuracy tracking: ensure at most one prediction and compare it
+        preds = db.get_predictions(filepath)
+        pred_candidates = [
+            p
+            for p in preds
+            if p.get("type") == "label" and p.get("probability") is not None
+        ]
+        assert len(pred_candidates) <= 1, "Expected at most one prediction per image"
+        if pred_candidates:
+            pred_ann = pred_candidates[0]
+            was_correct = str(pred_ann.get("class")) == str(class_name)
+            db.log_accuracy(was_correct)
+        return JSONResponse({"status": "ok"})
 
 
 def _remove_annotation(data):
