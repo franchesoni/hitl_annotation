@@ -147,46 +147,67 @@ async def get_next_sample(request):
     return JSONResponse({"error": "Invalid strategy"}, status_code=400)
 
 
-async def handle_annotation(request: Request):
-    global annotation_buffer
-    if request.method == "POST":
-        data = await request.json()
-        filepath = data.get("filepath")
-        class_name = data.get("class")
-        if not filepath or not isinstance(class_name, str):
-            return JSONResponse({"error": "Missing or invalid 'filepath' or 'class'"}, status_code=400)
-        # Ensure the filepath exists in the database and on disk
-        if filepath not in db.get_samples() or not os.path.isfile(filepath):
-            return JSONResponse({"error": "Filepath not found"}, status_code=404)
-        # Write annotation to DB
-        db.save_label_annotation(filepath, class_name)
-
-        # Store in recent annotation buffer
-        annotation_buffer.append((filepath, class_name))
-
-        # Accuracy tracking: check prediction
-        preds = db.get_predictions(filepath)
-        pred_ann = next((p for p in preds if p.get('type') == 'label' and p.get('probability') is not None), None)
-        if pred_ann:
-            was_correct = str(pred_ann.get("class")) == str(class_name)
-            db.log_accuracy(was_correct)
-        return JSONResponse({"status": "ok"})
-    elif request.method == "DELETE":
-        data = await request.json()
-        filepath = data.get("filepath")
-        if not filepath:
-            return JSONResponse({"error": "Missing 'filepath'"}, status_code=400)
-        if filepath not in db.get_samples() or not os.path.isfile(filepath):
-            return JSONResponse({"error": "Filepath not found"}, status_code=404)
-        db.delete_label_annotation(filepath)
-        # Remove any occurrences from the annotation buffer
-        annotation_buffer = deque(
-            [p for p in annotation_buffer if p[0] != filepath],
-            maxlen=ANNOTATION_BUFFER_SIZE,
+def _add_annotation(data):
+    """Add a new annotation for a given filepath and class."""
+    filepath = data["filepath"]
+    class_name = data.get("class")
+    if not isinstance(class_name, str):
+        return JSONResponse(
+            {"error": "Missing or invalid 'class'"}, status_code=400
         )
-        return JSONResponse({"status": "deleted"})
-    else:
+
+    # Write annotation to DB
+    db.save_label_annotation(filepath, class_name)
+
+    # Store in recent annotation buffer
+    global annotation_buffer
+    annotation_buffer.append((filepath, class_name))
+
+    # Accuracy tracking: check prediction
+    preds = db.get_predictions(filepath)
+    pred_ann = next(
+        (p for p in preds if p.get("type") == "label" and p.get("probability") is not None),
+        None,
+    )
+    if pred_ann:
+        was_correct = str(pred_ann.get("class")) == str(class_name)
+        db.log_accuracy(was_correct)
+
+    return JSONResponse({"status": "ok"})
+
+
+def _remove_annotation(data):
+    """Remove an annotation for a given filepath."""
+    filepath = data["filepath"]
+    db.delete_label_annotation(filepath)
+
+    # Remove any occurrences from the annotation buffer
+    global annotation_buffer
+    annotation_buffer = deque(
+        [p for p in annotation_buffer if p[0] != filepath],
+        maxlen=ANNOTATION_BUFFER_SIZE,
+    )
+    return JSONResponse({"status": "deleted"})
+
+
+async def handle_annotation(request: Request):
+    data = await request.json()
+    filepath = data.get("filepath")
+    if not filepath:
+        return JSONResponse({"error": "Missing 'filepath'"}, status_code=400)
+
+    # Ensure the filepath exists in the database and on disk
+    if filepath not in db.get_samples() or not os.path.isfile(filepath):
+        return JSONResponse({"error": "Filepath not found"}, status_code=404)
+
+    dispatch = {
+        "POST": _add_annotation,
+        "DELETE": _remove_annotation,
+    }
+    handler = dispatch.get(request.method)
+    if handler is None:
         return JSONResponse({"error": "Method not allowed"}, status_code=405)
+    return handler(data)
 
 async def get_accuracy_stats(request: Request):
     stats = db.get_accuracy_counts()
