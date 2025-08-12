@@ -61,11 +61,16 @@ except ModuleNotFoundError:  # script run from repo root
 # helpers
 # ---------------------------------------------------------------------------
 
+
 def _gather_training_items(db: DatabaseAPI) -> List[Tuple[str, str]]:
     """Latest *label* per image as ``(filepath, class)`` list."""
     items: List[Tuple[str, str]] = []
     for fp in db.get_samples():
-        labels = [a for a in db.get_annotations(fp) if a.get("type") == "label" and a.get("class")]
+        labels = [
+            a
+            for a in db.get_annotations(fp)
+            if a.get("type") == "label" and a.get("class")
+        ]
         if labels:
             latest = max(labels, key=lambda a: a.get("timestamp", 0))
             items.append((fp, latest["class"]))
@@ -120,8 +125,48 @@ def _predict_subset(db: DatabaseAPI, learner, unlabeled: List[str], budget: int)
 
 
 # ---------------------------------------------------------------------------
+# learner management
+# ---------------------------------------------------------------------------
+
+
+def _init_or_update_learner(dls, model_arch, model_path: Path, existing_learner):
+    """Return a ``Learner`` initialized or updated for the current cycle.
+
+    Responsibilities:
+    * Load a previously exported learner from ``model_path`` when available.
+    * Re‑initialize the model if the set of classes has changed since the last
+      cycle.
+    * Attach fresh ``DataLoaders`` to keep the dataset in sync.
+    """
+    new_classes = set(dls.vocab)
+    learner = existing_learner
+    if learner is None:
+        if model_path.exists():
+            try:
+                learner = load_learner(model_path)
+                learner.dls = dls
+            except Exception as e:
+                print(f"[WARN] Failed to load exported learner: {e}")
+                learner = vision_learner(dls, model_arch, metrics=accuracy)
+        else:
+            learner = vision_learner(dls, model_arch, metrics=accuracy)
+    else:
+        current_classes = set(learner.dls.vocab)
+        if new_classes != current_classes:
+            print(
+                f"[INFO] Detected class change {current_classes} -> {new_classes}; resetting model"
+            )
+            learner = vision_learner(dls, model_arch, metrics=accuracy)
+        else:
+            # re‑attach fresh DataLoaders to keep dataset up‑to‑date
+            learner.dls = dls
+    return learner
+
+
+# ---------------------------------------------------------------------------
 # main loop
 # ---------------------------------------------------------------------------
+
 
 def _run_forever(
     db_path: str | None,
@@ -158,27 +203,7 @@ def _run_forever(
                 paths, labels = zip(*train_items)
                 dls = _build_dls(paths, labels, resize, flip, max_rotate)
 
-                new_classes = set(dls.vocab)
-                if learner is None:
-                    if model_path.exists():
-                        try:
-                            learner = load_learner(model_path)
-                            learner.dls = dls
-                        except Exception as e:
-                            print(f"[WARN] Failed to load exported learner: {e}")
-                            learner = vision_learner(dls, model_arch, metrics=accuracy)
-                    else:
-                        learner = vision_learner(dls, model_arch, metrics=accuracy)
-                else:
-                    current_classes = set(learner.dls.vocab)
-                    if new_classes != current_classes:
-                        print(
-                            f"[INFO] Detected class change {current_classes} -> {new_classes}; resetting model"
-                        )
-                        learner = vision_learner(dls, model_arch, metrics=accuracy)
-                    else:
-                        # re‑attach fresh DataLoaders to keep dataset up‑to‑date
-                        learner.dls = dls
+                learner = _init_or_update_learner(dls, model_arch, model_path, learner)
 
                 t0 = time.time()
                 learner.fit(1)
@@ -218,13 +243,22 @@ def _run_forever(
 # CLI
 # ---------------------------------------------------------------------------
 
+
 def main() -> None:
     p = argparse.ArgumentParser()
     p.add_argument("--db", "-d", help="Path to annotation SQLite db", default=None)
     p.add_argument("--arch", "-a", default="resnet18", help="network arch")
     p.add_argument("--sleep", "-s", type=int, default=0, help="Seconds between cycles")
-    p.add_argument("--budget", "-b", type=int, default=1000, help="Predictions per cycle")
-    p.add_argument("--resize", "-r", type=int, default=64, help="Resize dimension for training images")
+    p.add_argument(
+        "--budget", "-b", type=int, default=1000, help="Predictions per cycle"
+    )
+    p.add_argument(
+        "--resize",
+        "-r",
+        type=int,
+        default=64,
+        help="Resize dimension for training images",
+    )
     p.add_argument(
         "--no-flip",
         action="store_false",
@@ -240,7 +274,15 @@ def main() -> None:
     p.set_defaults(flip=True)
     args = p.parse_args()
 
-    _run_forever(args.db, args.arch, args.sleep, args.budget, args.resize, args.flip, args.max_rotate)
+    _run_forever(
+        args.db,
+        args.arch,
+        args.sleep,
+        args.budget,
+        args.resize,
+        args.flip,
+        args.max_rotate,
+    )
 
 
 if __name__ == "__main__":
