@@ -138,28 +138,15 @@ export class ClassManager {
     async addClass(className) {
         if (!className || this.globalClasses.includes(className)) return;
         this.globalClasses.push(className);
-        await this.updateConfig();
+        await this.api.updateConfig({ classes: this.globalClasses });
         this.render();
     }
 
     // Remove a class by name
     async removeClass(className) {
         this.globalClasses = this.globalClasses.filter(c => c !== className);
-        await this.updateConfig();
+        await this.api.updateConfig({ classes: this.globalClasses });
         this.render();
-    }
-
-    // Update backend config with current class list
-    async updateConfig() {
-        try {
-            await fetch('/config', {
-                method: 'PUT',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ classes: this.globalClasses })
-            });
-        } catch (e) {
-            console.error('Failed to update class list on server:', e);
-        }
     }
 
     // Render the class manager UI
