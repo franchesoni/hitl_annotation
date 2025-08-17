@@ -64,14 +64,14 @@ export class API {
 
     // Get config
     async getConfig() {
-        const res = await fetch('/config');
+        const res = await fetch('/api/config');
         if (!res.ok) throw new Error('Failed to get config');
         return await res.json();
     }
 
     // Update config
     async updateConfig(config) {
-        const res = await fetch('/config', {
+        const res = await fetch('/api/config', {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(config)
