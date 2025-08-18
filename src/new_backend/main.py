@@ -3,6 +3,7 @@ from flask import Flask, send_from_directory, request, jsonify
 
 from src.new_backend.db import get_conn, get_config, update_config, get_next_sample_by_strategy
 from src.new_backend.db_init import initialize_database_if_needed
+from src.new_backend.utils import create_image_response
 initialize_database_if_needed()
 
 ####### INITIALIZE APP #######
@@ -56,7 +57,7 @@ def get_next_sample():
     try:
         sample_info = get_next_sample_by_strategy(strategy)
         if sample_info:
-            return jsonify(sample_info)
+            return create_image_response(sample_info)
         else:
             return jsonify({"error": "No more samples available for annotation"}), 404
     except Exception as e:

@@ -146,6 +146,74 @@ def release_claim_by_id(sample_id):
             WHERE id = ?
         """, (sample_id,))
 
+def get_annotations(sample_id):
+    """Get all annotations for a specific sample ID."""
+    with get_conn() as conn:
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT id, sample_id, sample_filepath, class, type, x, y, width, height, timestamp
+            FROM annotations
+            WHERE sample_id = ?
+        """, (sample_id,))
+        results = cursor.fetchall()
+        annotations = []
+        for row in results:
+            ann = {
+                "id": row[0],
+                "sample_id": row[1], 
+                "sample_filepath": row[2],
+                "class": row[3],
+                "type": row[4],
+                "timestamp": row[9]
+            }
+            # Add coordinates based on type
+            if row[4] == "point":  # point type
+                if row[5] is not None and row[6] is not None:
+                    ann["col"] = row[5]  # x -> col
+                    ann["row"] = row[6]  # y -> row
+            elif row[4] == "bbox":  # bbox type
+                if all(x is not None for x in row[5:9]):
+                    ann["col"] = row[5]    # x -> col
+                    ann["row"] = row[6]    # y -> row  
+                    ann["width"] = row[7]
+                    ann["height"] = row[8]
+            # label type has no coordinates
+            annotations.append(ann)
+        return annotations
+
+def get_predictions(sample_id):
+    """Get all predictions for a specific sample ID."""
+    with get_conn() as conn:
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT id, sample_id, sample_filepath, class, type, probability, x, y, width, height, timestamp
+            FROM predictions
+            WHERE sample_id = ?
+        """, (sample_id,))
+        results = cursor.fetchall()
+        predictions = []
+        for row in results:
+            pred = {
+                "id": row[0],
+                "sample_id": row[1],
+                "sample_filepath": row[2], 
+                "class": row[3],
+                "type": row[4],
+                "timestamp": row[10]
+            }
+            # Add type-specific fields
+            if row[4] == "label":  # label type
+                pred["probability"] = row[5]
+            elif row[4] == "bbox":  # bbox type
+                if all(x is not None for x in row[6:10]):
+                    pred["col"] = row[6]    # x -> col
+                    pred["row"] = row[7]    # y -> row
+                    pred["width"] = row[8]
+                    pred["height"] = row[9]
+            # mask type would need mask_path but it's not in current schema
+            predictions.append(pred)
+        return predictions
+
 def get_next_sample_by_strategy(strategy=None, pick=None):
     """
     Get the next sample to annotate based on the given strategy.

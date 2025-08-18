@@ -289,6 +289,7 @@ def initialize_database_if_needed(db_path=DB_PATH):
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 sample_filepath TEXT UNIQUE NOT NULL,
                 claimed INTEGER DEFAULT 0
+            );
         """
         )
         conn.execute(
