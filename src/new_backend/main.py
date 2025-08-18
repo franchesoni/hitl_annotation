@@ -1,7 +1,7 @@
 from pathlib import Path
 from flask import Flask, send_from_directory, request, jsonify
 
-from src.new_backend.db import get_conn, get_config, update_config
+from src.new_backend.db import get_conn, get_config, update_config, get_next_sample_by_strategy
 from src.new_backend.db_init import initialize_database_if_needed
 initialize_database_if_needed()
 
@@ -53,8 +53,14 @@ def get_next_sample():
     Query param: `strategy` determines selection strategy.
     """
     strategy = request.args.get("strategy")
-    # TODO: compute next sample according to `strategy`
-    raise NotImplementedError("This endpoint is not implemented yet.")
+    try:
+        sample_info = get_next_sample_by_strategy(strategy)
+        if sample_info:
+            return jsonify(sample_info)
+        else:
+            return jsonify({"error": "No more samples available for annotation"}), 404
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 @app.get("/api/samples/<string:sample_id>")
 def get_sample_by_id(sample_id: str):
