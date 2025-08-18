@@ -1,8 +1,8 @@
 from pathlib import Path
 from flask import Flask, send_from_directory, request, jsonify
 
-from db import get_conn, get_config, update_config
-from db_init import initialize_database_if_needed
+from src.new_backend.db import get_conn, get_config, update_config
+from src.new_backend.db_init import initialize_database_if_needed
 initialize_database_if_needed()
 
 ####### INITIALIZE APP #######
