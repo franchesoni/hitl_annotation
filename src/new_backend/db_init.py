@@ -296,7 +296,7 @@ def initialize_database_if_needed(db_path=DB_PATH):
             """
             CREATE TABLE IF NOT EXISTS annotations (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
-                sample_id INTEGER NOT NULL,
+                sample_id INTEGER NOT NULL UNIQUE,
                 sample_filepath TEXT NOT NULL,
                 class TEXT NOT NULL,
                 type TEXT NOT NULL,

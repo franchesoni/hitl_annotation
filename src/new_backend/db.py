@@ -245,3 +245,138 @@ def get_next_sample_by_strategy(strategy=None, pick=None):
     else:
         # Sample was claimed by someone else, try again
         return get_next_sample_by_strategy(strategy, pick)
+
+def get_sample_by_id(sample_id):
+    """Get sample info by sample ID."""
+    with get_conn() as conn:
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT id, sample_filepath
+            FROM samples
+            WHERE id = ?
+        """, (sample_id,))
+        result = cursor.fetchone()
+        return {"id": result[0], "sample_filepath": result[1]} if result else None
+
+def upsert_annotation(sample_id, class_name, annotation_type="label", **kwargs):
+    """
+    Insert or replace an annotation for a sample.
+    Since sample_id is unique in annotations table, this will replace any existing annotation.
+    
+    Args:
+        sample_id: The sample ID
+        class_name: The annotation class
+        annotation_type: Type of annotation ("label", "point", "bbox")
+        **kwargs: Additional fields like row, col, width, height, timestamp
+    """
+    with get_conn() as conn:
+        cursor = conn.cursor()
+        
+        # Get sample_filepath for the annotation
+        cursor.execute("SELECT sample_filepath FROM samples WHERE id = ?", (sample_id,))
+        result = cursor.fetchone()
+        if not result:
+            raise ValueError(f"Sample with ID {sample_id} not found")
+        sample_filepath = result[0]
+        
+        # Insert or replace annotation (UNIQUE constraint on sample_id ensures replacement)
+        cursor.execute(
+            """
+            INSERT OR REPLACE INTO annotations (
+                sample_id, sample_filepath, class, type,
+                x, y, width, height, timestamp
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                sample_id,
+                sample_filepath,
+                class_name,
+                annotation_type,
+                kwargs.get("col"),  # x
+                kwargs.get("row"),  # y
+                kwargs.get("width"),
+                kwargs.get("height"),
+                kwargs.get("timestamp"),
+            ),
+        )
+
+def delete_annotation_by_sample_id(sample_id):
+    """Delete annotation for a specific sample ID."""
+    with get_conn() as conn:
+        cursor = conn.cursor()
+        cursor.execute("""
+            DELETE FROM annotations
+            WHERE sample_id = ?
+        """, (sample_id,))
+        return cursor.rowcount > 0
+
+def get_annotation_stats():
+    """Returns current annotation statistics."""
+    with get_conn() as conn:
+        cursor = conn.cursor()
+        
+        # Total samples
+        cursor.execute("SELECT COUNT(*) FROM samples")
+        total_samples = cursor.fetchone()[0]
+        
+        # Annotated samples
+        cursor.execute("SELECT COUNT(DISTINCT sample_id) FROM annotations")
+        annotated_samples = cursor.fetchone()[0]
+        
+        # Annotations by class
+        cursor.execute("""
+            SELECT class, COUNT(*) as count
+            FROM annotations
+            GROUP BY class
+            ORDER BY count DESC
+        """)
+        class_counts = {row[0]: row[1] for row in cursor.fetchall()}
+        
+        return {
+            "total_samples": total_samples,
+            "annotated_samples": annotated_samples,
+            "remaining_samples": total_samples - annotated_samples,
+            "class_counts": class_counts
+        }
+
+def set_ai_run_flag(should_run=True):
+    """Set the AI run flag."""
+    config = get_config()
+    config["ai_should_be_run"] = should_run
+    update_config(config)
+
+def export_annotations():
+    """Export all annotations as a list of dictionaries."""
+    with get_conn() as conn:
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT a.sample_id, a.sample_filepath, a.class, a.type, 
+                   a.x, a.y, a.width, a.height, a.timestamp
+            FROM annotations a
+            ORDER BY a.sample_id
+        """)
+        results = cursor.fetchall()
+        
+        annotations = []
+        for row in results:
+            ann = {
+                "sample_id": row[0],
+                "sample_filepath": row[1],
+                "class": row[2],
+                "type": row[3],
+                "timestamp": row[8]
+            }
+            # Add coordinates based on type
+            if row[3] == "point" and row[4] is not None and row[5] is not None:
+                ann["col"] = row[4]  # x -> col
+                ann["row"] = row[5]  # y -> row
+            elif row[3] == "bbox" and all(x is not None for x in row[4:8]):
+                ann["col"] = row[4]    # x -> col
+                ann["row"] = row[5]    # y -> row  
+                ann["width"] = row[6]
+                ann["height"] = row[7]
+            
+            annotations.append(ann)
+        
+        return annotations
