@@ -1,388 +1,91 @@
-import { ImageViewer } from './imageViewer.js';
-import { ClassManager } from './classManager.js';
+import { ImageView } from './views/imageView.js';
+import { ClassesView } from './views/classesView.js';
 import { API } from './api.js';
-import { UndoManager } from './undoManager.js';
+import { AppController } from './controllers.js';
+import { StatsView } from './views/statsView.js';
+import { StrategyView } from './views/strategyView.js';
+import { AIControlsView } from './views/aiControlsView.js';
+import { TrainingCurveView } from './views/trainingCurveView.js';
+import { initKeyboard } from './keyboard.js';
+
+// Bootstraps everything: creates store, controllers, mounts views
 
 document.addEventListener('DOMContentLoaded', async () => {
-        // Get left and right panel containers
-        const leftPanel = document.querySelector('.left-panel');
-        const classPanel = document.querySelector('#class-manager');
-        const undoBtn = document.getElementById('undo-btn');
-        const exportDBBtn = document.getElementById('export-db-btn');
-        const runBtn = document.getElementById('run-ai-btn');
-        const stopBtn = document.getElementById('stop-ai-btn');
-        const aiStatus = document.getElementById('ai-status');
-        let aiRunning = false;
-        function updateAIButtons() {
-                if (runBtn) runBtn.style.display = aiRunning ? 'none' : 'inline-block';
-                if (stopBtn) stopBtn.style.display = aiRunning ? 'inline-block' : 'none';
-        }
-        const archInput = document.getElementById('ai-arch');
-        const archDatalist = document.getElementById('arch-options');
-        const sleepInput = document.getElementById('ai-sleep');
-        const budgetInput = document.getElementById('ai-budget');
-        const resizeInput = document.getElementById('ai-resize');
-        const statsDiv = document.getElementById('stats-display');
-        const predictionDiv = document.getElementById('prediction-display');
-        const trainingCanvas = document.getElementById('training-curve');
-        const strategySelect = document.getElementById('strategy-select');
-        const accuracySlider = document.getElementById('accuracy-slider');
-        const accuracyValue = document.getElementById('accuracy-slider-value');
-        let accuracyPct = accuracySlider ? Number(accuracySlider.value) : 100;
-        if (accuracyValue) accuracyValue.textContent = `${accuracyPct}%`;
-        if (accuracySlider) {
-                accuracySlider.addEventListener('input', () => {
-                        accuracyPct = Number(accuracySlider.value);
-                        if (accuracyValue) accuracyValue.textContent = `${accuracyPct}%`;
-                        updateStats();
-                });
-        }
-        const specificClassSelect = document.getElementById('specific-class-select');
-        const specificClassLabel = document.getElementById('specific-class-label');
-        let currentStrategy = strategySelect ? strategySelect.value : null;
-        let currentSpecificClass = specificClassSelect ? specificClassSelect.value : null;
-        let lastAnnotatedClass = null; // Track last annotation for pick_class strategy
-        
-        function toggleSpecificClassSelect() {
-                const show = currentStrategy === 'specific_class';
-                if (specificClassSelect) specificClassSelect.style.display = show ? 'inline-block' : 'none';
-                if (specificClassLabel) specificClassLabel.style.display = show ? 'inline-block' : 'none';
-        }
-        toggleSpecificClassSelect();
-        if (strategySelect) {
-                strategySelect.addEventListener('change', () => {
-                        currentStrategy = strategySelect.value;
-                        toggleSpecificClassSelect();
-                });
-        }
-        if (specificClassSelect) {
-                specificClassSelect.addEventListener('change', () => {
-                        currentSpecificClass = specificClassSelect.value;
-                });
-        }
-        if (!leftPanel) {
-                console.error('Left panel container not found.');
-                return;
-        }
-        if (!classPanel) {
-                console.error('Class list container not found.');
-                return;
-        }
+  const leftPanel = document.querySelector('.left-panel');
+  const classPanel = document.querySelector('#class-manager');
+  const undoBtn = document.getElementById('undo-btn');
 
-        // Create the API instance
-        const api = new API();
-        updateAIButtons();
-        if (archDatalist) {
-                try {
-                        const archs = await api.getArchitectures();
-                        archs.forEach(a => {
-                                const opt = document.createElement('option');
-                                opt.value = a;
-                                archDatalist.appendChild(opt);
-                        });
-                } catch (e) {
-                        console.error('Failed to load architectures:', e);
-                }
-        }
-        if (exportDBBtn) {
-                exportDBBtn.addEventListener('click', () => api.exportDB());
-        }
-        if (runBtn) {
-                runBtn.addEventListener('click', async () => {
-                        try {
-                                const res = await api.runAI({
-                                        architecture: archInput?.value || 'resnet18',
-                                        sleep: Number(sleepInput?.value || 0),
-                                        budget: Number(budgetInput?.value || 1000),
-                                        resize: Number(resizeInput?.value || 64)
-                                });
-                                aiRunning = true;
-                                if (aiStatus) aiStatus.textContent = res.status;
-                        } catch (e) {
-                                if (aiStatus) aiStatus.textContent = e.message;
-                                aiRunning = e.message.includes('already') ? true : false;
-                                console.error('Failed to start AI:', e);
-                        } finally {
-                                updateAIButtons();
-                        }
-                });
-        }
-        if (stopBtn) {
-                stopBtn.addEventListener('click', async () => {
-                        try {
-                                const res = await api.stopAI();
-                                aiRunning = false;
-                                if (aiStatus) aiStatus.textContent = res.status;
-                        } catch (e) {
-                                if (aiStatus) aiStatus.textContent = e.message;
-                                aiRunning = e.message.includes('not running') ? false : true;
-                                console.error('Failed to stop AI:', e);
-                        } finally {
-                                updateAIButtons();
-                        }
-                });
-        }
+  if (!leftPanel || !classPanel) {
+    console.error('Required containers not found.');
+    return;
+  }
 
-        document.addEventListener('keydown', (e) => {
-                if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
-                if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'e') {
-                        e.preventDefault();
-                        api.exportDB();
-                }
-        });
+  const api = new API();
+  const imageView = new ImageView(leftPanel, 'loading-overlay', 'c');
+  const statsView = new StatsView(api);
+  const trainingCurveView = new TrainingCurveView(api);
+  const strategyView = new StrategyView();
+  const controller = new AppController(api, imageView, null, statsView, trainingCurveView, strategyView);
+  const classesView = new ClassesView(classPanel, controller.annotateWorkflow.bind(controller), api);
+  controller.setClassManager(classesView);
+  statsView.setClassManager(classesView);
 
-        function updatePrediction(labelClass, labelProbability, labelSource) {
-                if (!predictionDiv) return;
-                if (labelSource === 'prediction' && labelClass) {
-                        const prob = labelProbability ? Number(labelProbability) : null;
-                        const pct = prob !== null && !isNaN(prob) ? (prob * 100).toFixed(1) : null;
-                        const text = pct !== null ? `${labelClass} (${pct}%)` : labelClass;
-                        predictionDiv.innerHTML = `<b>Prediction:</b> <span class="prediction-badge">${text}</span>`;
-                        if (classManager && typeof classManager.setPrediction === 'function') {
-                                classManager.setPrediction(labelClass);
-                        }
-                } else {
-                        predictionDiv.innerHTML = '';
-                        if (classManager && typeof classManager.setPrediction === 'function') {
-                                classManager.setPrediction(null);
-                        }
-                }
-        }
+  const state = { aiRunning: false };
+  const history = [];
 
-        let statsRequestId = 0;
-        async function updateStats() {
-                if (!statsDiv) return;
-                const requestId = ++statsRequestId;
-                try {
-                        const stats = await api.getStats(accuracyPct);
-                        if (requestId !== statsRequestId) return;
-                        if (stats) {
-                                let html = '';
-                                
-                                // Display current image filename
-                                if (classManager && classManager.currentImageFilename) {
-                                        const filename = classManager.currentImageFilename;
-                                        html += `<div><b>Current image:</b> <span title="${filename}">${filename}</span></div>`;
-                                }
-                                
-                                if (stats.image) {
-                                        html += `<div><b>Last image:</b> ${stats.image}</div>`;
-                                }
-                                html += `<div><b>Annotated:</b> ${stats.annotated}/${stats.total}</div>`;
+  async function undo() {
+    if (history.length === 0) {
+      alert('No more actions to undo');
+      return;
+    }
+    const sampleId = history.pop();
+    try {
+      await api.updateConfig({ classes: classesView.globalClasses });
+      const { imageUrl, sampleId: returnedSampleId, filepath, labelClass, labelSource, labelProbability } = await api.loadSample(sampleId);
+      await api.deleteAnnotation(sampleId);
+      imageView.loadImage(imageUrl, filepath);
+      const cls = null;
+      await classesView.setCurrentSample(returnedSampleId, filepath, cls);
+      statsView.updatePrediction(labelClass, labelProbability, labelSource);
+      await statsView.update();
+      await classesView.loadClassesFromConfig();
+      await trainingCurveView.update();
+    } catch (e) {
+      console.error('Undo workflow failed:', e);
+    }
+  }
 
-                                if (stats.annotation_counts) {
-                                        const counts = Object.entries(stats.annotation_counts)
-                                                .map(([cls, n]) => `<div>${cls}: ${n}</div>`)
-                                                .join('');
-                                        html += `<div><b>Annotations per class:</b>${counts}</div>`;
-                                }
+  if (undoBtn) {
+    undoBtn.addEventListener('click', undo);
+  }
+  document.addEventListener('keydown', (e) => {
+    if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+    const key = e.key.toLowerCase();
+    if ((e.ctrlKey || e.metaKey) && key === 'z') {
+      e.preventDefault();
+      undo();
+    } else if (e.key === 'Backspace' || key === 'u') {
+      e.preventDefault();
+      undo();
+    }
+  });
 
-                                html += `<div><b>Tries:</b> ${stats.tries}</div>`;
-                                html += `<div><b>Correct:</b> ${stats.correct}</div>`;
+  classesView.setOnClassChange((sampleId) => {
+    if (sampleId) history.push(sampleId);
+  });
+  classesView.setOnAnnotationSuccess((sampleId, cls) => {
+    controller.setLastAnnotatedClass(cls);
+  });
+  classesView.setOnClassesUpdate((classes) => {
+    strategyView.updateClasses(classes);
+  });
 
-                                if (typeof stats.accuracy === 'number') {
-                                        const pct = (stats.accuracy * 100).toFixed(1);
-                                        html += `<div><b>Val Accuracy:</b> <span class="accuracy-badge">${pct}%</span></div>`;
-                                } else {
-                                        html += `<div><b>Val Accuracy:</b> <span class="accuracy-badge">0%</span></div>`;
-                                }
+  new AIControlsView(api, state);
+  initKeyboard(api);
 
-                                statsDiv.innerHTML = html;
-                        }
-                } catch (e) {
-                        if (requestId === statsRequestId) {
-                                console.error('Failed to fetch stats:', e);
-                        }
-                }
-        }
-
-        let trainingRequestId = 0;
-        async function updateTrainingCurve() {
-                if (!trainingCanvas) return;
-                const requestId = ++trainingRequestId;
-                try {
-                        const data = await api.getTrainingStats();
-                        if (requestId !== trainingRequestId) return;
-                        // Map the training stats to the format expected by drawCurve
-                        const points = data.map(d => ({x: d.epoch, y: d.accuracy ?? 0}));
-                        drawCurve(trainingCanvas, points);
-                } catch (e) {
-                        if (requestId === trainingRequestId) {
-                                console.error('Failed to fetch training stats:', e);
-                        }
-                }
-        }
-
-        function drawCurve(canvas, points) {
-                const ctx = canvas.getContext('2d');
-                const w = canvas.width;
-                const h = canvas.height;
-                ctx.clearRect(0, 0, w, h);
-                if (!points || points.length === 0) return;
-                const padding = 30;
-                const maxX = points[points.length - 1].x || 1;
-                const maxY = 1; // accuracy is in [0,1]
-
-                // axes
-                ctx.strokeStyle = '#ccc';
-                ctx.beginPath();
-                ctx.moveTo(padding, padding);
-                ctx.lineTo(padding, h - padding);
-                ctx.lineTo(w - padding, h - padding);
-                ctx.stroke();
-
-                ctx.fillStyle = '#e0e0e0';
-                ctx.font = '12px Roboto, sans-serif';
-                ctx.textAlign = 'center';
-                ctx.fillText('Epoch', w / 2, h - 5);
-                ctx.save();
-                ctx.translate(padding - 25, h / 2);
-                ctx.rotate(-Math.PI / 2);
-                ctx.fillText('Val Accuracy', 0, 0);
-                ctx.restore();
-
-                // tick marks
-                const yTicks = [0, 0.5, 1];
-                yTicks.forEach(t => {
-                        const y = h - padding - t * (h - 2 * padding);
-                        ctx.beginPath();
-                        ctx.moveTo(padding - 5, y);
-                        ctx.lineTo(padding, y);
-                        ctx.stroke();
-                        ctx.textAlign = 'right';
-                        ctx.fillText(t.toString(), padding - 7, y + 4);
-                });
-
-                const step = Math.max(1, Math.floor(maxX / 5));
-                for (let t = 0; t <= maxX; t += step) {
-                        const x = padding + (t / maxX) * (w - 2 * padding);
-                        ctx.beginPath();
-                        ctx.moveTo(x, h - padding);
-                        ctx.lineTo(x, h - padding + 5);
-                        ctx.stroke();
-                        ctx.textAlign = 'center';
-                        ctx.fillText(t.toString(), x, h - padding + 15);
-                }
-
-                // curve
-                ctx.strokeStyle = '#007acc';
-                ctx.beginPath();
-                points.forEach((p, idx) => {
-                        const x = padding + (p.x / maxX) * (w - 2 * padding);
-                        const y = h - padding - (p.y / maxY) * (h - 2 * padding);
-                        if (idx === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
-                });
-                ctx.stroke();
-        }
-
-	// Create the viewer instance
-	const viewer = new ImageViewer(leftPanel, 'loading-overlay', 'c');
-
-        // Helper to load next image from API and update viewer/classManager
-        let nextImageRequestId = 0;
-        async function loadNextImage() {
-                const requestId = ++nextImageRequestId;
-                if (classManager && typeof classManager.setLoading === 'function') {
-                        classManager.setLoading(true);
-                }
-                try {
-                        const currentId = classManager.currentSampleId;
-                        
-                        // Determine strategy parameters
-                        let strategy = currentStrategy;
-                        let pick = null;
-                        
-                        if (currentStrategy === 'pick_class') {
-                                // Use last annotated class for pick_class strategy
-                                pick = lastAnnotatedClass;
-                                // If no last annotation, fall back to sequential
-                                if (!pick) {
-                                        strategy = 'sequential';
-                                }
-                        } else if (currentStrategy === 'specific_class') {
-                                // Use pick_class strategy with the selected class
-                                strategy = 'pick_class';
-                                pick = currentSpecificClass;
-                        }
-                        
-                        const { imageUrl, sampleId, filepath, labelClass, labelSource, labelProbability } = await api.loadNextImage(currentId, strategy, pick);
-                        if (requestId !== nextImageRequestId) {
-                                URL.revokeObjectURL(imageUrl);
-                                return;
-                        }
-                        viewer.loadImage(imageUrl, filepath);
-                        const annClass = labelSource === 'annotation' ? labelClass : null;
-                        await classManager.setCurrentSample(sampleId, filepath, annClass);
-                        updatePrediction(labelClass, labelProbability, labelSource);
-                        await updateStats();
-                        await updateTrainingCurve();
-                } catch (e) {
-                        console.error('Failed to fetch next image:', e);
-                } finally {
-                        if (requestId === nextImageRequestId && classManager && typeof classManager.setLoading === 'function') {
-                                classManager.setLoading(false);
-                        }
-                }
-        }
-
-        // Annotation workflow: post config → put annotation → get next → get stats → get config
-        async function annotateWorkflow(sampleId, className) {
-                try {
-                        // Step 1: Post config (push frontend class changes to backend)
-                        await api.updateConfig({ classes: classManager.globalClasses });
-                        
-                        // Step 2: Put annotation
-                        await api.annotateSample(sampleId, className);
-                        
-                        // Step 3: Get next image
-                        await loadNextImage();
-                        
-                        // Step 4: Get stats
-                        await updateStats();
-                        
-                        // Step 5: Get config (refresh from backend)
-                        await classManager.loadClassesFromConfig();
-                        
-                        // Step 6: Update training curve
-                        await updateTrainingCurve();
-                        
-                } catch (e) {
-                        console.error('Annotation workflow failed:', e);
-                        throw e;
-                }
-        }
-
-	// Create the class manager instance, passing annotateWorkflow instead of loadNextImage
-        const classManager = new ClassManager(classPanel, annotateWorkflow, api);
-        const undoManager = new UndoManager(api, viewer, classManager, updatePrediction, updateStats, updateTrainingCurve);
-        if (undoBtn) {
-                undoBtn.addEventListener('click', () => undoManager.undo());
-        }
-        classManager.setOnClassChange((sampleId, cls) => {
-                undoManager.record(sampleId);
-        });
-        classManager.setOnAnnotationSuccess((sampleId, cls) => {
-                // Track last annotated class for pick_class strategy - only after successful annotation
-                lastAnnotatedClass = cls;
-        });
-        classManager.setOnClassesUpdate((classes) => {
-                if (specificClassSelect) {
-                        const previous = specificClassSelect.value;
-                        specificClassSelect.innerHTML = classes.map(c => `<option value="${c}">${c}</option>`).join('');
-                        if (classes.includes(previous)) {
-                                specificClassSelect.value = previous;
-                        } else if (classes.length > 0) {
-                                specificClassSelect.selectedIndex = 0;
-                        }
-                        currentSpecificClass = specificClassSelect.value || null;
-                }
-        });
-
-        try {
-                await loadNextImage();
-        } catch (e) {
-                console.error('Failed to fetch first image:', e);
-                return;
-        }
-
+  try {
+    await controller.loadNextImage();
+  } catch (e) {
+    console.error('Failed to fetch first image:', e);
+  }
 });
