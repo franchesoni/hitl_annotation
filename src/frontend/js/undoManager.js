@@ -20,9 +20,9 @@ export class UndoManager {
         });
     }
 
-    record(imageId) {
-        if (imageId) {
-            this.history.push(imageId);
+    record(sampleId) {
+        if (sampleId) {
+            this.history.push(sampleId);
         }
     }
 
@@ -31,17 +31,17 @@ export class UndoManager {
             alert('No more actions to undo');
             return;
         }
-        const id = this.history.pop();
+        const sampleId = this.history.pop();
         try {
-            await this.api.deleteAnnotation(id);
+            await this.api.deleteAnnotation(sampleId);
         } catch (e) {
             console.error('Failed to delete annotation:', e);
         }
         try {
-            const { imageUrl, filename, labelClass, labelSource, labelProbability } = await this.api.loadSample(id);
-            this.viewer.loadImage(imageUrl, filename);
+            const { imageUrl, sampleId: returnedSampleId, filepath, labelClass, labelSource, labelProbability } = await this.api.loadSample(sampleId);
+            this.viewer.loadImage(imageUrl, filepath);
             const cls = labelSource === 'annotation' ? labelClass : null;
-            await this.classManager.setCurrentImageFilename(filename, cls);
+            await this.classManager.setCurrentSample(returnedSampleId, filepath, cls);
             if (this.updatePrediction) {
                 this.updatePrediction(labelClass, labelProbability, labelSource);
             }

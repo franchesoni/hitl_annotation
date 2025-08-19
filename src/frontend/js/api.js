@@ -15,18 +15,19 @@ export class API {
         if (qs) url += `?${qs}`;
         const res = await fetch(url);
         if (!res.ok) throw new Error('No images available');
-        const filename = res.headers.get('X-Image-Id') || res.headers.get('X-Filename');
+        const sampleId = res.headers.get('X-Image-Id');
+        const filepath = res.headers.get('X-Image-Filepath');
         const labelClass = res.headers.get('X-Label-Class');
         const labelSource = res.headers.get('X-Label-Source');
         const labelProbability = res.headers.get('X-Label-Probability');
         const blob = await res.blob();
         const imageUrl = URL.createObjectURL(blob);
-        return { imageUrl, filename, labelClass, labelSource, labelProbability };
+        return { imageUrl, sampleId, filepath, labelClass, labelSource, labelProbability };
     }
 
     // Annotate a sample (returns JSON status)
-    async annotateSample(filepath, className) {
-        const res = await fetch(`/api/annotate/${encodeURIComponent(filepath)}`, {
+    async annotateSample(sampleId, className) {
+        const res = await fetch(`/api/annotate/${sampleId}`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ class: className })
@@ -36,8 +37,8 @@ export class API {
     }
 
     // Delete annotation for a sample
-    async deleteAnnotation(filepath) {
-        const res = await fetch(`/api/annotate/${encodeURIComponent(filepath)}`, {
+    async deleteAnnotation(sampleId) {
+        const res = await fetch(`/api/annotate/${sampleId}`, {
             method: 'DELETE'
         });
         if (!res.ok) throw new Error('Delete failed');
@@ -45,16 +46,17 @@ export class API {
     }
 
     // Load specific sample by id
-    async loadSample(id) {
-        const res = await fetch(`/api/samples/${encodeURIComponent(id)}`);
+    async loadSample(sampleId) {
+        const res = await fetch(`/api/samples/${sampleId}`);
         if (!res.ok) throw new Error('Sample not found');
-        const filename = res.headers.get('X-Image-Id') || res.headers.get('X-Filename');
+        const sampleIdFromHeader = res.headers.get('X-Image-Id');
+        const filepath = res.headers.get('X-Image-Filepath');
         const labelClass = res.headers.get('X-Label-Class');
         const labelSource = res.headers.get('X-Label-Source');
         const labelProbability = res.headers.get('X-Label-Probability');
         const blob = await res.blob();
         const imageUrl = URL.createObjectURL(blob);
-        return { imageUrl, filename, labelClass, labelSource, labelProbability };
+        return { imageUrl, sampleId: sampleIdFromHeader, filepath, labelClass, labelSource, labelProbability };
     }
 
     // Get config

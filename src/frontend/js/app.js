@@ -277,7 +277,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                         classManager.setLoading(true);
                 }
                 try {
-                        const currentId = classManager.currentImageFilename;
+                        const currentId = classManager.currentSampleId;
                         
                         // Determine strategy parameters
                         let strategy = currentStrategy;
@@ -296,14 +296,14 @@ document.addEventListener('DOMContentLoaded', async () => {
                                 pick = currentSpecificClass;
                         }
                         
-                        const { imageUrl, filename, labelClass, labelSource, labelProbability } = await api.loadNextImage(currentId, strategy, pick);
+                        const { imageUrl, sampleId, filepath, labelClass, labelSource, labelProbability } = await api.loadNextImage(currentId, strategy, pick);
                         if (requestId !== nextImageRequestId) {
                                 URL.revokeObjectURL(imageUrl);
                                 return;
                         }
-                        viewer.loadImage(imageUrl, filename);
+                        viewer.loadImage(imageUrl, filepath);
                         const annClass = labelSource === 'annotation' ? labelClass : null;
-                        await classManager.setCurrentImageFilename(filename, annClass);
+                        await classManager.setCurrentSample(sampleId, filepath, annClass);
                         updatePrediction(labelClass, labelProbability, labelSource);
                         await updateStats();
                         await updateTrainingCurve();
@@ -322,10 +322,10 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (undoBtn) {
                 undoBtn.addEventListener('click', () => undoManager.undo());
         }
-        classManager.setOnClassChange((filename, cls) => {
-                undoManager.record(filename);
+        classManager.setOnClassChange((sampleId, cls) => {
+                undoManager.record(sampleId);
         });
-        classManager.setOnAnnotationSuccess((filename, cls) => {
+        classManager.setOnAnnotationSuccess((sampleId, cls) => {
                 // Track last annotated class for pick_class strategy - only after successful annotation
                 lastAnnotatedClass = cls;
         });

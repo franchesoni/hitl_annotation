@@ -333,11 +333,17 @@ def get_annotation_stats():
         """)
         class_counts = {row[0]: row[1] for row in cursor.fetchall()}
         
+        # For compatibility with frontend, we'll set these to default values
+        # since we don't have validation/accuracy tracking yet
         return {
-            "total_samples": total_samples,
-            "annotated_samples": annotated_samples,
-            "remaining_samples": total_samples - annotated_samples,
-            "class_counts": class_counts
+            "total": total_samples,
+            "annotated": annotated_samples,
+            "remaining": total_samples - annotated_samples,
+            "annotation_counts": class_counts,
+            "tries": 0,  # Not implemented yet
+            "correct": 0,  # Not implemented yet
+            "accuracy": 0.0,  # Not implemented yet
+            "image": None  # Last image - not tracked yet
         }
 
 def set_ai_run_flag(should_run=True):
