@@ -144,7 +144,7 @@ def release_claim_by_id(sample_id):
         cursor = conn.cursor()
         cursor.execute("""
             UPDATE samples 
-            SET claimed = 0, claimed_at = NULL 
+            SET claimed = 0
             WHERE id = ?
         """, (sample_id,))
 
