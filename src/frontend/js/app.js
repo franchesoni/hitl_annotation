@@ -196,7 +196,9 @@ document.addEventListener('DOMContentLoaded', async () => {
                 try {
                         const data = await api.getTrainingStats();
                         if (requestId !== trainingRequestId) return;
-                        drawCurve(trainingCanvas, data.map(d => ({x: d.epoch, y: d.accuracy ?? 0})));
+                        // Map the training stats to the format expected by drawCurve
+                        const points = data.map(d => ({x: d.epoch, y: d.accuracy ?? 0}));
+                        drawCurve(trainingCanvas, points);
                 } catch (e) {
                         if (requestId === trainingRequestId) {
                                 console.error('Failed to fetch training stats:', e);

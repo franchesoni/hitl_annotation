@@ -312,7 +312,7 @@ def delete_annotation_by_sample_id(sample_id):
         return cursor.rowcount > 0
 
 def get_annotation_stats():
-    """Returns current annotation statistics."""
+    """Returns current annotation statistics including training stats."""
     with get_conn() as conn:
         cursor = conn.cursor()
         
@@ -333,6 +333,30 @@ def get_annotation_stats():
         """)
         class_counts = {row[0]: row[1] for row in cursor.fetchall()}
         
+        # Get training stats from curves table
+        cursor.execute("""
+            SELECT epoch, 
+                   MAX(CASE WHEN curve_name = 'train_loss' THEN value END) as train_loss,
+                   MAX(CASE WHEN curve_name = 'valid_loss' THEN value END) as valid_loss,
+                   MAX(CASE WHEN curve_name = 'accuracy' THEN value END) as accuracy,
+                   MAX(timestamp) as timestamp
+            FROM curves 
+            WHERE epoch IS NOT NULL
+            GROUP BY epoch
+            ORDER BY epoch
+        """)
+        training_rows = cursor.fetchall()
+        training_stats = [
+            {
+                "epoch": r[0],
+                "train_loss": r[1],
+                "valid_loss": r[2], 
+                "accuracy": r[3],
+                "timestamp": r[4],
+            }
+            for r in training_rows
+        ]
+        
         # For compatibility with frontend, we'll set these to default values
         # since we don't have validation/accuracy tracking yet
         return {
@@ -343,7 +367,8 @@ def get_annotation_stats():
             "tries": 0,  # Not implemented yet
             "correct": 0,  # Not implemented yet
             "accuracy": 0.0,  # Not implemented yet
-            "image": None  # Last image - not tracked yet
+            "image": None,  # Last image - not tracked yet
+            "training_stats": training_stats  # Add training stats to the response
         }
 
 def set_ai_run_flag(should_run=True):
@@ -386,3 +411,30 @@ def export_annotations():
             annotations.append(ann)
         
         return annotations
+
+def store_training_stats(epoch, train_loss=None, valid_loss=None, accuracy=None):
+    """Store training metrics for an epoch in the curves table."""
+    import time
+    timestamp = int(time.time())
+    
+    with get_conn() as conn:
+        cursor = conn.cursor()
+        
+        # Store each metric as a separate row
+        if train_loss is not None:
+            cursor.execute("""
+                INSERT INTO curves (curve_name, value, epoch, timestamp)
+                VALUES (?, ?, ?, ?)
+            """, ('train_loss', train_loss, epoch, timestamp))
+            
+        if valid_loss is not None:
+            cursor.execute("""
+                INSERT INTO curves (curve_name, value, epoch, timestamp)
+                VALUES (?, ?, ?, ?)
+            """, ('valid_loss', valid_loss, epoch, timestamp))
+            
+        if accuracy is not None:
+            cursor.execute("""
+                INSERT INTO curves (curve_name, value, epoch, timestamp)
+                VALUES (?, ?, ?, ?)
+            """, ('accuracy', accuracy, epoch, timestamp))

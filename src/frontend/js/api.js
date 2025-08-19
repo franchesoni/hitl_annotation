@@ -90,10 +90,9 @@ export class API {
     }
 
     async getTrainingStats() {
-        // Note: This endpoint is not implemented in the backend yet
-        const res = await fetch('/api/training_stats');
-        if (!res.ok) throw new Error('Failed to get training stats');
-        return await res.json();
+        // Get training stats from the main stats endpoint
+        const stats = await this.getStats();
+        return stats.training_stats || [];
     }
 
     async getArchitectures() {
