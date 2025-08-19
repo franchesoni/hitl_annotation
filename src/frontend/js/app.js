@@ -325,9 +325,36 @@ document.addEventListener('DOMContentLoaded', async () => {
                 }
         }
 
-	// Create the class manager instance, passing loadNextImage and api
-        const classManager = new ClassManager(classPanel, loadNextImage, api);
-        const undoManager = new UndoManager(api, viewer, classManager, updatePrediction);
+        // Annotation workflow: post config → put annotation → get next → get stats → get config
+        async function annotateWorkflow(sampleId, className) {
+                try {
+                        // Step 1: Post config (push frontend class changes to backend)
+                        await api.updateConfig({ classes: classManager.globalClasses });
+                        
+                        // Step 2: Put annotation
+                        await api.annotateSample(sampleId, className);
+                        
+                        // Step 3: Get next image
+                        await loadNextImage();
+                        
+                        // Step 4: Get stats
+                        await updateStats();
+                        
+                        // Step 5: Get config (refresh from backend)
+                        await classManager.loadClassesFromConfig();
+                        
+                        // Step 6: Update training curve
+                        await updateTrainingCurve();
+                        
+                } catch (e) {
+                        console.error('Annotation workflow failed:', e);
+                        throw e;
+                }
+        }
+
+	// Create the class manager instance, passing annotateWorkflow instead of loadNextImage
+        const classManager = new ClassManager(classPanel, annotateWorkflow, api);
+        const undoManager = new UndoManager(api, viewer, classManager, updatePrediction, updateStats, updateTrainingCurve);
         if (undoBtn) {
                 undoBtn.addEventListener('click', () => undoManager.undo());
         }

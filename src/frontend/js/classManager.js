@@ -9,9 +9,9 @@
 export class ClassManager {
     /**
      * @param {string|HTMLElement} container - CSS selector or DOM element for the class list UI
-     * @param {function} loadNextImage - callback to load the next image
+     * @param {function} annotateWorkflow - callback to handle annotation workflow
      */
-    constructor(container, loadNextImage, api) {
+    constructor(container, annotateWorkflow, api) {
         // Find container element
         this.container = typeof container === 'string' ? document.querySelector(container) : container;
         if (!this.container) throw new Error('ClassManager: container not found');
@@ -24,7 +24,7 @@ export class ClassManager {
     this.currentImageFilename = null; // Keep for display purposes
     this.onClassChange = null; // callback(sampleId, className)
     this.onClassesUpdate = null; // callback(classes[])
-    this.loadNextImage = loadNextImage;
+    this.annotateWorkflow = annotateWorkflow;
     this.api = api;
     this.isLoading = false;
     this.annotationRequestId = 0;
@@ -60,20 +60,17 @@ export class ClassManager {
                     try {
                         this.setLoading(true);
                         requestId = ++this.annotationRequestId; // store in outer scope for finally access
-                        await this.api.annotateSample(sampleId, className);
+                        
+                        // Use the annotation workflow instead of individual API calls
+                        await this.annotateWorkflow(sampleId, className);
                         if (requestId !== this.annotationRequestId) return; // stale response
 
                         // Call success callback after successful annotation
                         if (this.onAnnotationSuccess) this.onAnnotationSuccess(sampleId, className);
 
-                        console.log('Annotation succeeded, calling loadNextImage (keyboard)');
-                        if (typeof this.loadNextImage === 'function') {
-                            await this.loadNextImage();
-                        } else {
-                            console.warn('loadNextImage callback is not defined');
-                        }
+                        console.log('Annotation workflow completed (keyboard)');
                     } catch (err) {
-                        console.error('Annotation request error:', err);
+                        console.error('Annotation workflow error:', err);
                     } finally {
                         // Only clear loading if this request is still the latest
                         if (this.annotationRequestId === requestId) this.setLoading(false);
@@ -153,18 +150,18 @@ export class ClassManager {
         });
     }
 
-    // Add a new class if not already present
+    // Add a new class if not already present (frontend only, will be synced during annotation)
     async addClass(className) {
         if (!className || this.globalClasses.includes(className)) return;
         this.globalClasses.push(className);
-        await this.api.updateConfig({ classes: this.globalClasses });
+        // Don't push to backend immediately - will be synced during annotation/undo workflows
         this.render();
     }
 
-    // Remove a class by name
+    // Remove a class by name (frontend only, will be synced during annotation)
     async removeClass(className) {
         this.globalClasses = this.globalClasses.filter(c => c !== className);
-        await this.api.updateConfig({ classes: this.globalClasses });
+        // Don't push to backend immediately - will be synced during annotation/undo workflows
         this.render();
     }
 
@@ -228,20 +225,17 @@ export class ClassManager {
                     try {
                         this.setLoading(true);
                         requestId = ++this.annotationRequestId; // make visible to finally
-                        await this.api.annotateSample(sampleId, c);
+                        
+                        // Use the annotation workflow instead of individual API calls
+                        await this.annotateWorkflow(sampleId, c);
                         if (requestId !== this.annotationRequestId) return; // stale response
                         
                         // Call success callback after successful annotation
                         if (this.onAnnotationSuccess) this.onAnnotationSuccess(sampleId, c);
                         
-                        console.log('Annotation succeeded, calling loadNextImage (button)');
-                        if (typeof this.loadNextImage === 'function') {
-                            await this.loadNextImage();
-                        } else {
-                            console.warn('loadNextImage callback is not defined');
-                        }
+                        console.log('Annotation workflow completed (button)');
                     } catch (err) {
-                        console.error('Annotation request error:', err);
+                        console.error('Annotation workflow error:', err);
                     } finally {
                         if (this.annotationRequestId === requestId) this.setLoading(false);
                     }
