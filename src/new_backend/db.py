@@ -371,12 +371,6 @@ def get_annotation_stats():
             "training_stats": training_stats  # Add training stats to the response
         }
 
-def set_ai_run_flag(should_run=True):
-    """Set the AI run flag."""
-    config = get_config()
-    config["ai_should_be_run"] = should_run
-    update_config(config)
-
 def export_annotations():
     """Export all annotations as a list of dictionaries."""
     with get_conn() as conn:

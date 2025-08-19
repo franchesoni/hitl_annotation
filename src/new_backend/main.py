@@ -153,20 +153,6 @@ def get_stats():
     return jsonify(stats)
 
 
-@app.put("/api/ai/run")
-def run_ai():
-    """Changes a flag in the DB that the AI script should check."""
-    set_ai_run_flag(True)
-    return jsonify({"status": "AI run flag set"})
-
-
-@app.put("/api/ai/stop")
-def stop_ai():
-    """Changes a flag in the DB that the AI script should check."""
-    set_ai_run_flag(False)
-    return jsonify({"status": "AI run flag cleared"})
-
-
 @app.get("/api/export")
 def export_data():
     """Gets the annotations from the database as a file."""
