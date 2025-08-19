@@ -10,14 +10,15 @@ export class ClassesView {
     /**
      * @param {string|HTMLElement} container - CSS selector or DOM element for the class list UI
      * @param {function} annotateWorkflow - callback to handle annotation workflow
+     * @param {object} state - reference to main app state (will be modified directly)
      */
-    constructor(container, annotateWorkflow, api) {
+    constructor(container, annotateWorkflow, state) {
         // Find container element
         this.container = typeof container === 'string' ? document.querySelector(container) : container;
         if (!this.container) throw new Error('ClassesView: container not found');
 
-    // State
-    this.globalClasses = [];
+    // State - reference to main app state
+    this.state = state; // Direct reference, changes will be reflected in main app
     this.selectedClass = null;
     this.predictionClass = null;
     this.currentSampleId = null;
@@ -25,15 +26,10 @@ export class ClassesView {
     this.onClassChange = null; // callback(sampleId, className)
     this.onClassesUpdate = null; // callback(classes[])
     this.annotateWorkflow = annotateWorkflow;
-    this.api = api;
     this.isLoading = false;
     this.annotationRequestId = 0;
-    this.configRequestId = 0;
 
         this.render();
-
-        // Load any persisted classes from the backend
-        this.loadClassesFromConfig();
 
         // Keyboard shortcuts for class selection
         document.addEventListener('keydown', async (e) => {
@@ -46,12 +42,10 @@ export class ClassesView {
             } else if (e.key === '0') {
                 idx = 9;
             }
-            if (idx >= 0 && idx < this.globalClasses.length) {
-                const className = this.globalClasses[idx];
+                if (idx >= 0 && idx < this.state.config.classes.length) {
+                const className = this.state.config.classes[idx];
                 const sampleId = this.currentSampleId; // capture sample ID before async ops
-                this.selectedClass = className;
-
-                // Record the annotation before starting async operations so undo works immediately
+                this.selectedClass = className;                // Record the annotation before starting async operations so undo works immediately
                 if (this.onClassChange) this.onClassChange(sampleId, className);
                 this.render();
 
@@ -80,21 +74,9 @@ export class ClassesView {
         });
     }
 
-    // Load class list from server config
-    async loadClassesFromConfig() {
-        if (!this.api || typeof this.api.getConfig !== 'function') return;
-        const requestId = ++this.configRequestId;
-        try {
-            const cfg = await this.api.getConfig();
-            if (requestId !== this.configRequestId) return;
-            if (cfg && Array.isArray(cfg.classes)) {
-                this.globalClasses = cfg.classes;
-            }
-        } catch (e) {
-            if (requestId === this.configRequestId) {
-                console.error('Failed to load classes from config:', e);
-            }
-        }
+    // Render with current state (no parameters needed)
+    render() {
+        this.renderUI();
     }
 
     // Setters for state
@@ -104,8 +86,7 @@ export class ClassesView {
         if (selectedClass !== null) {
             this.selectedClass = selectedClass;
         }
-        await this.loadClassesFromConfig();
-        this.render();
+        this.renderUI();
     }
     
     // Keep for backward compatibility
@@ -114,16 +95,16 @@ export class ClassesView {
         if (selectedClass !== null) {
             this.selectedClass = selectedClass;
         }
-        await this.loadClassesFromConfig();
-        this.render();
+        this.renderUI();
     }
     setSelectedClass(className) {
         this.selectedClass = className;
-        this.render();
+        this.renderUI();
     }
     setGlobalClasses(classes) {
-        this.globalClasses = classes;
-        this.render();
+        this.state.config.classes = [...classes];
+        this.state.configUpdated = true;
+        this.renderUI();
     }
     setOnClassChange(callback) {
         this.onClassChange = callback;
@@ -139,7 +120,7 @@ export class ClassesView {
 
     setPrediction(className) {
         this.predictionClass = className;
-        this.render();
+        this.renderUI();
     }
 
     setLoading(isLoading) {
@@ -150,23 +131,23 @@ export class ClassesView {
         });
     }
 
-    // Add a new class if not already present (frontend only, will be synced during annotation)
+    // Add a new class if not already present
     async addClass(className) {
-        if (!className || this.globalClasses.includes(className)) return;
-        this.globalClasses.push(className);
-        // Don't push to backend immediately - will be synced during annotation/undo workflows
-        this.render();
+        if (!className || this.state.config.classes.includes(className)) return;
+        this.state.config.classes.push(className);
+        this.state.configUpdated = true;
+        this.renderUI();
     }
 
-    // Remove a class by name (frontend only, will be synced during annotation)
+    // Remove a class by name
     async removeClass(className) {
-        this.globalClasses = this.globalClasses.filter(c => c !== className);
-        // Don't push to backend immediately - will be synced during annotation/undo workflows
-        this.render();
+        this.state.config.classes = this.state.config.classes.filter(c => c !== className);
+        this.state.configUpdated = true;
+        this.renderUI();
     }
 
     // Render the class manager UI
-    render() {
+    renderUI() {
         // Clear container
         this.container.innerHTML = '';
 
@@ -197,13 +178,13 @@ export class ClassesView {
         // --- Class buttons ---
         const classListDiv = document.createElement('div');
         classListDiv.className = 'class-buttons';
-        if (this.globalClasses.length === 0) {
+        if (this.state.config.classes.length === 0) {
             // No classes yet
             classListDiv.innerHTML = '<div style="color: #6c757d; font-style: italic;">No classes added yet</div>';
         } else {
             // Create a button for each class
             const selected = this.selectedClass;
-            this.globalClasses.forEach((c, index) => {
+            this.state.config.classes.forEach((c, index) => {
                 const classRow = document.createElement('div');
                 classRow.style.display = 'flex';
                 classRow.style.alignItems = 'center';
@@ -220,7 +201,7 @@ export class ClassesView {
                     const sampleId = this.currentSampleId; // capture current sample ID
                     this.selectedClass = c;
                     if (this.onClassChange) this.onClassChange(sampleId, c);
-                    this.render();
+                    this.renderUI();
                     let requestId;
                     try {
                         this.setLoading(true);
@@ -257,7 +238,7 @@ export class ClassesView {
         }
         this.container.appendChild(classListDiv);
         if (this.onClassesUpdate) {
-            this.onClassesUpdate([...this.globalClasses]);
+            this.onClassesUpdate([...this.state.config.classes]);
         }
     }
 }

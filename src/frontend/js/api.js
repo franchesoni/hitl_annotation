@@ -95,33 +95,6 @@ export class API {
         return stats.training_stats || [];
     }
 
-    async getArchitectures() {
-        // Get architectures from the config endpoint
-        const config = await this.getConfig();
-        const architectures = config.available_architectures;
-        return Array.isArray(architectures) ? architectures : [];
-    }
-
-    async runAI(params) {
-        const res = await fetch('/api/ai/run', {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(params)
-        });
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.status || 'Failed to start AI');
-        return data;
-    }
-
-    async stopAI() {
-        const res = await fetch('/api/ai/stop', { 
-            method: 'PUT'
-        });
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.status || 'Failed to stop AI');
-        return data;
-    }
-
     async exportDB() {
         const res = await fetch('/api/export');
         if (!res.ok) throw new Error('Failed to export DB');
@@ -136,3 +109,20 @@ export class API {
         URL.revokeObjectURL(url);
     }
 }
+
+
+
+//   annotateWorkflow(sampleId, className) {
+//     try {
+//       await this.api.updateConfig({ classes: this.classManager.globalClasses });
+//       await this.api.annotateSample(sampleId, className);
+//       await this.loadNextImage();
+//       await this.statsView.update();
+//       await this.classManager.loadClassesFromConfig();
+//       await this.trainingCurveView.update();
+//     } catch (e) {
+//       console.error('Annotation workflow failed:', e);
+//       throw e;
+//     }
+//   }
+

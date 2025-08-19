@@ -1,8 +1,9 @@
 // statsView.js - Handles stats display and prediction updates
 
 export class StatsView {
-  constructor(api) {
+  constructor(api, classesView) {
     this.api = api;
+    this.classesView = classesView;
     this.statsDiv = document.getElementById('stats-display');
     this.predictionDiv = document.getElementById('prediction-display');
     this.accuracySlider = document.getElementById('accuracy-slider');
@@ -20,9 +21,6 @@ export class StatsView {
     }
   }
 
-  setClassManager(cm) {
-    this.classManager = cm;
-  }
 
   updatePrediction(labelClass, labelProbability, labelSource) {
     if (!this.predictionDiv) return;
@@ -31,18 +29,18 @@ export class StatsView {
       const pct = prob !== null && !isNaN(prob) ? (prob * 100).toFixed(1) : null;
       const text = pct !== null ? `${labelClass} (${pct}%)` : labelClass;
       this.predictionDiv.innerHTML = `<b>Prediction:</b> <span class="prediction-badge">${text}</span>`;
-      if (this.classManager && typeof this.classManager.setPrediction === 'function') {
-        this.classManager.setPrediction(labelClass);
+      if (this.classesView && typeof this.classesView.setPrediction === 'function') {
+        this.classesView.setPrediction(labelClass);
       }
     } else {
       this.predictionDiv.innerHTML = '';
-      if (this.classManager && typeof this.classManager.setPrediction === 'function') {
-        this.classManager.setPrediction(null);
+      if (this.classesView && typeof this.classesView.setPrediction === 'function') {
+        this.classesView.setPrediction(null);
       }
     }
   }
 
-  async update() {
+  async update(currentImageFilename) {
     if (!this.statsDiv) return;
     const requestId = ++this.statsRequestId;
     try {
@@ -50,9 +48,8 @@ export class StatsView {
       if (requestId !== this.statsRequestId) return;
       if (stats) {
         let html = '';
-        if (this.classManager && this.classManager.currentImageFilename) {
-          const filename = this.classManager.currentImageFilename;
-          html += `<div><b>Current image:</b> <span title="${filename}">${filename}</span></div>`;
+        if (currentImageFilename) {
+          html += `<div><b>Current image:</b> <span title="${currentImageFilename}">${currentImageFilename}</span></div>`;
         }
         if (stats.image) {
           html += `<div><b>Last image:</b> ${stats.image}</div>`;
