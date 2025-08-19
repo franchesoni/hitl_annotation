@@ -158,6 +158,13 @@ document.addEventListener('DOMContentLoaded', async () => {
                         if (requestId !== statsRequestId) return;
                         if (stats) {
                                 let html = '';
+                                
+                                // Display current image filename
+                                if (classManager && classManager.currentImageFilename) {
+                                        const filename = classManager.currentImageFilename;
+                                        html += `<div><b>Current image:</b> <span title="${filename}">${filename}</span></div>`;
+                                }
+                                
                                 if (stats.image) {
                                         html += `<div><b>Last image:</b> ${stats.image}</div>`;
                                 }
