@@ -1,6 +1,6 @@
-// imageViewer.js - Image Viewer Component (no zoom/pan yet)
+// imageView.js - Image Viewer Component (no zoom/pan yet)
 
-export class ImageViewer {
+export class ImageView {
     /**
      * @param {string|HTMLElement} container - CSS selector or DOM element to append the canvas to
      * @param {string} overlayId - ID of the loading overlay element
@@ -14,7 +14,7 @@ export class ImageViewer {
             this.container = container;
         }
         if (!this.container) {
-            throw new Error('ImageViewer: container not found');
+            throw new Error('ImageView: container not found');
         }
 
         // Try to get existing canvas

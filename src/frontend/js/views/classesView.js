@@ -1,12 +1,12 @@
-// classManager.js - Class Manager Component
+// classesView.js - Class Manager Component
 
 /**
  * Handles class input, display, and selection for annotation UI.
- * Usage: new ClassManager(containerElementOrSelector)
+ * Usage: new ClassesView(containerElementOrSelector)
  *
  * Keyboard shortcuts: numbers 1-9,0 select the corresponding class button (if present).
  */
-export class ClassManager {
+export class ClassesView {
     /**
      * @param {string|HTMLElement} container - CSS selector or DOM element for the class list UI
      * @param {function} annotateWorkflow - callback to handle annotation workflow
@@ -14,7 +14,7 @@ export class ClassManager {
     constructor(container, annotateWorkflow, api) {
         // Find container element
         this.container = typeof container === 'string' ? document.querySelector(container) : container;
-        if (!this.container) throw new Error('ClassManager: container not found');
+        if (!this.container) throw new Error('ClassesView: container not found');
 
     // State
     this.globalClasses = [];
