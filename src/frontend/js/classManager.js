@@ -62,6 +62,9 @@ export class ClassManager {
                         await this.api.annotateSample(filename, className);
                         if (requestId !== this.annotationRequestId) return; // stale response
 
+                        // Call success callback after successful annotation
+                        if (this.onAnnotationSuccess) this.onAnnotationSuccess(filename, className);
+
                         console.log('Annotation succeeded, calling loadNextImage (keyboard)');
                         if (typeof this.loadNextImage === 'function') {
                             await this.loadNextImage();
@@ -119,6 +122,10 @@ export class ClassManager {
 
     setOnClassesUpdate(callback) {
         this.onClassesUpdate = callback;
+    }
+
+    setOnAnnotationSuccess(callback) {
+        this.onAnnotationSuccess = callback;
     }
 
     setPrediction(className) {
@@ -211,6 +218,10 @@ export class ClassManager {
                         requestId = ++this.annotationRequestId; // make visible to finally
                         await this.api.annotateSample(filename, c);
                         if (requestId !== this.annotationRequestId) return; // stale response
+                        
+                        // Call success callback after successful annotation
+                        if (this.onAnnotationSuccess) this.onAnnotationSuccess(filename, c);
+                        
                         console.log('Annotation succeeded, calling loadNextImage (button)');
                         if (typeof this.loadNextImage === 'function') {
                             await this.loadNextImage();

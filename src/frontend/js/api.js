@@ -2,17 +2,14 @@
 
 export class API {
     // Load the next image sample (image response, not JSON)
-    async loadNextImage(currentId = null, strategy = null, className = null) {
-        let url = '/next';
+    async loadNextImage(currentId = null, strategy = null, pick = null) {
+        let url = '/api/samples/next';
         const params = new URLSearchParams();
-        if (currentId) {
-            params.append('current_id', currentId);
-        }
         if (strategy) {
             params.append('strategy', strategy);
         }
-        if (className) {
-            params.append('class', className);
+        if (pick) {
+            params.append('pick', pick);
         }
         const qs = params.toString();
         if (qs) url += `?${qs}`;
@@ -29,10 +26,10 @@ export class API {
 
     // Annotate a sample (returns JSON status)
     async annotateSample(filepath, className) {
-        const res = await fetch('/annotate', {
-            method: 'POST',
+        const res = await fetch(`/api/annotate/${encodeURIComponent(filepath)}`, {
+            method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ filepath, class: className })
+            body: JSON.stringify({ class: className })
         });
         if (!res.ok) throw new Error('Annotation failed');
         return await res.json();
@@ -40,10 +37,8 @@ export class API {
 
     // Delete annotation for a sample
     async deleteAnnotation(filepath) {
-        const res = await fetch('/annotate', {
-            method: 'DELETE',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ filepath })
+        const res = await fetch(`/api/annotate/${encodeURIComponent(filepath)}`, {
+            method: 'DELETE'
         });
         if (!res.ok) throw new Error('Delete failed');
         return await res.json();
@@ -51,7 +46,7 @@ export class API {
 
     // Load specific sample by id
     async loadSample(id) {
-        const res = await fetch(`/sample?id=${encodeURIComponent(id)}`);
+        const res = await fetch(`/api/samples/${encodeURIComponent(id)}`);
         if (!res.ok) throw new Error('Sample not found');
         const filename = res.headers.get('X-Image-Id') || res.headers.get('X-Filename');
         const labelClass = res.headers.get('X-Label-Class');
@@ -82,8 +77,8 @@ export class API {
 
     // Get accuracy stats with optional window percentage
     async getStats(pct = 100) {
-        let url = '/stats';
-        if (typeof pct === 'number') {
+        let url = '/api/stats';
+        if (typeof pct === 'number' && pct !== 100) {
             const params = new URLSearchParams({ pct: pct.toString() });
             url += `?${params.toString()}`;
         }
@@ -93,21 +88,22 @@ export class API {
     }
 
     async getTrainingStats() {
-        const res = await fetch('/training_stats');
+        // Note: This endpoint is not implemented in the backend yet
+        const res = await fetch('/api/training_stats');
         if (!res.ok) throw new Error('Failed to get training stats');
         return await res.json();
     }
 
     async getArchitectures() {
-        const res = await fetch('/architectures');
-        if (!res.ok) throw new Error('Failed to get architectures');
-        const data = await res.json();
-        return Array.isArray(data.architectures) ? data.architectures : [];
+        // Get architectures from the config endpoint
+        const config = await this.getConfig();
+        const architectures = config.available_architectures;
+        return Array.isArray(architectures) ? architectures : [];
     }
 
     async runAI(params) {
-        const res = await fetch('/run_ai', {
-            method: 'POST',
+        const res = await fetch('/api/ai/run', {
+            method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(params)
         });
@@ -117,14 +113,16 @@ export class API {
     }
 
     async stopAI() {
-        const res = await fetch('/stop_ai', { method: 'POST' });
+        const res = await fetch('/api/ai/stop', { 
+            method: 'PUT'
+        });
         const data = await res.json();
         if (!res.ok) throw new Error(data.status || 'Failed to stop AI');
         return data;
     }
 
     async exportDB() {
-        const res = await fetch('/export_db');
+        const res = await fetch('/api/export');
         if (!res.ok) throw new Error('Failed to export DB');
         const blob = await res.blob();
         const url = URL.createObjectURL(blob);

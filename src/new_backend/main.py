@@ -1,5 +1,7 @@
 from pathlib import Path
 from flask import Flask, send_from_directory, request, jsonify
+from functools import lru_cache
+import timm
 
 from src.new_backend.db import get_conn, get_config, update_config, get_next_sample_by_strategy
 from src.new_backend.db_init import initialize_database_if_needed
@@ -12,6 +14,13 @@ FRONTEND_DIR = BASE_DIR / "frontend"
 
 app = Flask(__name__, static_folder=FRONTEND_DIR, static_url_path="")
 app.config.update(DEBUG=False)
+
+
+@lru_cache(maxsize=1)
+def _list_architectures():
+    """Return all allowed model architectures."""
+    resnets = ["resnet18", "resnet34"]
+    return resnets + [m for m in sorted(timm.list_models()) if m not in resnets]
 
 
 @app.route("/")
@@ -31,37 +40,32 @@ def put_config():
     Expects a JSON body with the configuration object.
     """
     config = request.get_json(silent=True) or {}
-    print(config)
-    try:
-        update_config(config)
-        return jsonify({"status": "Config saved successfully"})
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
+    print('config', config)
+    update_config(config)
+    return jsonify({"status": "Config saved successfully"})
 
 @app.get("/api/config")  # available architectures should go here
 def get_config_endpoint():
     """Gets the config from the db."""
-    try:
-        config = get_config()
-        return jsonify(config)
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
+    config = get_config()
+    # Add available architectures to the config response
+    config["available_architectures"] = _list_architectures()
+    return jsonify(config)
 
 @app.get("/api/samples/next")
 def get_next_sample():
     """
     Returns the next sample to be annotated.
     Query param: `strategy` determines selection strategy.
+    Query param: `pick` specifies class for pick_class strategy.
     """
     strategy = request.args.get("strategy")
-    try:
-        sample_info = get_next_sample_by_strategy(strategy)
-        if sample_info:
-            return create_image_response(sample_info)
-        else:
-            return jsonify({"error": "No more samples available for annotation"}), 404
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
+    pick = request.args.get("pick")  # For pick_class strategy
+    sample_info = get_next_sample_by_strategy(strategy, pick)
+    if sample_info:
+        return create_image_response(sample_info)
+    else:
+        return jsonify({"error": "No more samples available for annotation"}), 404
 
 @app.get("/api/samples/<string:sample_id>")
 def get_sample_by_id(sample_id: str):
@@ -72,7 +76,7 @@ def get_sample_by_id(sample_id: str):
     # TODO: fetch by `sample_id`
     raise NotImplementedError("This endpoint is not implemented yet.")
 
-@app.put("/api/annotations/<path:filepath>")
+@app.put("/api/annotate/<path:filepath>")
 def put_annotation(filepath: str):
     """
     Replaces an existing annotation in the database.
@@ -84,7 +88,7 @@ def put_annotation(filepath: str):
     # TODO: upsert annotation for `filepath` with label `class_`
     raise NotImplementedError("This endpoint is not implemented yet.")
 
-@app.delete("/api/annotations/<path:filepath>")
+@app.delete("/api/annotate/<path:filepath>")
 def delete_annotation(filepath: str):
     """
     Deletes an existing annotation in the database.

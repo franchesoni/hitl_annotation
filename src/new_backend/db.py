@@ -121,6 +121,8 @@ def get_minority_unlabeled_frontier():
     """Returns the sample with the lowest probability in the minority class."""
     annotation_counts = get_annotation_counts()
     # Get class with minimum annotations
+    if len(annotation_counts) == 0:
+        return None
     minority_class = min(annotation_counts.keys(), key=lambda x: annotation_counts[x])
     # Use get_unlabeled_pick with lowest probability
     return get_unlabeled_pick(minority_class, highest_probability=False)
@@ -229,6 +231,8 @@ def get_next_sample_by_strategy(strategy=None, pick=None):
         sample_info = get_unlabeled_pick(pick)
     elif strategy == "minority_frontier":
         sample_info = get_minority_unlabeled_frontier()
+    else:
+        raise ValueError(f"Unknown strategy: {strategy}")
     
     if strategy != "sequential" and sample_info is None:
         # default to sequential if we got nothing

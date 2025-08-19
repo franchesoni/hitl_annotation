@@ -41,6 +41,8 @@ document.addEventListener('DOMContentLoaded', async () => {
         const specificClassLabel = document.getElementById('specific-class-label');
         let currentStrategy = strategySelect ? strategySelect.value : null;
         let currentSpecificClass = specificClassSelect ? specificClassSelect.value : null;
+        let lastAnnotatedClass = null; // Track last annotation for pick_class strategy
+        
         function toggleSpecificClassSelect() {
                 const show = currentStrategy === 'specific_class';
                 if (specificClassSelect) specificClassSelect.style.display = show ? 'inline-block' : 'none';
@@ -276,7 +278,25 @@ document.addEventListener('DOMContentLoaded', async () => {
                 }
                 try {
                         const currentId = classManager.currentImageFilename;
-                        const { imageUrl, filename, labelClass, labelSource, labelProbability } = await api.loadNextImage(currentId, currentStrategy, currentSpecificClass);
+                        
+                        // Determine strategy parameters
+                        let strategy = currentStrategy;
+                        let pick = null;
+                        
+                        if (currentStrategy === 'pick_class') {
+                                // Use last annotated class for pick_class strategy
+                                pick = lastAnnotatedClass;
+                                // If no last annotation, fall back to sequential
+                                if (!pick) {
+                                        strategy = 'sequential';
+                                }
+                        } else if (currentStrategy === 'specific_class') {
+                                // Use pick_class strategy with the selected class
+                                strategy = 'pick_class';
+                                pick = currentSpecificClass;
+                        }
+                        
+                        const { imageUrl, filename, labelClass, labelSource, labelProbability } = await api.loadNextImage(currentId, strategy, pick);
                         if (requestId !== nextImageRequestId) {
                                 URL.revokeObjectURL(imageUrl);
                                 return;
@@ -304,6 +324,10 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
         classManager.setOnClassChange((filename, cls) => {
                 undoManager.record(filename);
+        });
+        classManager.setOnAnnotationSuccess((filename, cls) => {
+                // Track last annotated class for pick_class strategy - only after successful annotation
+                lastAnnotatedClass = cls;
         });
         classManager.setOnClassesUpdate((classes) => {
                 if (specificClassSelect) {
