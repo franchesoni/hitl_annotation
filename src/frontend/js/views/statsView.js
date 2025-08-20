@@ -1,5 +1,3 @@
-// statsView.js - Handles stats display and prediction updates
-
 export class StatsView {
   constructor(api, classesView) {
     this.api = api;
@@ -11,7 +9,6 @@ export class StatsView {
     this.accuracyPct = this.accuracySlider ? Number(this.accuracySlider.value) : 100;
     if (this.accuracyValue) this.accuracyValue.textContent = `${this.accuracyPct}%`;
     this.statsRequestId = 0;
-
     if (this.accuracySlider) {
       this.accuracySlider.addEventListener('input', () => {
         this.accuracyPct = Number(this.accuracySlider.value);
@@ -20,8 +17,6 @@ export class StatsView {
       });
     }
   }
-
-
   updatePrediction(labelClass, labelProbability, labelSource) {
     if (!this.predictionDiv) return;
     if (labelSource === 'prediction' && labelClass) {
@@ -39,7 +34,6 @@ export class StatsView {
       }
     }
   }
-
   async update(currentImageFilename) {
     if (!this.statsDiv) return;
     const requestId = ++this.statsRequestId;

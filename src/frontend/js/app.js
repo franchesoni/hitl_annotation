@@ -5,7 +5,6 @@ import { StatsView } from './views/statsView.js';
 import { StrategyView } from './views/strategyView.js';
 import { AIControlsView } from './views/aiControlsView.js';
 import { TrainingCurveView } from './views/trainingCurveView.js';
-
 document.addEventListener('DOMContentLoaded', async () => {
         const leftPanel = document.querySelector('.left-panel');
         const classPanel = document.querySelector('#class-manager');
@@ -14,12 +13,9 @@ document.addEventListener('DOMContentLoaded', async () => {
                 history: [], 
                 configUpdated: false 
         };
-        await loadConfigFromServer();  // Load initial config from server
-
+        await loadConfigFromServer();  
         const api = new API();
         const imageView = new ImageView(leftPanel, 'loading-overlay', 'c');
-        
-        // Create annotation workflow function
         async function annotateWorkflow(sampleId, className) {
                 try {
                         await updateConfigIfNeeded();
@@ -31,45 +27,30 @@ document.addEventListener('DOMContentLoaded', async () => {
                         throw e;
                 }
         }
-        
         const classesView = new ClassesView(classPanel, annotateWorkflow, state);
         const statsView = new StatsView(api, classesView);
         const trainingCurveView = new TrainingCurveView(api);
         const strategyView = new StrategyView();
         const aiControlsView = new AIControlsView(api, state);
-
-        // Set up ClassesView callbacks
         classesView.setOnClassChange((sampleId) => {
                 if (sampleId) state.history.push(sampleId);
         });
-        
         classesView.setOnClassesUpdate((classes) => {
                 strategyView.updateClasses(classes);
         });
-
-        // -------------------------------------------------------------------------------
-        // CONTROLLER UTILS
-        // -------------------------------------------------------------------------------
-        // config update if needed
         async function updateConfigIfNeeded() {
                 if (state.configUpdated) {
                         await api.updateConfig(state.config);
                         state.configUpdated = false;
                 }
         }
-
-        // Load next image workflow
         async function loadNextImage(strategy = null, pick = null) {
                 const { imageUrl, sampleId, filepath, labelClass, labelSource, labelProbability } = 
                         await api.loadNextImage(null, strategy, pick);
-                
                 imageView.loadImage(imageUrl, filepath);
                 await classesView.setCurrentSample(sampleId, filepath);
                 statsView.updatePrediction(labelClass, labelProbability, labelSource);
         }
-
-
-        // Load complete config from server
         async function loadConfigFromServer() {
                 try {
                         const cfg = await api.getConfig();
@@ -88,10 +69,6 @@ document.addEventListener('DOMContentLoaded', async () => {
                         console.error('Failed to load config from server:', e);
                 }
         }
-
-
-
-        // get stats, render, get config, render
         async function getStatsAndConfig() {
                 await statsView.update();
                 await trainingCurveView.update();
@@ -99,10 +76,6 @@ document.addEventListener('DOMContentLoaded', async () => {
                 classesView.render();
                 aiControlsView.render(state.config);
         }
-
-        // -------------------------------------------------------------------------------
-        // UNDO WORKFLOW
-        // -------------------------------------------------------------------------------
         const undoBtn = document.getElementById('undo-btn');
         async function undo() {
                 if (state.history.length === 0) {
@@ -125,10 +98,6 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (undoBtn) {
                 undoBtn.addEventListener('click', undo);
         }
-
-        // -------------------------------------------------------------------------------
-        // KEYBOARD SHORTCUTS
-        // -------------------------------------------------------------------------------
         function initKeyboard(api) {
                 document.addEventListener('keydown', (e) => {
                         if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
@@ -146,10 +115,6 @@ document.addEventListener('DOMContentLoaded', async () => {
                 });
         }
         initKeyboard(api);
-
-        // -------------------------------------------------------------------------------
-        // START
-        // -------------------------------------------------------------------------------       
         try {
                 await loadNextImage();
                 await getStatsAndConfig();
