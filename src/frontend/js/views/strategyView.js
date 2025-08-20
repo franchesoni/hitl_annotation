@@ -1,5 +1,3 @@
-// strategyView.js - Handles strategy selection UI
-
 export class StrategyView {
   constructor() {
     this.strategySelect = document.getElementById('strategy-select');
@@ -7,9 +5,7 @@ export class StrategyView {
     this.specificClassLabel = document.getElementById('specific-class-label');
     this.currentStrategy = this.strategySelect ? this.strategySelect.value : null;
     this.currentSpecificClass = this.specificClassSelect ? this.specificClassSelect.value : null;
-
     this.toggleSpecificClassSelect();
-
     if (this.strategySelect) {
       this.strategySelect.addEventListener('change', () => {
         this.currentStrategy = this.strategySelect.value;
@@ -22,13 +18,11 @@ export class StrategyView {
       });
     }
   }
-
   toggleSpecificClassSelect() {
     const show = this.currentStrategy === 'specific_class';
     if (this.specificClassSelect) this.specificClassSelect.style.display = show ? 'inline-block' : 'none';
     if (this.specificClassLabel) this.specificClassLabel.style.display = show ? 'inline-block' : 'none';
   }
-
   updateClasses(classes) {
     if (this.specificClassSelect) {
       const previous = this.specificClassSelect.value;

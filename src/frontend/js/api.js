@@ -1,7 +1,4 @@
-// api.js - Centralized frontend API for backend communication
-
 export class API {
-    // Load the next image sample (image response, not JSON)
     async loadNextImage(currentId = null, strategy = null, pick = null) {
         let url = '/api/samples/next';
         const params = new URLSearchParams();
@@ -24,8 +21,6 @@ export class API {
         const imageUrl = URL.createObjectURL(blob);
         return { imageUrl, sampleId, filepath, labelClass, labelSource, labelProbability };
     }
-
-    // Annotate a sample (returns JSON status)
     async annotateSample(sampleId, className) {
         const res = await fetch(`/api/annotate/${sampleId}`, {
             method: 'PUT',
@@ -35,8 +30,6 @@ export class API {
         if (!res.ok) throw new Error('Annotation failed');
         return await res.json();
     }
-
-    // Delete annotation for a sample
     async deleteAnnotation(sampleId) {
         const res = await fetch(`/api/annotate/${sampleId}`, {
             method: 'DELETE'
@@ -44,8 +37,6 @@ export class API {
         if (!res.ok) throw new Error('Delete failed');
         return await res.json();
     }
-
-    // Load specific sample by id
     async loadSample(sampleId) {
         const res = await fetch(`/api/samples/${sampleId}`);
         if (!res.ok) throw new Error('Sample not found');
@@ -58,15 +49,11 @@ export class API {
         const imageUrl = URL.createObjectURL(blob);
         return { imageUrl, sampleId: sampleIdFromHeader, filepath, labelClass, labelSource, labelProbability };
     }
-
-    // Get config
     async getConfig() {
         const res = await fetch('/api/config');
         if (!res.ok) throw new Error('Failed to get config');
         return await res.json();
     }
-
-    // Update config
     async updateConfig(config) {
         const res = await fetch('/api/config', {
             method: 'PUT',
@@ -76,8 +63,6 @@ export class API {
         if (!res.ok) throw new Error('Failed to update config');
         return await res.json();
     }
-
-    // Get accuracy stats with optional window percentage
     async getStats(pct = 100) {
         let url = '/api/stats';
         if (typeof pct === 'number' && pct !== 100) {
@@ -88,13 +73,10 @@ export class API {
         if (!res.ok) throw new Error('Failed to get stats');
         return await res.json();
     }
-
     async getTrainingStats() {
-        // Get training stats from the main stats endpoint
         const stats = await this.getStats();
         return stats.training_stats || [];
     }
-
     async exportDB() {
         const res = await fetch('/api/export');
         if (!res.ok) throw new Error('Failed to export DB');
@@ -109,20 +91,3 @@ export class API {
         URL.revokeObjectURL(url);
     }
 }
-
-
-
-//   annotateWorkflow(sampleId, className) {
-//     try {
-//       await this.api.updateConfig({ classes: this.classManager.globalClasses });
-//       await this.api.annotateSample(sampleId, className);
-//       await this.loadNextImage();
-//       await this.statsView.update();
-//       await this.classManager.loadClassesFromConfig();
-//       await this.trainingCurveView.update();
-//     } catch (e) {
-//       console.error('Annotation workflow failed:', e);
-//       throw e;
-//     }
-//   }
-
