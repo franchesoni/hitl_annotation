@@ -8,8 +8,9 @@ export class TrainingCurveView {
     if (!this.canvas) return;
     const requestId = ++this.trainingRequestId;
     try {
-      const data = await this.api.getTrainingStats();
+      const stats = await this.api.getStats();
       if (requestId !== this.trainingRequestId) return;
+      const data = stats.training_stats || [];
       const points = data.map(d => ({ x: d.epoch, y: d.accuracy ?? 0 }));
       drawCurve(this.canvas, points);
     } catch (e) {
