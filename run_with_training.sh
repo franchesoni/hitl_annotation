@@ -1,8 +1,11 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Start the FastAI training script in the background
-python -m src.ml.fastai_training &
+# Create session directory if it doesn't exist
+mkdir -p session
+
+# Start the FastAI training script in the background with logging
+python -u -m src.ml.fastai_training > session/fastai_training.logs 2>&1 &
 TRAIN_PID=$!
 
 cleanup() {
@@ -15,6 +18,6 @@ cleanup() {
 
 trap cleanup EXIT INT TERM
 
-# Run the web application via gunicorn
+# Run the web application via gunicorn with logging
 # Bind to port 8001 to match project defaults
-exec gunicorn -k uvicorn.workers.UvicornWorker -b 0.0.0.0:8001 src.backend.main:app
+exec gunicorn --reload -w 1 -b 0.0.0.0:8001 src.new_backend.main:app > session/main.logs 2>&1

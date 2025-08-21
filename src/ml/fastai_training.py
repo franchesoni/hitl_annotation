@@ -46,6 +46,13 @@ from fastai.vision.all import (
     resnet34,
     vision_learner,
 )
+from fastprogress import master_bar, progress_bar
+from fastprogress.fastprogress import force_console_behavior
+import fastprogress
+
+# Disable progress bars for cleaner logs
+fastprogress.fastprogress.NO_BAR = True
+force_console_behavior()
 
 # ––– local –––
 try:
@@ -68,7 +75,7 @@ def _gather_training_items(samples: Sequence[dict]) -> List[Tuple[str, str]]:
         anns = backend_db.get_annotations(s["id"])
         labels = [a for a in anns if a.get("type") == "label" and a.get("class")]
         if labels:
-            latest = max(labels, key=lambda a: a.get("timestamp", 0))
+            latest = max(labels, key=lambda a: a.get("timestamp") or 0)
             items.append((s["sample_filepath"], latest["class"]))
     return items
 
