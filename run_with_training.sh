@@ -20,4 +20,4 @@ trap cleanup EXIT INT TERM
 
 # Run the web application via gunicorn with logging
 # Bind to port 8001 to match project defaults
-exec gunicorn --reload -w 1 -b 0.0.0.0:8001 src.new_backend.main:app > session/main.logs 2>&1
+exec gunicorn --reload -w 1 -b 0.0.0.0:8001 src.backend.main:app > session/main.logs 2>&1

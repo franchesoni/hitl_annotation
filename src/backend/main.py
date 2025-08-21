@@ -3,13 +3,13 @@ from flask import Flask, send_from_directory, request, jsonify
 from functools import lru_cache
 import timm
 
-from src.new_backend.db import (
+from src.backend.db import (
     get_config, update_config, get_next_sample_by_strategy,
     get_sample_by_id, upsert_annotation, delete_annotation_by_sample_id,
     get_annotation_stats, export_annotations, release_claim_by_id,
 )
-from src.new_backend.db_init import initialize_database_if_needed
-from src.new_backend.utils import create_image_response
+from src.backend.db_init import initialize_database_if_needed
+from src.backend.utils import create_image_response
 
 initialize_database_if_needed()
 

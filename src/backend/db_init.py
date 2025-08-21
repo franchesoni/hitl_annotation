@@ -1,4 +1,4 @@
-from src.new_backend.db import DB_PATH
+from src.backend.db import DB_PATH
 from pathlib import Path
 import sqlite3
 
