@@ -11,7 +11,6 @@ export class ClassesView {
         this.onClassesUpdate = null;
         this.annotateWorkflow = annotateWorkflow;
         this.isLoading = false;
-        this.annotationRequestId = 0;
         this.render();
         document.addEventListener('keydown', async (e) => {
             if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
@@ -25,22 +24,19 @@ export class ClassesView {
             if (idx >= 0 && idx < this.state.config.classes.length) {
                 const className = this.state.config.classes[idx];
                 const sampleId = this.currentSampleId;
-                this.selectedClass = className;
-                if (this.onClassChange) this.onClassChange(sampleId, className);
-                this.render();
                 if (sampleId && className) {
-                    let requestId;
+                    this.selectedClass = className;
+                    if (this.onClassChange) this.onClassChange(sampleId, className);
+                    this.setLoading(true);
+                    this.render();
                     try {
-                        this.setLoading(true);
-                        requestId = ++this.annotationRequestId;
                         await this.annotateWorkflow(sampleId, className);
-                        if (requestId !== this.annotationRequestId) return;
                         if (this.onAnnotationSuccess) this.onAnnotationSuccess(sampleId, className);
                         console.log('Annotation workflow completed (keyboard)');
                     } catch (err) {
                         console.error('Annotation workflow error:', err);
                     } finally {
-                        if (this.annotationRequestId === requestId) this.setLoading(false);
+                        this.setLoading(false);
                     }
                 }
             }
@@ -149,19 +145,16 @@ export class ClassesView {
                     const sampleId = this.currentSampleId;
                     this.selectedClass = c;
                     if (this.onClassChange) this.onClassChange(sampleId, c);
+                    this.setLoading(true);
                     this.renderUI();
-                    let requestId;
                     try {
-                        this.setLoading(true);
-                        requestId = ++this.annotationRequestId;
                         await this.annotateWorkflow(sampleId, c);
-                        if (requestId !== this.annotationRequestId) return;
                         if (this.onAnnotationSuccess) this.onAnnotationSuccess(sampleId, c);
                         console.log('Annotation workflow completed (button)');
                     } catch (err) {
                         console.error('Annotation workflow error:', err);
                     } finally {
-                        if (this.annotationRequestId === requestId) this.setLoading(false);
+                        this.setLoading(false);
                     }
                 };
                 const removeBtn = document.createElement('button');
