@@ -15,7 +15,8 @@ document.addEventListener('DOMContentLoaded', async () => {
                 history: [],
                 configUpdated: false,
                 workflowInProgress: false,
-                currentImageFilepath: null
+                currentImageFilepath: null,
+                currentStats: null  // Store current stats for optimization
         };
         // -----------------------------------------------------------
         // ----------  COMPONENTS  -----------------------------------
@@ -78,18 +79,40 @@ document.addEventListener('DOMContentLoaded', async () => {
                         state.configUpdated = false;  // config synchronized with backend
                 }
         }
-        function getStrategyParams() {
+        function getStrategyParams(stats = null) {
                 // Determine strategy & pick parameters from StrategyView state.
                 // Silent bug fix: strategy selection in UI was never applied to image fetching.
                 const strategy = strategyView.currentStrategy || null;
                 let pick = null;
                 if (strategy === 'specific_class') {
                         pick = strategyView.currentSpecificClass || null;
+                } else if (strategy === 'minority_frontier' && stats && stats.annotation_counts) {
+                        // Optimize by calculating minority class on frontend
+                        const minorityClass = findMinorityClass(stats.annotation_counts);
+                        if (minorityClass) {
+                                return { strategy: 'minority_frontier_optimized', pick: minorityClass };
+                        }
                 }
                 return { strategy, pick };
         }
+        
+        function findMinorityClass(annotationCounts) {
+                // Find the class with the minimum annotation count
+                if (!annotationCounts || Object.keys(annotationCounts).length === 0) {
+                        return null;
+                }
+                let minClass = null;
+                let minCount = Infinity;
+                for (const [className, count] of Object.entries(annotationCounts)) {
+                        if (count < minCount) {
+                                minCount = count;
+                                minClass = className;
+                        }
+                }
+                return minClass;
+        }
         async function loadNextImage() {
-                const { strategy, pick } = getStrategyParams();
+                const { strategy, pick } = getStrategyParams(state.currentStats);
                 const { imageUrl, sampleId, filepath, labelClass, labelSource, labelProbability } =
                         await api.loadNextImage(null, strategy, pick);
                 state.currentImageFilepath = filepath; // Store current image filepath in state
@@ -121,7 +144,8 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
         async function getStatsAndConfig() {
                 const stats = await api.getStats();
-                await statsView.update(stats, state.currentImageFilename);
+                state.currentStats = stats;  // Store stats for optimization
+                await statsView.update(stats, state.currentImageFilepath);
                 await trainingCurveView.update(stats.training_stats);
                 await loadConfigFromServer();
                 classesView.render();
