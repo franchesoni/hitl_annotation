@@ -58,10 +58,20 @@ def update_config(config):
         else:
             cursor.execute(
                 "INSERT INTO config (classes, ai_should_be_run, architecture, budget, sleep, resize) VALUES (?, ?, ?, ?, ?, ?)",
-                (classes_json, int(current.get("ai_should_be_run", False)), 
-                 current.get("architecture"), current.get("budget"), 
+                (classes_json, int(current.get("ai_should_be_run", False)),
+                 current.get("architecture"), current.get("budget"),
                  current.get("sleep"), current.get("resize"))
             )
+
+def get_all_samples():
+    """Return list of all samples with their IDs."""
+    with get_conn() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT id, sample_filepath FROM samples")
+        return [
+            {"id": row[0], "sample_filepath": row[1]}
+            for row in cursor.fetchall()
+        ]
 
 def get_next_unlabeled_sequential():
     """Returns the next unlabeled sample info without claiming it."""
@@ -198,7 +208,7 @@ def get_predictions(sample_id):
             pred = {
                 "id": row[0],
                 "sample_id": row[1],
-                "sample_filepath": row[2], 
+                "sample_filepath": row[2],
                 "class": row[3],
                 "type": row[4],
                 "timestamp": row[10]
@@ -215,6 +225,45 @@ def get_predictions(sample_id):
             # mask type would need mask_path but it's not in current schema
             predictions.append(pred)
         return predictions
+
+def set_predictions(sample_id, predictions):
+    """Overwrite predictions for the given sample ID."""
+    import time
+    with get_conn() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT sample_filepath FROM samples WHERE id = ?",
+            (sample_id,),
+        )
+        row = cursor.fetchone()
+        if not row:
+            raise ValueError(f"Sample with ID {sample_id} not found")
+        sample_filepath = row[0]
+        cursor.execute("DELETE FROM predictions WHERE sample_id = ?", (sample_id,))
+        if predictions:
+            for pred in predictions:
+                cursor.execute(
+                    """
+                    INSERT INTO predictions (
+                        sample_id, sample_filepath, class, type,
+                        probability, x, y, width, height, timestamp
+                    )
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        sample_id,
+                        sample_filepath,
+                        pred.get("class"),
+                        pred.get("type"),
+                        pred.get("probability"),
+                        pred.get("col"),
+                        pred.get("row"),
+                        pred.get("width"),
+                        pred.get("height"),
+                        int(time.time()),
+                    ),
+                )
+
 
 def get_next_sample_by_strategy(strategy=None, pick=None):
     """
