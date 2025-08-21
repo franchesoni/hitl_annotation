@@ -111,18 +111,21 @@ def _predict_subset(learner, unlabeled: List[dict], budget: int) -> int:
     )
     preds, _, decoded = learner.get_preds(dl=dl, with_decoded=True)
 
+    # Collect all predictions for batch insert
+    predictions_batch = []
     for sample, pred_tensor, pred_class in zip(subset, preds, decoded):
         pred_idx = int(pred_tensor.argmax())
-        backend_db.set_predictions(
-            sample["id"],
-            [
-                {
-                    "type": "label",
-                    "class": str(learner.dls.vocab[pred_class.item()]),
-                    "probability": float(pred_tensor[pred_idx]),
-                }
-            ],
-        )
+        predictions = [
+            {
+                "type": "label",
+                "class": str(learner.dls.vocab[pred_class.item()]),
+                "probability": float(pred_tensor[pred_idx]),
+            }
+        ]
+        predictions_batch.append((sample["id"], predictions))
+
+    # Write all predictions in one transaction
+    backend_db.set_predictions_batch(predictions_batch)
 
     return len(subset)
 

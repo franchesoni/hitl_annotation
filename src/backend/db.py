@@ -7,7 +7,16 @@ DB_PATH = "session/app.db"
 def get_conn():
     if not os.path.exists(DB_PATH):
         raise RuntimeError(f"Database not found at {DB_PATH}. Did you run init_db.py?")
-    return sqlite3.connect(DB_PATH)
+    
+    # Add timing for connection acquisition
+    start_time = time.time()
+    conn = sqlite3.connect(DB_PATH, timeout=30.0)  # Add explicit timeout
+    conn_time = time.time() - start_time
+    
+    if conn_time > 0.01:  # Log slow connections (>10ms)
+        print(f"⚠️  Slow DB connection: {conn_time:.4f} seconds")
+    
+    return conn
 
 def put_config(config: dict):
     """
@@ -282,7 +291,93 @@ def set_predictions(sample_id, predictions):
                     ),
                 )
 
+def set_predictions_batch(predictions_batch):
+    """Efficiently set predictions for multiple samples in a single transaction.
+    
+    Args:
+        predictions_batch: List of (sample_id, predictions_list) tuples
+    """
+    import time
+    timestamp = int(time.time())
+    
+    with get_conn() as conn:
+        cursor = conn.cursor()
+        
+        # Get all sample filepaths in one query
+        sample_ids = [item[0] for item in predictions_batch]
+        placeholders = ",".join("?" * len(sample_ids))
+        cursor.execute(
+            f"SELECT id, sample_filepath FROM samples WHERE id IN ({placeholders})",
+            sample_ids
+        )
+        filepath_map = {row[0]: row[1] for row in cursor.fetchall()}
+        
+        # Delete old predictions for all samples
+        cursor.execute(
+            f"DELETE FROM predictions WHERE sample_id IN ({placeholders})",
+            sample_ids
+        )
+        
+        # Prepare all inserts
+        insert_data = []
+        for sample_id, predictions in predictions_batch:
+            if sample_id not in filepath_map:
+                continue  # Skip missing samples
+            sample_filepath = filepath_map[sample_id]
+            
+            for pred in predictions:
+                insert_data.append((
+                    sample_id,
+                    sample_filepath,
+                    pred.get("class"),
+                    pred.get("type"),
+                    pred.get("probability"),
+                    pred.get("col"),
+                    pred.get("row"),
+                    pred.get("width"),
+                    pred.get("height"),
+                    timestamp,
+                ))
+        
+        # Batch insert all predictions
+        if insert_data:
+            cursor.executemany(
+                """
+                INSERT INTO predictions (
+                    sample_id, sample_filepath, class, type,
+                    probability, x, y, width, height, timestamp
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                insert_data
+            )
 
+
+import time
+from functools import wraps
+import threading
+
+def timeit(func):
+    @wraps(func)
+    def wrapper(*args, **kwargs):
+        thread_id = threading.get_ident()
+        st = time.time()
+        
+        # Log when we're about to start
+        print(f"[Thread {thread_id}] Starting {func.__name__} with args: {args[1:] if len(args) > 1 else 'None'}")
+        
+        result = func(*args, **kwargs)
+        end = time.time()
+        execution_time = end - st
+        
+        # Flag slow executions
+        flag = " ⚠️  SLOW!" if execution_time > 0.1 else ""
+        print(f"[Thread {thread_id}] Execution time for {func.__name__}: {execution_time:.4f} seconds{flag}")
+        
+        return result
+    return wrapper
+
+@timeit
 def get_next_sample_by_strategy(strategy=None, pick=None):
     """
     Get the next sample to annotate based on the given strategy.
@@ -300,6 +395,10 @@ def get_next_sample_by_strategy(strategy=None, pick=None):
         sample_info = get_unlabeled_pick(pick)
     elif strategy == "minority_frontier":
         sample_info = get_minority_unlabeled_frontier()
+    elif strategy == "minority_frontier_optimized":
+        # Optimized version where frontend provides the minority class
+        assert pick is not None, "Pick (minority class) must be provided for 'minority_frontier_optimized' strategy"
+        sample_info = get_unlabeled_pick(pick, highest_probability=False)
     else:
         raise ValueError(f"Unknown strategy: {strategy}")
     

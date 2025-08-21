@@ -353,6 +353,14 @@ def initialize_database_if_needed(db_path=DB_PATH):
         """
         )
 
+        # Create performance indexes to speed up common queries
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_samples_claimed ON samples (claimed);")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_annotations_sample_id ON annotations (sample_id);")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_predictions_sample_id ON predictions (sample_id);")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_predictions_class_type ON predictions (class, type);")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_predictions_probability ON predictions (probability);")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_curves_name_timestamp ON curves (curve_name, timestamp);")
+
         # now we can initialize the database
         initial_content = build_initial_db_dict()
         validate_db_dict(initial_content)
