@@ -20,35 +20,27 @@ export class ImageView {
         this.currentImageId = null;
         this.isLoading = false;
         this.previousObjectUrl = null;
-        this.resizeCanvasToContainer();
+        this._resizeCanvasToContainer();
         this.img.onload = () => {
-            this.resizeCanvasToContainer();
-            this.drawImageToCanvas();
+            this._resizeCanvasToContainer();
+            this._drawImageToCanvas();
         };
         window.addEventListener('resize', () => {
-            this.resizeCanvasToContainer();
-            this.drawImageToCanvas();
+            this._resizeCanvasToContainer();
+            this._drawImageToCanvas();
         });
     }
-    resizeCanvasToContainer() {
+    _resizeCanvasToContainer() {
         const rect = this.container.getBoundingClientRect();
         this.canvas.width = rect.width * 0.9;
         this.canvas.height = rect.height * 0.9;
     }
-    setLoading(loading) {
+    _setLoading(loading) {
         this.isLoading = loading;
         if (this.overlay) this.overlay.style.display = loading ? 'flex' : 'none';
     }
-    async loadImage(imageUrl, imageId = null) {
-        this.setLoading(true);
-        this.currentImageId = imageId;
-        if (this.previousObjectUrl) {
-            URL.revokeObjectURL(this.previousObjectUrl);
-        }
-        this.previousObjectUrl = imageUrl;
-        this.img.src = imageUrl;
-    }
-    drawImageToCanvas() {
+
+    _drawImageToCanvas() {
         const maxWidth = this.canvas.width;
         const maxHeight = this.canvas.height;
         this.ctx.clearRect(0, 0, maxWidth, maxHeight);
@@ -58,6 +50,16 @@ export class ImageView {
         let x = (maxWidth - drawWidth * scale) / 2;
         let y = (maxHeight - drawHeight * scale) / 2;
         this.ctx.drawImage(this.img, x, y, drawWidth * scale, drawHeight * scale);
-        this.setLoading(false);
+        this._setLoading(false);
+    }
+
+    async loadImage(imageUrl, imageId = null) {
+        this._setLoading(true);
+        this.currentImageId = imageId;
+        if (this.previousObjectUrl) {
+            URL.revokeObjectURL(this.previousObjectUrl);
+        }
+        this.previousObjectUrl = imageUrl;
+        this.img.src = imageUrl;
     }
 }

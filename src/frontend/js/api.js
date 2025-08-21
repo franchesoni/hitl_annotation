@@ -55,14 +55,21 @@ export class API {
         return await res.json();
     }
     async updateConfig(config) {
+        // Map frontend camelCase flag to backend snake_case if present
+        const payload = { ...config };
+        if (Object.prototype.hasOwnProperty.call(payload, 'aiShouldBeRun')) {
+            payload.ai_should_be_run = payload.aiShouldBeRun;
+            delete payload.aiShouldBeRun;
+        }
         const res = await fetch('/api/config', {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(config)
+            body: JSON.stringify(payload)
         });
         if (!res.ok) throw new Error('Failed to update config');
         return await res.json();
     }
+
     async getStats(pct = 100) {
         let url = '/api/stats';
         if (typeof pct === 'number' && pct !== 100) {
@@ -73,10 +80,7 @@ export class API {
         if (!res.ok) throw new Error('Failed to get stats');
         return await res.json();
     }
-    async getTrainingStats() {
-        const stats = await this.getStats();
-        return stats.training_stats || [];
-    }
+
     async exportDB() {
         const res = await fetch('/api/export');
         if (!res.ok) throw new Error('Failed to export DB');

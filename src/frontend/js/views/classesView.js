@@ -2,16 +2,16 @@ export class ClassesView {
     constructor(container, annotateWorkflow, state) {
         this.container = typeof container === 'string' ? document.querySelector(container) : container;
         if (!this.container) throw new Error('ClassesView: container not found');
-    this.state = state; 
-    this.selectedClass = null;
-    this.predictionClass = null;
-    this.currentSampleId = null;
-    this.currentImageFilename = null; 
-    this.onClassChange = null; 
-    this.onClassesUpdate = null; 
-    this.annotateWorkflow = annotateWorkflow;
-    this.isLoading = false;
-    this.annotationRequestId = 0;
+        this.state = state;
+        this.selectedClass = null;
+        this.predictionClass = null;
+        this.currentSampleId = null;
+        this.currentImageFilename = null;
+        this.onClassChange = null;
+        this.onClassesUpdate = null;
+        this.annotateWorkflow = annotateWorkflow;
+        this.isLoading = false;
+        this.annotationRequestId = 0;
         this.render();
         document.addEventListener('keydown', async (e) => {
             if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
@@ -22,19 +22,19 @@ export class ClassesView {
             } else if (e.key === '0') {
                 idx = 9;
             }
-                if (idx >= 0 && idx < this.state.config.classes.length) {
+            if (idx >= 0 && idx < this.state.config.classes.length) {
                 const className = this.state.config.classes[idx];
-                const sampleId = this.currentSampleId; 
-                this.selectedClass = className;                
+                const sampleId = this.currentSampleId;
+                this.selectedClass = className;
                 if (this.onClassChange) this.onClassChange(sampleId, className);
                 this.render();
                 if (sampleId && className) {
                     let requestId;
                     try {
                         this.setLoading(true);
-                        requestId = ++this.annotationRequestId; 
+                        requestId = ++this.annotationRequestId;
                         await this.annotateWorkflow(sampleId, className);
-                        if (requestId !== this.annotationRequestId) return; 
+                        if (requestId !== this.annotationRequestId) return;
                         if (this.onAnnotationSuccess) this.onAnnotationSuccess(sampleId, className);
                         console.log('Annotation workflow completed (keyboard)');
                     } catch (err) {
@@ -51,7 +51,7 @@ export class ClassesView {
     }
     async setCurrentSample(sampleId, filepath, selectedClass = null) {
         this.currentSampleId = sampleId;
-        this.currentImageFilename = filepath; 
+        this.currentImageFilename = filepath;
         if (selectedClass !== null) {
             this.selectedClass = selectedClass;
         }
@@ -146,16 +146,16 @@ export class ClassesView {
                 btn.disabled = this.isLoading;
                 btn.onclick = async () => {
                     if (!this.currentSampleId || this.isLoading) return;
-                    const sampleId = this.currentSampleId; 
+                    const sampleId = this.currentSampleId;
                     this.selectedClass = c;
                     if (this.onClassChange) this.onClassChange(sampleId, c);
                     this.renderUI();
                     let requestId;
                     try {
                         this.setLoading(true);
-                        requestId = ++this.annotationRequestId; 
+                        requestId = ++this.annotationRequestId;
                         await this.annotateWorkflow(sampleId, c);
-                        if (requestId !== this.annotationRequestId) return; 
+                        if (requestId !== this.annotationRequestId) return;
                         if (this.onAnnotationSuccess) this.onAnnotationSuccess(sampleId, c);
                         console.log('Annotation workflow completed (button)');
                     } catch (err) {
