@@ -7,6 +7,7 @@ from src.backend.db import (
     get_config, update_config, get_next_sample_by_strategy,
     get_sample_by_id, upsert_annotation, delete_annotation_by_sample_id,
     get_annotation_stats, export_annotations, release_claim_by_id,
+    get_most_recent_prediction, store_live_accuracy,
 )
 from src.backend.db_init import initialize_database_if_needed
 from src.backend.utils import create_image_response
@@ -122,6 +123,13 @@ def put_annotation(sample_id: int):
             annotation_data["height"] = data["height"]
 
     upsert_annotation(sample_id, class_, annotation_type, **annotation_data)
+
+    # Check for live accuracy if this is a label annotation
+    if annotation_type == "label":
+        predicted_class = get_most_recent_prediction(sample_id)
+        if predicted_class:
+            is_correct = (predicted_class == class_)
+            store_live_accuracy(sample_id, is_correct)
 
     # Release the claim since annotation is complete
     release_claim_by_id(sample_id)

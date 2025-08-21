@@ -56,11 +56,11 @@ force_console_behavior()
 
 # ––– local –––
 try:
-    from src.new_backend import db as backend_db
+    from src.backend import db as backend_db
 except ModuleNotFoundError:  # script run from repo root
     _root = Path(__file__).resolve().parents[2]
     sys.path.append(str(_root))
-    from new_backend import db as backend_db  # type: ignore
+    from backend import db as backend_db  # type: ignore
 
 
 # ---------------------------------------------------------------------------

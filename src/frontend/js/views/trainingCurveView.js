@@ -4,10 +4,17 @@ export class TrainingCurveView {
     this.canvas = document.getElementById('training-curve');
     this.trainingRequestId = 0;
   }
-  async update() {
+  async update(trainingStats = null) {
     if (!this.canvas) return;
     const requestId = ++this.trainingRequestId;
-    const data = await this.api.getTrainingStats();
+    
+    // If training stats not provided, get them from the main stats endpoint
+    let data = trainingStats;
+    if (!data) {
+      const stats = await this.api.getStats();
+      data = stats.training_stats || [];
+    }
+    
     if (requestId !== this.trainingRequestId) return;
     const points = data.map(d => ({ x: d.epoch, y: d.accuracy ?? 0 }));
     drawCurve(this.canvas, points);

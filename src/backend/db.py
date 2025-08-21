@@ -275,8 +275,8 @@ def get_next_sample_by_strategy(strategy=None, pick=None):
         return get_next_sample_by_strategy("sequential")
     elif strategy == "sequential":
         sample_info = get_next_unlabeled_sequential()
-    elif strategy == "pick_class":
-        assert pick is not None, "Pick must be provided for 'pick_class' strategy"
+    elif strategy == "pick_class" or strategy == "specific_class":
+        assert pick is not None, "Pick must be provided for 'pick_class' or 'specific_class' strategy"
         sample_info = get_unlabeled_pick(pick)
     elif strategy == "minority_frontier":
         sample_info = get_minority_unlabeled_frontier()
@@ -285,7 +285,7 @@ def get_next_sample_by_strategy(strategy=None, pick=None):
     
     if strategy != "sequential" and sample_info is None:
         # default to sequential if we got nothing
-        return get_next_sample_by_strategy()
+        return get_next_sample_by_strategy("sequential", None)
 
     if not sample_info:
         return None
@@ -361,7 +361,7 @@ def delete_annotation_by_sample_id(sample_id):
         return cursor.rowcount > 0
 
 def get_annotation_stats():
-    """Returns current annotation statistics including training stats."""
+    """Returns current annotation statistics including training stats and live accuracy."""
     with get_conn() as conn:
         cursor = conn.cursor()
         
@@ -406,18 +406,22 @@ def get_annotation_stats():
             for r in training_rows
         ]
         
-        # For compatibility with frontend, we'll set these to default values
-        # since we don't have validation/accuracy tracking yet
+        # Get all live accuracy points (let frontend handle windowing)
+        cursor.execute("""
+            SELECT value, timestamp FROM curves 
+            WHERE curve_name = 'live_accuracy'
+            ORDER BY timestamp ASC
+        """)
+        live_points = cursor.fetchall()
+        live_accuracy_points = [{"value": p[0], "timestamp": p[1]} for p in live_points]
+        
         return {
             "total": total_samples,
             "annotated": annotated_samples,
             "remaining": total_samples - annotated_samples,
             "annotation_counts": class_counts,
-            "tries": 0,  # Not implemented yet
-            "correct": 0,  # Not implemented yet
-            "accuracy": 0.0,  # Not implemented yet
-            "image": None,  # Last image - not tracked yet
-            "training_stats": training_stats  # Add training stats to the response
+            "training_stats": training_stats,
+            "live_accuracy_points": live_accuracy_points
         }
 
 def export_annotations():
@@ -481,3 +485,66 @@ def store_training_stats(epoch, train_loss=None, valid_loss=None, accuracy=None)
                 INSERT INTO curves (curve_name, value, epoch, timestamp)
                 VALUES (?, ?, ?, ?)
             """, ('accuracy', accuracy, epoch, timestamp))
+
+def store_live_accuracy(sample_id, is_correct):
+    """Store live accuracy measurement for a single annotation."""
+    import time
+    timestamp = int(time.time())
+    
+    with get_conn() as conn:
+        cursor = conn.cursor()
+        cursor.execute("""
+            INSERT INTO curves (curve_name, value, epoch, timestamp)
+            VALUES (?, ?, ?, ?)
+        """, ('live_accuracy', 1.0 if is_correct else 0.0, None, timestamp))
+
+def get_live_accuracy_stats(window_percentage=100):
+    """Get live accuracy statistics based on window percentage."""
+    with get_conn() as conn:
+        cursor = conn.cursor()
+        
+        # Get all live accuracy points ordered by timestamp
+        cursor.execute("""
+            SELECT value, timestamp FROM curves 
+            WHERE curve_name = 'live_accuracy'
+            ORDER BY timestamp ASC
+        """)
+        points = cursor.fetchall()
+        
+        if not points:
+            return {"tries": 0, "correct": 0, "accuracy": 0.0, "live_accuracy_points": []}
+        
+        # Calculate window size
+        total_points = len(points)
+        window_size = max(1, int(total_points * window_percentage / 100))
+        
+        # Get the last window_size points
+        window_points = points[-window_size:]
+        
+        # Calculate stats
+        tries = len(window_points)
+        correct = sum(1 for point in window_points if point[0] == 1.0)
+        accuracy = correct / tries if tries > 0 else 0.0
+        
+        # Format points for frontend (value, timestamp)
+        live_accuracy_points = [{"value": p[0], "timestamp": p[1]} for p in points]
+        
+        return {
+            "tries": tries,
+            "correct": correct, 
+            "accuracy": accuracy,
+            "live_accuracy_points": live_accuracy_points
+        }
+
+def get_most_recent_prediction(sample_id):
+    """Get the most recent label prediction for a sample."""
+    with get_conn() as conn:
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT class FROM predictions 
+            WHERE sample_id = ? AND type = 'label'
+            ORDER BY timestamp DESC
+            LIMIT 1
+        """, (sample_id,))
+        result = cursor.fetchone()
+        return result[0] if result else None

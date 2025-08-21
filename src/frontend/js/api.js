@@ -75,13 +75,8 @@ export class API {
         return await res.json();
     }
 
-    async getStats(pct = 100) {
-        let url = '/api/stats';
-        if (typeof pct === 'number' && pct !== 100) {
-            const params = new URLSearchParams({ pct: pct.toString() });
-            url += `?${params.toString()}`;
-        }
-        const res = await fetch(url);
+    async getStats() {
+        const res = await fetch('/api/stats');
         if (!res.ok) throw new Error('Failed to get stats');
         return await res.json();
     }

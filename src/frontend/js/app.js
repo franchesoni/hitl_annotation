@@ -14,7 +14,8 @@ document.addEventListener('DOMContentLoaded', async () => {
                 config: { classes: [], aiShouldBeRun: false, architecture: 'resnet18', budget: 1000, sleep: 0, resize: 224 },
                 history: [],
                 configUpdated: false,
-                workflowInProgress: false
+                workflowInProgress: false,
+                currentImageFilepath: null
         };
         // -----------------------------------------------------------
         // ----------  COMPONENTS  -----------------------------------
@@ -91,6 +92,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 const { strategy, pick } = getStrategyParams();
                 const { imageUrl, sampleId, filepath, labelClass, labelSource, labelProbability } =
                         await api.loadNextImage(null, strategy, pick);
+                state.currentImageFilepath = filepath; // Store current image filepath in state
                 imageView.loadImage(imageUrl, filepath);
                 await classesView.setCurrentSample(sampleId, filepath);
                 statsView.updatePrediction(labelClass, labelProbability, labelSource);
@@ -118,8 +120,9 @@ document.addEventListener('DOMContentLoaded', async () => {
                 }
         }
         async function getStatsAndConfig() {
-                await statsView.update();
-                await trainingCurveView.update();
+                const stats = await api.getStats();
+                await statsView.update(stats, state.currentImageFilename);
+                await trainingCurveView.update(stats.training_stats);
                 await loadConfigFromServer();
                 classesView.render();
                 aiControlsView.render(state.config);
@@ -136,6 +139,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 try {
                         await updateConfigIfNeeded();
                         const { imageUrl, sampleId: returnedSampleId, filepath, labelClass, labelSource, labelProbability } = await api.loadSample(sampleId);
+                        state.currentImageFilepath = filepath; // Store current image filepath in state
                         imageView.loadImage(imageUrl, filepath);
                         await classesView.setCurrentSample(returnedSampleId, filepath);
                         statsView.updatePrediction(labelClass, labelProbability, labelSource);
