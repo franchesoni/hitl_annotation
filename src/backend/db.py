@@ -91,6 +91,24 @@ def get_next_unlabeled_sequential():
         return {"id": result[0], "sample_filepath": result[1]} if result else None
 
 
+def get_next_unlabeled_random():
+    """Returns a random unlabeled sample info without claiming it."""
+    with get_conn() as conn:
+        cursor = conn.cursor()
+        # Find a random sample that has no annotations and is not claimed
+        cursor.execute("""
+            SELECT s.id, s.sample_filepath 
+            FROM samples s 
+            LEFT JOIN annotations a ON s.id = a.sample_id 
+            WHERE a.sample_id IS NULL 
+            AND s.claimed = 0
+            ORDER BY RANDOM() 
+            LIMIT 1
+        """)
+        result = cursor.fetchone()
+        return {"id": result[0], "sample_filepath": result[1]} if result else None
+
+
 def get_unlabeled_pick(pick, highest_probability=True):
     """Returns the sample of the provided class with the highest/lowest predicted probability.
     If not found returns None."""
@@ -275,6 +293,8 @@ def get_next_sample_by_strategy(strategy=None, pick=None):
         return get_next_sample_by_strategy("sequential")
     elif strategy == "sequential":
         sample_info = get_next_unlabeled_sequential()
+    elif strategy == "random":
+        sample_info = get_next_unlabeled_random()
     elif strategy == "pick_class" or strategy == "specific_class":
         assert pick is not None, "Pick must be provided for 'pick_class' or 'specific_class' strategy"
         sample_info = get_unlabeled_pick(pick)
