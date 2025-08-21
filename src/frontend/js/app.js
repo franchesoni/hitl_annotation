@@ -80,7 +80,6 @@ document.addEventListener('DOMContentLoaded', async () => {
         function getStrategyParams() {
                 // Determine strategy & pick parameters from StrategyView state.
                 // Silent bug fix: strategy selection in UI was never applied to image fetching.
-                if (!strategyView) return { strategy: null, pick: null };
                 const strategy = strategyView.currentStrategy || null;
                 let pick = null;
                 if (strategy === 'specific_class') {
