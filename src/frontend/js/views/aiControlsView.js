@@ -34,6 +34,7 @@ export class AIControlsView {
       this.checkbox.addEventListener('change', () => {
         this.state.aiRunning = this.checkbox.checked;
         this.state.config.aiShouldBeRun = this.state.aiRunning;
+        this.state.configUpdated = true;
         // If turning OFF (unchecked), immediately persist only the flag
         // If turning ON, persist full set of options alongside the flag
         if (!this.state.aiRunning) {
@@ -115,8 +116,10 @@ export class AIControlsView {
     // Merge with existing config then send
     const merged = { ...this.state.config, ...partial };
     this.state.config = merged; // keep local copy consistent
+    this.state.configUpdated = true;
     try {
       await this.api.updateConfig(merged);
+      this.state.configUpdated = false;
     } catch (e) {
       console.error('Failed to update AI config:', e);
       if (this.aiStatus) this.aiStatus.textContent = 'Update failed';
@@ -127,6 +130,7 @@ export class AIControlsView {
     // Optional external call to refresh UI with latest config
     if (cfg) {
       this.state.config = { ...this.state.config, ...cfg };
+      this.state.configUpdated = false;
       this._applyConfigToInputs(this.state.config);
     }
     if (this.checkbox) {
