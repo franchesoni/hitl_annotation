@@ -285,9 +285,6 @@ def get_config(request: Request):
     return JSONResponse(cfg)
 
 def get_stats(request: Request):
-    annotated = db.count_labeled_samples()
-    total = db.count_total_samples()
-    ann_counts = db.get_annotation_counts()
     pct_param = request.query_params.get("pct")
     pct = float(pct_param) if pct_param is not None else 100.0
     with DatabaseAPI() as db:
@@ -295,13 +292,15 @@ def get_stats(request: Request):
         total = db.count_total_samples()
         ann_counts = db.get_annotation_counts()
         stats = db.get_accuracy_counts() if pct >= 100 else db.get_accuracy_recent_pct(pct)
+        training_stats = db.get_training_stats()
+        last_image = db.get_state("global", "last_image_id")
     tries = stats["tries"]
     correct = stats["correct"]
     accuracy = (correct / tries) if tries > 0 else None
     error = (1 - accuracy) if accuracy is not None else None
     return JSONResponse(
         {
-            "image": db.get_state("global", "last_image_id"),
+            "image": last_image,
             "annotated": annotated,
             "total": total,
             "tries": tries,
@@ -309,6 +308,7 @@ def get_stats(request: Request):
             "accuracy": accuracy,
             "error": error,
             "annotation_counts": ann_counts,
+            "training_stats": training_stats,
         }
     )
 
