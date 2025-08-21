@@ -37,38 +37,32 @@ export class StatsView {
   async update(currentImageFilename) {
     if (!this.statsDiv) return;
     const requestId = ++this.statsRequestId;
-    try {
-      const stats = await this.api.getStats(this.accuracyPct);
-      if (requestId !== this.statsRequestId) return;
-      if (stats) {
-        let html = '';
-        if (currentImageFilename) {
-          html += `<div><b>Current image:</b> <span title="${currentImageFilename}">${currentImageFilename}</span></div>`;
-        }
-        if (stats.image) {
-          html += `<div><b>Last image:</b> ${stats.image}</div>`;
-        }
-        html += `<div><b>Annotated:</b> ${stats.annotated}/${stats.total}</div>`;
-        if (stats.annotation_counts) {
-          const counts = Object.entries(stats.annotation_counts)
-            .map(([cls, n]) => `<div>${cls}: ${n}</div>`)
-            .join('');
-          html += `<div><b>Annotations per class:</b>${counts}</div>`;
-        }
-        html += `<div><b>Tries:</b> ${stats.tries}</div>`;
-        html += `<div><b>Correct:</b> ${stats.correct}</div>`;
-        if (typeof stats.accuracy === 'number') {
-          const pct = (stats.accuracy * 100).toFixed(1);
-          html += `<div><b>Val Accuracy:</b> <span class="accuracy-badge">${pct}%</span></div>`;
-        } else {
-          html += `<div><b>Val Accuracy:</b> <span class="accuracy-badge">0%</span></div>`;
-        }
-        this.statsDiv.innerHTML = html;
+    const stats = await this.api.getStats(this.accuracyPct);
+    if (requestId !== this.statsRequestId) return;
+    if (stats) {
+      let html = '';
+      if (currentImageFilename) {
+        html += `<div><b>Current image:</b> <span title="${currentImageFilename}">${currentImageFilename}</span></div>`;
       }
-    } catch (e) {
-      if (requestId === this.statsRequestId) {
-        console.error('Failed to fetch stats:', e);
+      if (stats.image) {
+        html += `<div><b>Last image:</b> ${stats.image}</div>`;
       }
+      html += `<div><b>Annotated:</b> ${stats.annotated}/${stats.total}</div>`;
+      if (stats.annotation_counts) {
+        const counts = Object.entries(stats.annotation_counts)
+          .map(([cls, n]) => `<div>${cls}: ${n}</div>`)
+          .join('');
+        html += `<div><b>Annotations per class:</b>${counts}</div>`;
+      }
+      html += `<div><b>Tries:</b> ${stats.tries}</div>`;
+      html += `<div><b>Correct:</b> ${stats.correct}</div>`;
+      if (typeof stats.accuracy === 'number') {
+        const pct = (stats.accuracy * 100).toFixed(1);
+        html += `<div><b>Val Accuracy:</b> <span class="accuracy-badge">${pct}%</span></div>`;
+      } else {
+        html += `<div><b>Val Accuracy:</b> <span class="accuracy-badge">0%</span></div>`;
+      }
+      this.statsDiv.innerHTML = html;
     }
   }
 }

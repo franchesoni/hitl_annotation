@@ -7,17 +7,10 @@ export class TrainingCurveView {
   async update() {
     if (!this.canvas) return;
     const requestId = ++this.trainingRequestId;
-    try {
-      const stats = await this.api.getStats();
-      if (requestId !== this.trainingRequestId) return;
-      const data = stats.training_stats || [];
-      const points = data.map(d => ({ x: d.epoch, y: d.accuracy ?? 0 }));
-      drawCurve(this.canvas, points);
-    } catch (e) {
-      if (requestId === this.trainingRequestId) {
-        console.error('Failed to fetch training stats:', e);
-      }
-    }
+    const data = await this.api.getTrainingStats();
+    if (requestId !== this.trainingRequestId) return;
+    const points = data.map(d => ({ x: d.epoch, y: d.accuracy ?? 0 }));
+    drawCurve(this.canvas, points);
   }
 }
 function drawCurve(canvas, points) {
