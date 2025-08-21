@@ -54,6 +54,11 @@ export class API {
         if (!res.ok) throw new Error('Failed to get config');
         return await res.json();
     }
+
+    async getArchitectures() {
+        const cfg = await this.getConfig();
+        return Array.isArray(cfg.available_architectures) ? cfg.available_architectures : [];
+    }
     async updateConfig(config) {
         // Map frontend camelCase flag to backend snake_case if present
         const payload = { ...config };
