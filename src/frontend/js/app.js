@@ -74,7 +74,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         async function updateConfigIfNeeded() {
                 if (state.configUpdated) {
                         await api.updateConfig(state.config);
-                        state.configUpdated = false;  // this means frontend config state has been modified w.r.t. the backend's
+                        state.configUpdated = false;  // config synchronized with backend
                 }
         }
         function getStrategyParams() {
@@ -113,7 +113,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                                         available_architectures: cfg.available_architectures || []
                                 };
                         }
-                        state.configUpdated = false;
+                        state.configUpdated = false; // config synchronized with backend
                 } catch (e) {
                         console.error('Failed to load config from server:', e);
                 }
