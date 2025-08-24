@@ -13,7 +13,7 @@ def get_conn():
     conn = sqlite3.connect(DB_PATH, timeout=30.0)  # Add explicit timeout
     conn_time = time.time() - start_time
     
-    if conn_time > 0.01:  # Log slow connections (>10ms)
+    if conn_time > 0.05:  # Log slow connections (>50ms)
         print(f"⚠️  Slow DB connection: {conn_time:.4f} seconds")
     
     return conn

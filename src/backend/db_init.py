@@ -51,7 +51,7 @@ def build_initial_db_dict() -> dict:
         "samples": [
             {"sample_filepath": str(ppath)}
             for ppath in Path("/home/franchesoni/Downloads/mnist_png/testing").glob(
-                "**/*.png"
+                "*.png"
             )
         ],
         "annotations": [],

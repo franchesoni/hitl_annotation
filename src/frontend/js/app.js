@@ -16,7 +16,8 @@ document.addEventListener('DOMContentLoaded', async () => {
                 configUpdated: false,
                 workflowInProgress: false,
                 currentImageFilepath: null,
-                currentStats: null  // Store current stats for optimization
+                currentStats: null,  // Store current stats for optimization
+                lastAnnotatedClass: null  // Track the last class annotated by the user
         };
         // -----------------------------------------------------------
         // ----------  COMPONENTS  -----------------------------------
@@ -62,6 +63,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                         await updateConfigIfNeeded();
                         await api.annotateSample(sampleId, className);
                         state.history.push(sampleId);
+                        state.lastAnnotatedClass = className;  // Track the last annotated class
                         await loadNextImage();
                         await getStatsAndConfig();
                 } finally {
@@ -86,6 +88,9 @@ document.addEventListener('DOMContentLoaded', async () => {
                 let pick = null;
                 if (strategy === 'specific_class') {
                         pick = strategyView.currentSpecificClass || null;
+                } else if (strategy === 'pick_class') {
+                        // Use the last annotated class for "High prob last label" strategy
+                        pick = state.lastAnnotatedClass || null;
                 } else if (strategy === 'minority_frontier' && stats && stats.annotation_counts) {
                         // Optimize by calculating minority class on frontend
                         const minorityClass = findMinorityClass(stats.annotation_counts);
