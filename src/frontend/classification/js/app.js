@@ -1,4 +1,4 @@
-import { API } from './api.js';
+import { API } from '/shared/js/api.js';
 import { ImageView } from './views/imageView.js';
 import { ClassesView } from './views/classesView.js';
 import { StatsView } from './views/statsView.js';
