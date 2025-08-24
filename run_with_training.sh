@@ -3,6 +3,7 @@ set -euo pipefail
 
 # Create session directory if it doesn't exist
 mkdir -p session
+source .venv/bin/activate
 
 # Start the FastAI training script in the background with logging
 python -u -m src.ml.fastai_training > session/fastai_training.logs 2>&1 &
