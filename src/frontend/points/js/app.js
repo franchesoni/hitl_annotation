@@ -1,6 +1,6 @@
 import { API } from '/shared/js/api.js';
 import { ImageView } from '/shared/views/imageView.js';
-import { ClassesView } from '/shared/views/classesView.js';
+import { PointsClassesView } from './views/pointsClassesView.js';
 import { StatsView } from '/shared/views/statsView.js';
 import { AIControlsView } from '/shared/views/aiControlsView.js';
 import { TrainingCurveView } from '/shared/views/trainingCurveView.js';
@@ -11,13 +11,47 @@ document.addEventListener('DOMContentLoaded', async () => {
         // -----------------------------------------------------------
         const state = {
                 config: { classes: [], aiShouldBeRun: false, architecture: 'resnet18', budget: 1000, sleep: 0, resize: 224 },
-                history: [],
                 configUpdated: false,
                 workflowInProgress: false,
                 currentImageFilepath: null,
+                currentSampleId: null, // Track current sample ID for navigation
                 currentStats: null,  // Store current stats for optimization
                 selectedClass: null,
+                classColors: new Map(), // Map class names to colors
         };
+
+        // Generate distinct colors for classes
+        function generateClassColor(index) {
+                const colors = [
+                        '#FF6B6B', // red
+                        '#4ECDC4', // teal
+                        '#45B7D1', // blue
+                        '#96CEB4', // green
+                        '#FFEAA7', // yellow
+                        '#DDA0DD', // plum
+                        '#98D8C8', // mint
+                        '#F7DC6F', // light yellow
+                        '#BB8FCE', // light purple
+                        '#85C1E9', // light blue
+                        '#F8C471', // orange
+                        '#82E0AA', // light green
+                        '#F1948A', // light red
+                        '#85929E', // gray
+                        '#D7BDE2', // lavender
+                ];
+                return colors[index % colors.length];
+        }
+
+        // Get color for a class, assigning one if not exists
+        function getClassColor(className) {
+                if (!state.classColors.has(className)) {
+                        const classIndex = state.config.classes.indexOf(className);
+                        const color = generateClassColor(classIndex);
+                        state.classColors.set(className, color);
+                }
+                return state.classColors.get(className);
+        }
+        
         // -----------------------------------------------------------
         // ----------  COMPONENTS  -----------------------------------
         // -----------------------------------------------------------
@@ -26,7 +60,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         const api = new API();
         await loadConfigFromServer();
         const imageView = new ImageView(leftPanel, 'loading-overlay', 'c');
-        const classesView = new ClassesView(classPanel, selectClassWorkflow, state);
+        const classesView = new PointsClassesView(classPanel, selectClassWorkflow, state);
         const statsView = new StatsView(api, classesView);
         const trainingCurveView = new TrainingCurveView(api);
         const aiControlsView = new AIControlsView(api, state);
@@ -59,7 +93,12 @@ document.addEventListener('DOMContentLoaded', async () => {
         async function selectClassWorkflow(sampleId, className) {
                 // Just update the selected class, don't annotate yet
                 state.selectedClass = className;
-                console.log('Selected class:', className);
+                // Ask the view for the color so it stays the single source of truth
+                const color = classesView.getClassColor ? classesView.getClassColor(className) : undefined;
+                console.log('Selected class:', className, 'with color:', color);
+                
+                // You can also trigger visual updates here if needed
+                // For example, update cursor style or selected point color preview
         }
         
         async function annotateWorkflow(sampleId, className) {
@@ -68,9 +107,10 @@ document.addEventListener('DOMContentLoaded', async () => {
                 try {
                         await updateConfigIfNeeded();
                         await api.annotateSample(sampleId, className);
-                        state.history.push(sampleId);
+                        
                         await loadNextImage();
                         await getStatsAndConfig();
+                        updateNavigationButtons();
                 } finally {
                         endWorkflow();
                 }
@@ -86,7 +126,9 @@ document.addEventListener('DOMContentLoaded', async () => {
         async function loadNextImage() {
                 const { imageUrl, sampleId, filepath, labelClass, labelSource, labelProbability } =
                         await api.loadNextImage();
-                state.currentImageFilepath = filepath; // Store current image filepath in state
+                state.currentImageFilepath = filepath;
+                state.currentSampleId = parseInt(sampleId);
+                
                 imageView.loadImage(imageUrl, filepath);
                 await classesView.setCurrentSample(sampleId, filepath);
                 // Note: No prediction display for points annotation
@@ -119,35 +161,94 @@ document.addEventListener('DOMContentLoaded', async () => {
                 await statsView.update(stats, state.currentImageFilepath);
                 await trainingCurveView.update(stats.training_stats);
                 await loadConfigFromServer();
+                
+                // Update class colors when classes change
+                state.config.classes.forEach(className => {
+                        getClassColor(className); // Ensures color is assigned
+                });
+                
                 classesView.render();
                 aiControlsView.render(state.config);
         }
-        const undoBtn = document.getElementById('undo-btn');
-        async function undo() {
+        const prevBtn = document.getElementById('prev-btn');
+        const nextBtn = document.getElementById('next-btn');
+
+        async function navigatePrev() {
                 if (state.workflowInProgress) return;
-                if (state.history.length === 0) {
-                        alert('No more actions to undo');
+                if (!state.currentSampleId) {
+                        alert('No current sample to navigate from');
                         return;
                 }
-                const sampleId = state.history.pop();
+                
                 beginWorkflow();
                 try {
-                        await updateConfigIfNeeded();
-                        const { imageUrl, sampleId: returnedSampleId, filepath, labelClass, labelSource, labelProbability } = await api.loadSample(sampleId);
-                        state.currentImageFilepath = filepath; // Store current image filepath in state
-                        imageView.loadImage(imageUrl, filepath);
-                        await classesView.setCurrentSample(returnedSampleId, filepath);
-                        // Note: No prediction display for points annotation
-                        await api.deleteAnnotation(sampleId);
-                        await getStatsAndConfig();
+                        const prevSample = await api.loadSamplePrev(state.currentSampleId);
+                        if (prevSample) {
+                                await loadSampleData(prevSample);
+                        } else {
+                                alert('No previous image available');
+                        }
+                        updateNavigationButtons();
                 } catch (e) {
-                        console.error('Undo workflow failed:', e);
+                        console.error('Navigate prev failed:', e);
                 } finally {
                         endWorkflow();
                 }
         }
-        if (undoBtn) {
-                undoBtn.addEventListener('click', undo);
+
+        async function navigateNext() {
+                if (state.workflowInProgress) return;
+                
+                beginWorkflow();
+                try {
+                        let nextSample = null;
+                        
+                        // Try to get next sample if we have a current sample
+                        if (state.currentSampleId) {
+                                nextSample = await api.loadSampleNext(state.currentSampleId);
+                        }
+                        
+                        // If no next sample found, load a new one
+                        if (!nextSample) {
+                                await loadNextImage();
+                                await getStatsAndConfig();
+                        } else {
+                                await loadSampleData(nextSample);
+                        }
+                        
+                        updateNavigationButtons();
+                } catch (e) {
+                        console.error('Navigate next failed:', e);
+                } finally {
+                        endWorkflow();
+                }
+        }
+
+        async function loadSampleData(sampleData) {
+                const { imageUrl, sampleId, filepath } = sampleData;
+                state.currentImageFilepath = filepath;
+                state.currentSampleId = parseInt(sampleId);
+                imageView.loadImage(imageUrl, filepath);
+                await classesView.setCurrentSample(sampleId, filepath);
+        }
+
+        function updateNavigationButtons() {
+                // Note: We can't easily determine if prev/next exist without making API calls
+                // So we'll enable them and let the API calls handle the "not found" cases
+                if (prevBtn) {
+                        prevBtn.disabled = !state.currentSampleId || state.workflowInProgress;
+                }
+                if (nextBtn) {
+                        nextBtn.disabled = state.workflowInProgress;
+                        nextBtn.textContent = 'Next ▶ (Ctrl+Right/N)';
+                }
+        }
+
+        if (prevBtn) {
+                prevBtn.addEventListener('click', navigatePrev);
+        }
+        if (nextBtn) {
+                nextBtn.addEventListener('click', navigateNext);
         }
         function initKeyboard(api) {
                 document.addEventListener('keydown', (e) => {
@@ -157,12 +258,18 @@ document.addEventListener('DOMContentLoaded', async () => {
                         if ((e.ctrlKey || e.metaKey) && lowerCaseKey === 'e') {
                                 e.preventDefault();
                                 api.exportDB();
-                        } else if ((e.ctrlKey || e.metaKey) && lowerCaseKey === 'z') {
+                        } else if ((e.ctrlKey || e.metaKey) && e.key === 'ArrowLeft') {
                                 e.preventDefault();
-                                undo();
-                        } else if (e.key === 'Backspace' || lowerCaseKey === 'u') {
+                                navigatePrev();
+                        } else if ((e.ctrlKey || e.metaKey) && e.key === 'ArrowRight') {
                                 e.preventDefault();
-                                undo();
+                                navigateNext();
+                        } else if (lowerCaseKey === 'p') {
+                                e.preventDefault();
+                                navigatePrev();
+                        } else if (lowerCaseKey === 'n') {
+                                e.preventDefault();
+                                navigateNext();
                         }
                 });
         }
@@ -170,6 +277,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         try {
                 await loadNextImage();
                 await getStatsAndConfig();
+                updateNavigationButtons(); // Initialize button states
         } catch (e) {
                 console.error('Failed to initialize application:', e);
         }

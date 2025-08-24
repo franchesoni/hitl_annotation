@@ -1,6 +1,7 @@
 import sqlite3
 import os
 import json
+import time
 
 DB_PATH = "session/app.db"
 
@@ -422,6 +423,36 @@ def get_sample_by_id(sample_id):
             SELECT id, sample_filepath
             FROM samples
             WHERE id = ?
+        """, (sample_id,))
+        result = cursor.fetchone()
+        return {"id": result[0], "sample_filepath": result[1]} if result else None
+
+
+def get_sample_prev_by_id(sample_id):
+    """Get the previous sample by ID (highest ID that is less than the given ID)."""
+    with get_conn() as conn:
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT id, sample_filepath
+            FROM samples
+            WHERE id < ?
+            ORDER BY id DESC
+            LIMIT 1
+        """, (sample_id,))
+        result = cursor.fetchone()
+        return {"id": result[0], "sample_filepath": result[1]} if result else None
+
+
+def get_sample_next_by_id(sample_id):
+    """Get the next sample by ID (lowest ID that is greater than the given ID)."""
+    with get_conn() as conn:
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT id, sample_filepath
+            FROM samples
+            WHERE id > ?
+            ORDER BY id ASC
+            LIMIT 1
         """, (sample_id,))
         result = cursor.fetchone()
         return {"id": result[0], "sample_filepath": result[1]} if result else None

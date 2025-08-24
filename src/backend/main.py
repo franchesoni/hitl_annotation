@@ -110,6 +110,34 @@ def get_sample_by_id_endpoint(sample_id: int):
         return jsonify({"error": f"Sample with ID {sample_id} not found"}), 404
 
 
+@app.get("/api/samples/<int:sample_id>/prev")
+def get_sample_prev(sample_id: int):
+    """
+    Returns the previous sample by ID (sample with ID < current_id).
+    Path param: `sample_id` identifies the current sample.
+    """
+    from src.backend.db import get_sample_prev_by_id
+    sample_info = get_sample_prev_by_id(sample_id)
+    if sample_info:
+        return create_image_response(sample_info)
+    else:
+        return jsonify({"error": f"No previous sample found before ID {sample_id}"}), 404
+
+
+@app.get("/api/samples/<int:sample_id>/next")
+def get_sample_next(sample_id: int):
+    """
+    Returns the next sample by ID (sample with ID > current_id).
+    Path param: `sample_id` identifies the current sample.
+    """
+    from src.backend.db import get_sample_next_by_id
+    sample_info = get_sample_next_by_id(sample_id)
+    if sample_info:
+        return create_image_response(sample_info)
+    else:
+        return jsonify({"error": f"No next sample found after ID {sample_id}"}), 404
+
+
 @app.put("/api/annotate/<int:sample_id>")
 def put_annotation(sample_id: int):
     """

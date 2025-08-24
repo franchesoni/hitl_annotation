@@ -49,6 +49,32 @@ export class API {
         const imageUrl = URL.createObjectURL(blob);
         return { imageUrl, sampleId: sampleIdFromHeader, filepath, labelClass, labelSource, labelProbability };
     }
+    
+    async loadSamplePrev(sampleId) {
+        const res = await fetch(`/api/samples/${sampleId}/prev`);
+        if (!res.ok) return null; // No previous sample
+        const sampleIdFromHeader = res.headers.get('X-Image-Id');
+        const filepath = res.headers.get('X-Image-Filepath');
+        const labelClass = res.headers.get('X-Label-Class');
+        const labelSource = res.headers.get('X-Label-Source');
+        const labelProbability = res.headers.get('X-Label-Probability');
+        const blob = await res.blob();
+        const imageUrl = URL.createObjectURL(blob);
+        return { imageUrl, sampleId: sampleIdFromHeader, filepath, labelClass, labelSource, labelProbability };
+    }
+    
+    async loadSampleNext(sampleId) {
+        const res = await fetch(`/api/samples/${sampleId}/next`);
+        if (!res.ok) return null; // No next sample
+        const sampleIdFromHeader = res.headers.get('X-Image-Id');
+        const filepath = res.headers.get('X-Image-Filepath');
+        const labelClass = res.headers.get('X-Label-Class');
+        const labelSource = res.headers.get('X-Label-Source');
+        const labelProbability = res.headers.get('X-Label-Probability');
+        const blob = await res.blob();
+        const imageUrl = URL.createObjectURL(blob);
+        return { imageUrl, sampleId: sampleIdFromHeader, filepath, labelClass, labelSource, labelProbability };
+    }
     async getConfig() {
         const res = await fetch('/api/config');
         if (!res.ok) throw new Error('Failed to get config');
