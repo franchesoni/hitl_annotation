@@ -2,7 +2,6 @@ import { API } from '/shared/js/api.js';
 import { ImageView } from '/shared/views/imageView.js';
 import { ClassesView } from '/shared/views/classesView.js';
 import { StatsView } from '/shared/views/statsView.js';
-import { StrategyView } from '/shared/views/strategyView.js';
 import { AIControlsView } from '/shared/views/aiControlsView.js';
 import { TrainingCurveView } from '/shared/views/trainingCurveView.js';
 
@@ -17,7 +16,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 workflowInProgress: false,
                 currentImageFilepath: null,
                 currentStats: null,  // Store current stats for optimization
-                lastAnnotatedClass: null  // Track the last class annotated by the user
+                selectedClass: null,
         };
         // -----------------------------------------------------------
         // ----------  COMPONENTS  -----------------------------------
@@ -27,10 +26,9 @@ document.addEventListener('DOMContentLoaded', async () => {
         const api = new API();
         await loadConfigFromServer();
         const imageView = new ImageView(leftPanel, 'loading-overlay', 'c');
-        const classesView = new ClassesView(classPanel, annotateWorkflow, state);
+        const classesView = new ClassesView(classPanel, selectClassWorkflow, state);
         const statsView = new StatsView(api, classesView);
         const trainingCurveView = new TrainingCurveView(api);
-        const strategyView = new StrategyView();
         const aiControlsView = new AIControlsView(api, state);
         // -----------------------------------------------------------
         // ----------  ACTIONS  --------------------------------------
@@ -56,6 +54,14 @@ document.addEventListener('DOMContentLoaded', async () => {
                 state.workflowInProgress = false;
                 setInteractiveEnabled(true);
         }
+        
+        // Simple workflow that just selects a class without annotating
+        async function selectClassWorkflow(sampleId, className) {
+                // Just update the selected class, don't annotate yet
+                state.selectedClass = className;
+                console.log('Selected class:', className);
+        }
+        
         async function annotateWorkflow(sampleId, className) {
                 if (state.workflowInProgress) return; // guard
                 beginWorkflow();
@@ -63,7 +69,6 @@ document.addEventListener('DOMContentLoaded', async () => {
                         await updateConfigIfNeeded();
                         await api.annotateSample(sampleId, className);
                         state.history.push(sampleId);
-                        state.lastAnnotatedClass = className;  // Track the last annotated class
                         await loadNextImage();
                         await getStatsAndConfig();
                 } finally {
@@ -71,59 +76,20 @@ document.addEventListener('DOMContentLoaded', async () => {
                 }
         }
 
-        // update strategyView list of classes when classes are updated
-        classesView.setOnClassesUpdate((classes) => {
-                strategyView.updateClasses(classes);
-        });
         async function updateConfigIfNeeded() {
                 if (state.configUpdated) {
                         await api.updateConfig(state.config);
                         state.configUpdated = false;  // config synchronized with backend
                 }
         }
-        function getStrategyParams(stats = null) {
-                // Determine strategy & pick parameters from StrategyView state.
-                // Silent bug fix: strategy selection in UI was never applied to image fetching.
-                const strategy = strategyView.currentStrategy || null;
-                let pick = null;
-                if (strategy === 'specific_class') {
-                        pick = strategyView.currentSpecificClass || null;
-                } else if (strategy === 'pick_class') {
-                        // Use the last annotated class for "High prob last label" strategy
-                        pick = state.lastAnnotatedClass || null;
-                } else if (strategy === 'minority_frontier' && stats && stats.annotation_counts) {
-                        // Optimize by calculating minority class on frontend
-                        const minorityClass = findMinorityClass(stats.annotation_counts);
-                        if (minorityClass) {
-                                return { strategy: 'minority_frontier_optimized', pick: minorityClass };
-                        }
-                }
-                return { strategy, pick };
-        }
-        
-        function findMinorityClass(annotationCounts) {
-                // Find the class with the minimum annotation count
-                if (!annotationCounts || Object.keys(annotationCounts).length === 0) {
-                        return null;
-                }
-                let minClass = null;
-                let minCount = Infinity;
-                for (const [className, count] of Object.entries(annotationCounts)) {
-                        if (count < minCount) {
-                                minCount = count;
-                                minClass = className;
-                        }
-                }
-                return minClass;
-        }
+
         async function loadNextImage() {
-                const { strategy, pick } = getStrategyParams(state.currentStats);
                 const { imageUrl, sampleId, filepath, labelClass, labelSource, labelProbability } =
-                        await api.loadNextImage(null, strategy, pick);
+                        await api.loadNextImage();
                 state.currentImageFilepath = filepath; // Store current image filepath in state
                 imageView.loadImage(imageUrl, filepath);
                 await classesView.setCurrentSample(sampleId, filepath);
-                statsView.updatePrediction(labelClass, labelProbability, labelSource);
+                // Note: No prediction display for points annotation
         }
         async function loadConfigFromServer() {
                 try {
@@ -171,7 +137,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                         state.currentImageFilepath = filepath; // Store current image filepath in state
                         imageView.loadImage(imageUrl, filepath);
                         await classesView.setCurrentSample(returnedSampleId, filepath);
-                        statsView.updatePrediction(labelClass, labelProbability, labelSource);
+                        // Note: No prediction display for points annotation
                         await api.deleteAnnotation(sampleId);
                         await getStatsAndConfig();
                 } catch (e) {
@@ -202,7 +168,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
         initKeyboard(api);
         try {
-                await loadNextImage(); // now respects chosen strategy
+                await loadNextImage();
                 await getStatsAndConfig();
         } catch (e) {
                 console.error('Failed to initialize application:', e);

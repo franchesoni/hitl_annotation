@@ -31,7 +31,28 @@ def _list_architectures():
 
 @app.route("/")
 def index():
-    return send_from_directory(FRONTEND_DIR, "index.html")
+    return send_from_directory(FRONTEND_DIR, "router.html")
+
+@app.route("/classification")
+def classification():
+    return send_from_directory(FRONTEND_DIR / "classification", "index.html")
+
+@app.route("/points")
+def points():
+    return send_from_directory(FRONTEND_DIR / "points", "index.html")
+
+# Serve static files for each app
+@app.route("/classification/<path:filename>")
+def classification_static(filename):
+    return send_from_directory(FRONTEND_DIR / "classification", filename)
+
+@app.route("/points/<path:filename>")
+def points_static(filename):
+    return send_from_directory(FRONTEND_DIR / "points", filename)
+
+@app.route("/shared/<path:filename>")
+def shared_static(filename):
+    return send_from_directory(FRONTEND_DIR / "shared", filename)
 
 
 @app.route("/api/health", methods=["GET"])

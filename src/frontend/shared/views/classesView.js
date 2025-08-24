@@ -150,9 +150,9 @@ export class ClassesView {
                     try {
                         await this.annotateWorkflow(sampleId, c);
                         if (this.onAnnotationSuccess) this.onAnnotationSuccess(sampleId, c);
-                        console.log('Annotation workflow completed (button)');
+                        console.log('Class selection workflow completed (button)');
                     } catch (err) {
-                        console.error('Annotation workflow error:', err);
+                        console.error('Class selection workflow error:', err);
                     } finally {
                         this.setLoading(false);
                     }
