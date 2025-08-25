@@ -1,12 +1,12 @@
 export class AIControlsView {
-  constructor(api, state) {
+  constructor(api, state, customArchitectures = null) {
     this.api = api;
     this.state = state;
+    this.customArchitectures = customArchitectures; // Allow override of architectures
     // Elements
     this.checkbox = document.getElementById('ai-run-checkbox');
     this.aiStatus = document.getElementById('ai-status');
-    this.archInput = document.getElementById('ai-arch');
-    this.archDatalist = document.getElementById('arch-options');
+    this.archSelect = document.getElementById('ai-arch');
     this.sleepInput = document.getElementById('ai-sleep');
     this.budgetInput = document.getElementById('ai-budget');
     this.resizeInput = document.getElementById('ai-resize');
@@ -56,7 +56,7 @@ export class AIControlsView {
         this.state.configUpdated = true; // for consistency
       }
     };
-    [this.archInput, this.sleepInput, this.budgetInput, this.resizeInput].forEach(inp => {
+    [this.archSelect, this.sleepInput, this.budgetInput, this.resizeInput].forEach(inp => {
       if (inp) inp.addEventListener('change', onInputChange);
     });
 
@@ -64,9 +64,12 @@ export class AIControlsView {
   }
 
   _collectAIConfig() {
+    // Determine appropriate default architecture based on whether custom architectures are used
+    const defaultArch = this.customArchitectures ? this.customArchitectures[0] : 'resnet18';
+    
     return {
       aiShouldBeRun: !!(this.checkbox && this.checkbox.checked),
-      architecture: this.archInput?.value || this.state.config.architecture || 'resnet18',
+      architecture: this.archSelect?.value || this.state.config.architecture || defaultArch,
       sleep: Number(this.sleepInput?.value || this.state.config.sleep || 0),
       budget: Number(this.budgetInput?.value || this.state.config.budget || 1000),
       resize: Number(this.resizeInput?.value || this.state.config.resize || 224)
@@ -74,7 +77,7 @@ export class AIControlsView {
   }
 
   _applyConfigToInputs(cfg) {
-    if (this.archInput && cfg.architecture) this.archInput.value = cfg.architecture;
+    if (this.archSelect && cfg.architecture) this.archSelect.value = cfg.architecture;
     if (this.sleepInput && cfg.sleep !== undefined) this.sleepInput.value = cfg.sleep;
     if (this.budgetInput && cfg.budget !== undefined) this.budgetInput.value = cfg.budget;
     if (this.resizeInput && cfg.resize !== undefined) this.resizeInput.value = cfg.resize;
@@ -83,7 +86,7 @@ export class AIControlsView {
   updateInputsDisabled() {
     const running = !!(this.checkbox && this.checkbox.checked);
     // When running, disable editing (as per requirement: only change when unchecked)
-    [this.archInput, this.sleepInput, this.budgetInput, this.resizeInput].forEach(inp => {
+    [this.archSelect, this.sleepInput, this.budgetInput, this.resizeInput].forEach(inp => {
       if (inp) inp.disabled = running;
     });
     if (this.aiStatus) {
@@ -92,20 +95,43 @@ export class AIControlsView {
   }
 
   async loadArchitectures() {
-    if (!this.archDatalist) return;
+    if (!this.archSelect) return;
     try {
       let archs = [];
-      if (this.state.config && Array.isArray(this.state.config.available_architectures)) {
-        archs = this.state.config.available_architectures;
+      
+      // Use custom architectures if provided, otherwise get from config/API
+      if (this.customArchitectures) {
+        archs = this.customArchitectures;
+      } else {
+        if (this.state.config && Array.isArray(this.state.config.available_architectures)) {
+          archs = this.state.config.available_architectures;
+        }
+        if (!archs.length) {
+          archs = await this.api.getArchitectures();
+        }
       }
-      if (!archs.length) {
-        archs = await this.api.getArchitectures();
+      
+      // Clear existing options except the placeholder
+      const placeholder = this.archSelect.querySelector('option[disabled]');
+      this.archSelect.innerHTML = '';
+      if (placeholder) {
+        this.archSelect.appendChild(placeholder);
+      } else {
+        // Create placeholder if it doesn't exist
+        const placeholderOpt = document.createElement('option');
+        placeholderOpt.value = '';
+        placeholderOpt.disabled = true;
+        placeholderOpt.selected = true;
+        placeholderOpt.textContent = 'Select architecture';
+        this.archSelect.appendChild(placeholderOpt);
       }
-      this.archDatalist.innerHTML = '';
+      
+      // Add architecture options
       archs.forEach(a => {
         const opt = document.createElement('option');
         opt.value = a;
-        this.archDatalist.appendChild(opt);
+        opt.textContent = a;
+        this.archSelect.appendChild(opt);
       });
     } catch (e) {
       console.error('Failed to load architectures:', e);

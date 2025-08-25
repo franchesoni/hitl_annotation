@@ -36,8 +36,9 @@
                                 <label style="margin-right:8px;">
                                         <input id="ai-run-checkbox" type="checkbox"> Run AI
                                 </label>
-                                <input id="ai-arch" list="arch-options" placeholder="architecture">
-                                <datalist id="arch-options"></datalist>
+                                <select id="ai-arch">
+                                        <option value="" disabled selected>Select architecture</option>
+                                </select>
                                 <input id="ai-sleep" type="number" placeholder="sleep" title="Sleep (seconds between training cycles)">
                                 <input id="ai-budget" type="number" placeholder="budget" title="Max training iterations / epochs budget">
                                 <input id="ai-resize" type="number" placeholder="resize" title="Image resize (shorter side)">
