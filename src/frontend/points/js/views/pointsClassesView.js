@@ -111,16 +111,15 @@ export class PointsClassesView extends ClassesView {
                     const sampleId = this.currentSampleId;
                     this.selectedClass = c;
                     if (this.onClassChange) this.onClassChange(sampleId, c);
-                    this.setLoading(true);
-                    this.renderUI();
+                    
+                    // For points annotation, we just select the class instead of annotating immediately
+                    // The actual annotation happens when clicking on the image
                     try {
-                        await this.annotateWorkflow(sampleId, c);
-                        if (this.onAnnotationSuccess) this.onAnnotationSuccess(sampleId, c);
-                        console.log('Annotation workflow completed (button)');
+                        await this.annotateWorkflow(sampleId, c); // This will be selectClassWorkflow
+                        this.renderUI(); // Re-render to show selection
+                        console.log('Class selected:', c);
                     } catch (err) {
-                        console.error('Annotation workflow error:', err);
-                    } finally {
-                        this.setLoading(false);
+                        console.error('Class selection error:', err);
                     }
                 };
 

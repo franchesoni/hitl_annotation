@@ -172,3 +172,31 @@ body {
     border: 1px solid #ced4da;
     border-radius: 4px
 }
+
+.points-help {
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 8px;
+    padding: 12px;
+    margin-bottom: 16px;
+}
+
+.points-help h4 {
+    margin: 0 0 8px 0;
+    color: #64b5f6;
+    font-weight: 400;
+}
+
+.points-help p {
+    margin: 4px 0;
+    font-size: 13px;
+    color: rgba(255, 255, 255, 0.8);
+}
+
+canvas {
+    cursor: default;
+}
+
+canvas.crosshair {
+    cursor: crosshair !important;
+}

@@ -60,6 +60,22 @@ document.addEventListener('DOMContentLoaded', async () => {
         const api = new API();
         await loadConfigFromServer();
         const imageView = new ImageView(leftPanel, 'loading-overlay', 'c');
+        
+        // Set up point addition callback
+        imageView.onPointAdd = async (point) => {
+                console.log('Point added:', point);
+                // Here you can add logic to save the point to the backend
+                // For now, we'll just log it
+                // TODO: Implement API call to save point annotation
+        };
+        
+        // Set up point removal callback
+        imageView.onPointRemove = async (point, index) => {
+                console.log('Point removed:', point, 'at index:', index);
+                // Here you can add logic to remove the point from the backend
+                // For now, we'll just log it
+                // TODO: Implement API call to remove point annotation
+        };
         const classesView = new PointsClassesView(classPanel, selectClassWorkflow, state);
         const statsView = new StatsView(api, classesView);
         const trainingCurveView = new TrainingCurveView(api);
@@ -99,6 +115,9 @@ document.addEventListener('DOMContentLoaded', async () => {
                 const color = classesView.getClassColor ? classesView.getClassColor(className) : undefined;
                 console.log('Selected class:', className, 'with color:', color);
                 
+                // Update the image view with the selected class and color
+                imageView.setSelectedClass(className, color);
+                
                 // You can also trigger visual updates here if needed
                 // For example, update cursor style or selected point color preview
         }
@@ -132,6 +151,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 state.currentSampleId = parseInt(sampleId);
                 
                 imageView.loadImage(imageUrl, filepath);
+                imageView.clearPoints(); // Clear existing points when loading new image
                 await classesView.setCurrentSample(sampleId, filepath);
                 // Note: No prediction display for points annotation
         }
@@ -231,6 +251,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 state.currentImageFilepath = filepath;
                 state.currentSampleId = parseInt(sampleId);
                 imageView.loadImage(imageUrl, filepath);
+                imageView.clearPoints(); // Clear existing points when loading new image
                 await classesView.setCurrentSample(sampleId, filepath);
         }
 
@@ -272,6 +293,29 @@ document.addEventListener('DOMContentLoaded', async () => {
                         } else if (lowerCaseKey === 'n') {
                                 e.preventDefault();
                                 navigateNext();
+                        } else if (lowerCaseKey === 'u' && (e.ctrlKey || e.metaKey)) {
+                                e.preventDefault();
+                                // Undo last point
+                                imageView.removeLastPoint();
+                        } else if (lowerCaseKey === 'c' && (e.ctrlKey || e.metaKey)) {
+                                e.preventDefault();
+                                // Clear all points
+                                imageView.clearPoints();
+                        } else if (e.key >= '1' && e.key <= '9') {
+                                e.preventDefault();
+                                // Select class by number (1-9)
+                                const classIndex = parseInt(e.key) - 1;
+                                if (classIndex < state.config.classes.length) {
+                                        const className = state.config.classes[classIndex];
+                                        selectClassWorkflow(state.currentSampleId, className);
+                                }
+                        } else if (e.key === '0') {
+                                e.preventDefault();
+                                // Select 10th class (index 9)
+                                if (state.config.classes.length > 9) {
+                                        const className = state.config.classes[9];
+                                        selectClassWorkflow(state.currentSampleId, className);
+                                }
                         }
                 });
         }
