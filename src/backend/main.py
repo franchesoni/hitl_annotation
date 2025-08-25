@@ -7,7 +7,8 @@ from src.backend.db import (
     get_config, update_config, get_next_sample_by_strategy,
     get_sample_by_id, upsert_annotation, delete_annotation_by_sample_id,
     get_annotation_stats, export_annotations, release_claim_by_id,
-    get_most_recent_prediction, store_live_accuracy,
+    get_most_recent_prediction, store_live_accuracy, get_annotations,
+    add_point_annotation, delete_point_annotation, clear_point_annotations,
 )
 from src.backend.db_init import initialize_database_if_needed
 from src.backend.utils import create_image_response
@@ -199,6 +200,58 @@ def delete_annotation(sample_id: int):
         return jsonify({"status": "Annotation deleted successfully"})
     else:
         return jsonify({"error": f"No annotation found for sample ID {sample_id}"}), 404
+
+
+@app.get("/api/annotations/<int:sample_id>")
+def get_annotations_endpoint(sample_id: int):
+    """Get all annotations for a specific sample ID."""
+    annotations = get_annotations(sample_id)
+    return jsonify({"annotations": annotations})
+
+
+@app.post("/api/annotations/<int:sample_id>/points")
+def add_point_endpoint(sample_id: int):
+    """Add a point annotation to a sample."""
+    data = request.get_json(silent=True) or {}
+    class_name = data.get("class")
+    x = data.get("x")  # normalized coordinate [0,1]
+    y = data.get("y")  # normalized coordinate [0,1]
+    
+    if not class_name:
+        return jsonify({"error": "Missing required field: class"}), 400
+    if x is None or y is None:
+        return jsonify({"error": "Missing required fields: x, y"}), 400
+    
+    try:
+        add_point_annotation(sample_id, class_name, x, y)
+        return jsonify({"status": "Point annotation added successfully"})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.delete("/api/annotations/<int:sample_id>/points")
+def delete_point_endpoint(sample_id: int):
+    """Delete a point annotation near the specified coordinates."""
+    data = request.get_json(silent=True) or {}
+    x = data.get("x")  # normalized coordinate [0,1]
+    y = data.get("y")  # normalized coordinate [0,1]
+    tolerance = data.get("tolerance", 0.02)  # default 2% tolerance
+    
+    if x is None or y is None:
+        return jsonify({"error": "Missing required fields: x, y"}), 400
+    
+    success = delete_point_annotation(sample_id, x, y, tolerance)
+    if success:
+        return jsonify({"status": "Point annotation deleted successfully"})
+    else:
+        return jsonify({"error": "No point annotation found near the specified coordinates"}), 404
+
+
+@app.delete("/api/annotations/<int:sample_id>/points/all")
+def clear_points_endpoint(sample_id: int):
+    """Clear all point annotations for a sample."""
+    count = clear_point_annotations(sample_id)
+    return jsonify({"status": f"Cleared {count} point annotations"})
 
 
 @app.get("/api/stats")

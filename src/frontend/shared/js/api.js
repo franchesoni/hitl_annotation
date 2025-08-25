@@ -30,6 +30,48 @@ export class API {
         if (!res.ok) throw new Error('Annotation failed');
         return await res.json();
     }
+    
+    async addPoint(sampleId, className, x, y) {
+        const res = await fetch(`/api/annotations/${sampleId}/points`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ 
+                class: className, 
+                x: x,  // normalized coordinate [0,1]
+                y: y   // normalized coordinate [0,1]
+            })
+        });
+        if (!res.ok) throw new Error('Point annotation failed');
+        return await res.json();
+    }
+    
+    async deletePoint(sampleId, x, y, tolerance = 0.02) {
+        const res = await fetch(`/api/annotations/${sampleId}/points`, {
+            method: 'DELETE',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ 
+                x: x,  // normalized coordinate [0,1]
+                y: y,  // normalized coordinate [0,1]
+                tolerance: tolerance
+            })
+        });
+        if (!res.ok) throw new Error('Point deletion failed');
+        return await res.json();
+    }
+    
+    async clearPoints(sampleId) {
+        const res = await fetch(`/api/annotations/${sampleId}/points/all`, {
+            method: 'DELETE'
+        });
+        if (!res.ok) throw new Error('Clear points failed');
+        return await res.json();
+    }
+    
+    async getAnnotations(sampleId) {
+        const res = await fetch(`/api/annotations/${sampleId}`);
+        if (!res.ok) throw new Error('Failed to get annotations');
+        return await res.json();
+    }
     async deleteAnnotation(sampleId) {
         const res = await fetch(`/api/annotate/${sampleId}`, {
             method: 'DELETE'

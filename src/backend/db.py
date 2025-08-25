@@ -460,7 +460,8 @@ def get_sample_next_by_id(sample_id):
 def upsert_annotation(sample_id, class_name, annotation_type="label", **kwargs):
     """
     Insert or replace an annotation for a sample.
-    Since sample_id is unique in annotations table, this will replace any existing annotation.
+    For label annotations: replaces existing label annotation for the sample
+    For point/bbox annotations: adds new annotation (allows multiple per sample)
     
     Args:
         sample_id: The sample ID
@@ -478,10 +479,14 @@ def upsert_annotation(sample_id, class_name, annotation_type="label", **kwargs):
             raise ValueError(f"Sample with ID {sample_id} not found")
         sample_filepath = result[0]
         
-        # Insert or replace annotation (UNIQUE constraint on sample_id ensures replacement)
+        if annotation_type == "label":
+            # For labels, replace existing label annotation for this sample
+            cursor.execute("DELETE FROM annotations WHERE sample_id = ? AND type = 'label'", (sample_id,))
+        
+        # Insert new annotation 
         cursor.execute(
             """
-            INSERT OR REPLACE INTO annotations (
+            INSERT INTO annotations (
                 sample_id, sample_filepath, class, type,
                 x, y, width, height, timestamp
             )
@@ -499,6 +504,34 @@ def upsert_annotation(sample_id, class_name, annotation_type="label", **kwargs):
                 kwargs.get("timestamp"),
             ),
         )
+
+def add_point_annotation(sample_id, class_name, x, y, timestamp=None):
+    """Add a single point annotation to a sample."""
+    import time
+    if timestamp is None:
+        timestamp = int(time.time())
+    return upsert_annotation(sample_id, class_name, "point", col=x, row=y, timestamp=timestamp)
+
+def delete_point_annotation(sample_id, x, y, tolerance=0.01):
+    """Delete a point annotation near the specified coordinates."""
+    with get_conn() as conn:
+        cursor = conn.cursor()
+        cursor.execute("""
+            DELETE FROM annotations 
+            WHERE sample_id = ? AND type = 'point'
+            AND ABS(x - ?) < ? AND ABS(y - ?) < ?
+        """, (sample_id, x, tolerance, y, tolerance))
+        return cursor.rowcount > 0
+
+def clear_point_annotations(sample_id):
+    """Clear all point annotations for a sample."""
+    with get_conn() as conn:
+        cursor = conn.cursor()
+        cursor.execute("""
+            DELETE FROM annotations 
+            WHERE sample_id = ? AND type = 'point'
+        """, (sample_id,))
+        return cursor.rowcount
 
 def delete_annotation_by_sample_id(sample_id):
     """Delete annotation for a specific sample ID."""

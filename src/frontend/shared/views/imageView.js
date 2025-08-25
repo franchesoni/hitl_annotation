@@ -132,6 +132,13 @@ export class ImageView {
         }
     }
     
+    addExistingPoint(x, y, className, color) {
+        // Add a point without triggering the onPointAdd callback (for loading existing annotations)
+        const point = { x, y, className, color };
+        this.points.push(point);
+        this._drawImageToCanvas(); // Redraw to include the point
+    }
+    
     _removePointNear(x, y) {
         const threshold = 0.02; // 2% of image size for click tolerance
         let closestIndex = -1;
@@ -210,6 +217,10 @@ export class ImageView {
             this.hoveredPointIndex = -1;
             this._drawImageToCanvas();
         }
+    }
+    
+    getLastPoint() {
+        return this.points.length > 0 ? this.points[this.points.length - 1] : null;
     }
     _resizeCanvasToContainer() {
         const rect = this.container.getBoundingClientRect();

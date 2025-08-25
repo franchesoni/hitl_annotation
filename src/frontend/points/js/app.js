@@ -64,17 +64,28 @@ document.addEventListener('DOMContentLoaded', async () => {
         // Set up point addition callback
         imageView.onPointAdd = async (point) => {
                 console.log('Point added:', point);
-                // Here you can add logic to save the point to the backend
-                // For now, we'll just log it
-                // TODO: Implement API call to save point annotation
+                try {
+                        await api.addPoint(state.currentSampleId, point.className, point.x, point.y);
+                        console.log('Point saved to backend');
+                } catch (error) {
+                        console.error('Failed to save point:', error);
+                        // Optionally remove the point from frontend if backend save failed
+                        imageView.removeLastPoint();
+                        alert('Failed to save point annotation');
+                }
         };
         
         // Set up point removal callback
         imageView.onPointRemove = async (point, index) => {
                 console.log('Point removed:', point, 'at index:', index);
-                // Here you can add logic to remove the point from the backend
-                // For now, we'll just log it
-                // TODO: Implement API call to remove point annotation
+                try {
+                        await api.deletePoint(state.currentSampleId, point.x, point.y);
+                        console.log('Point removed from backend');
+                } catch (error) {
+                        console.error('Failed to remove point:', error);
+                        // Optionally re-add the point to frontend if backend delete failed
+                        alert('Failed to remove point annotation');
+                }
         };
         const classesView = new PointsClassesView(classPanel, selectClassWorkflow, state);
         const statsView = new StatsView(api, classesView);
@@ -152,6 +163,23 @@ document.addEventListener('DOMContentLoaded', async () => {
                 
                 imageView.loadImage(imageUrl, filepath);
                 imageView.clearPoints(); // Clear existing points when loading new image
+                
+                // Load existing point annotations from backend
+                try {
+                        const annotationsData = await api.getAnnotations(sampleId);
+                        const pointAnnotations = annotationsData.annotations.filter(ann => ann.type === 'point');
+                        
+                        // Add existing points to the image view
+                        pointAnnotations.forEach(ann => {
+                                const color = getClassColor(ann.class);
+                                imageView.addExistingPoint(ann.col, ann.row, ann.class, color);
+                        });
+                        
+                        console.log(`Loaded ${pointAnnotations.length} existing points`);
+                } catch (error) {
+                        console.error('Failed to load existing annotations:', error);
+                }
+                
                 await classesView.setCurrentSample(sampleId, filepath);
                 // Note: No prediction display for points annotation
         }
@@ -252,6 +280,23 @@ document.addEventListener('DOMContentLoaded', async () => {
                 state.currentSampleId = parseInt(sampleId);
                 imageView.loadImage(imageUrl, filepath);
                 imageView.clearPoints(); // Clear existing points when loading new image
+                
+                // Load existing point annotations from backend
+                try {
+                        const annotationsData = await api.getAnnotations(sampleId);
+                        const pointAnnotations = annotationsData.annotations.filter(ann => ann.type === 'point');
+                        
+                        // Add existing points to the image view
+                        pointAnnotations.forEach(ann => {
+                                const color = getClassColor(ann.class);
+                                imageView.addExistingPoint(ann.col, ann.row, ann.class, color);
+                        });
+                        
+                        console.log(`Loaded ${pointAnnotations.length} existing points`);
+                } catch (error) {
+                        console.error('Failed to load existing annotations:', error);
+                }
+                
                 await classesView.setCurrentSample(sampleId, filepath);
         }
 
@@ -296,11 +341,22 @@ document.addEventListener('DOMContentLoaded', async () => {
                         } else if (lowerCaseKey === 'u' && (e.ctrlKey || e.metaKey)) {
                                 e.preventDefault();
                                 // Undo last point
-                                imageView.removeLastPoint();
+                                const lastPoint = imageView.getLastPoint();
+                                if (lastPoint) {
+                                        imageView.removeLastPoint();
+                                        // Remove from backend too
+                                        api.deletePoint(state.currentSampleId, lastPoint.x, lastPoint.y).catch(err => {
+                                                console.error('Failed to remove point from backend:', err);
+                                        });
+                                }
                         } else if (lowerCaseKey === 'c' && (e.ctrlKey || e.metaKey)) {
                                 e.preventDefault();
                                 // Clear all points
                                 imageView.clearPoints();
+                                // Clear from backend too
+                                api.clearPoints(state.currentSampleId).catch(err => {
+                                        console.error('Failed to clear points from backend:', err);
+                                });
                         } else if (e.key >= '1' && e.key <= '9') {
                                 e.preventDefault();
                                 // Select class by number (1-9)

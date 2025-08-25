@@ -50,8 +50,11 @@ def build_initial_db_dict() -> dict:
     db_dict = {
         "samples": [
             {"sample_filepath": str(ppath)}
-            for ppath in Path("/home/franchesoni/Downloads/mnist_png/testing").glob(
-                "*.png"
+            # for ppath in Path("/home/franchesoni/Downloads/mnist_png/testing").glob(
+            #     "*.jpg"
+            # )
+            for ppath in Path("/home/franchesoni/Downloads/berkeley/images/test").glob(
+                "*.jpg"
             )
         ],
         "annotations": [],
@@ -154,9 +157,9 @@ def validate_db_dict(db):
             }
             if not ("row" in a and "col" in a):
                 raise ValueError("Point annotation must have 'row' and 'col'.")
-            if not (isinstance(a["row"], int) and isinstance(a["col"], int)):
+            if not (isinstance(a["row"], (int, float)) and isinstance(a["col"], (int, float))):
                 raise ValueError(
-                    "'row' and 'col' must be integers for point annotation."
+                    "'row' and 'col' must be numbers for point annotation."
                 )
             if a["row"] < 0 or a["col"] < 0:
                 raise ValueError(
@@ -296,14 +299,14 @@ def initialize_database_if_needed(db_path=DB_PATH):
             """
             CREATE TABLE IF NOT EXISTS annotations (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
-                sample_id INTEGER NOT NULL UNIQUE,
+                sample_id INTEGER NOT NULL,
                 sample_filepath TEXT NOT NULL,
                 class TEXT NOT NULL,
                 type TEXT NOT NULL,
-                x INTEGER,
-                y INTEGER,
-                width INTEGER,
-                height INTEGER,
+                x REAL,
+                y REAL,
+                width REAL,
+                height REAL,
                 timestamp INTEGER,
                 FOREIGN KEY (sample_id) REFERENCES samples (id),
                 FOREIGN KEY (sample_filepath) REFERENCES samples (sample_filepath)
@@ -319,10 +322,10 @@ def initialize_database_if_needed(db_path=DB_PATH):
                 class TEXT NOT NULL,
                 type TEXT NOT NULL,
                 probability REAL,
-                x INTEGER,
-                y INTEGER,
-                width INTEGER,
-                height INTEGER,
+                x REAL,
+                y REAL,
+                width REAL,
+                height REAL,
                 timestamp INTEGER,
                 FOREIGN KEY (sample_id) REFERENCES samples (id),
                 FOREIGN KEY (sample_filepath) REFERENCES samples (sample_filepath)
