@@ -189,7 +189,7 @@ def save_classifier(clf: SGDClassifier, path: Path) -> None:
 # ---------------------------------------------------------------------------
 
 
-def run_forever(model_size: str, sleep_seconds: int, resize_dim: int) -> None:
+def run_forever() -> None:
     def _exit_handler(*_):
         print("\n[INFO] Exiting…")
         sys.exit(0)
@@ -197,12 +197,13 @@ def run_forever(model_size: str, sleep_seconds: int, resize_dim: int) -> None:
     signal.signal(signal.SIGINT, _exit_handler)
     signal.signal(signal.SIGTERM, _exit_handler)
 
-    model = load_dinov3_model(model_size)
     clf_path = Path("dinov3_linear_classifier.pkl")
     classifier = load_classifier(clf_path)
     prev_config: Optional[dict] = None
     cycle = 0
-    current_resize = resize_dim
+    model = None
+    model_size = None
+    current_resize = 1536
 
     while True:
         try:
@@ -215,11 +216,14 @@ def run_forever(model_size: str, sleep_seconds: int, resize_dim: int) -> None:
         if prev_config != config:
             if prev_config is not None:
                 print("[INFO] Config changed; resetting classifier")
-            arch = config.get("architecture", model_size)
-            if arch and arch != model_size:
+            arch = config.get("architecture", "small") or "small"
+            if arch not in {"small", "large"}:
+                print(f"[WARN] Unknown architecture '{arch}', defaulting to 'small'")
+                arch = "small"
+            if model is None or arch != model_size:
                 model = load_dinov3_model(arch)
                 model_size = arch
-            current_resize = config.get("resize", current_resize) or current_resize
+            current_resize = config.get("resize", 1536) or 1536
             classifier = None
             try:
                 if clf_path.exists():
@@ -229,7 +233,7 @@ def run_forever(model_size: str, sleep_seconds: int, resize_dim: int) -> None:
             prev_config = config
             cycle = 0
 
-        sleep_s = config.get("sleep", sleep_seconds) or sleep_seconds
+        sleep_s = config.get("sleep", 5) or 5
         current_resize = config.get("resize", current_resize) or current_resize
         if not config.get("ai_should_be_run", False):
             print("[INFO] Run flag disabled — sleeping…")
@@ -371,17 +375,16 @@ def run_forever(model_size: str, sleep_seconds: int, resize_dim: int) -> None:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="DINOv3 feature extraction for point annotations")
-    parser.add_argument("--size", choices=["small", "large"], default="small", help="Model size")
-    parser.add_argument("--sleep", type=int, default=5, help="Sleep time between checks")
-    parser.add_argument("--resize", type=int, default=1536, help="Image resize dimension")
+    parser = argparse.ArgumentParser(
+        description="DINOv3 feature extraction for point annotations"
+    )
     parser.add_argument("--db", help="Path to annotation SQLite db", default=None)
     args = parser.parse_args()
 
     if args.db:
         backend_db.DB_PATH = args.db
 
-    run_forever(args.size, args.sleep, args.resize)
+    run_forever()
 
 
 if __name__ == "__main__":
