@@ -366,7 +366,6 @@ def run_forever(model_size: str, sleep_seconds: int) -> None:
 def main() -> None:
     parser = argparse.ArgumentParser(description="DINOv3 feature extraction for point annotations")
     parser.add_argument("--size", choices=["small", "large"], default="small", help="Model size")
-    parser.add_argument("--help", action="store_true", help="Show help message")
     parser.add_argument("--sleep", type=int, default=5, help="Sleep time between checks")
     parser.add_argument("--db", help="Path to annotation SQLite db", default=None)
     args = parser.parse_args()
@@ -374,10 +373,7 @@ def main() -> None:
     if args.db:
         backend_db.DB_PATH = args.db
 
-    if args.help:
-        parser.print_help()
-    else:
-        run_forever(args.size, args.sleep)
+    run_forever(args.size, args.sleep)
 
 
 if __name__ == "__main__":
