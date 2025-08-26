@@ -65,7 +65,10 @@ export class ClassesView {
         this.renderUI();
     }
     setGlobalClasses(classes) {
-        this.state.config.classes = [...classes];
+        this.state.config.classes = [...classes].sort();
+        if (this.state.classColors instanceof Map) {
+            this.state.classColors.clear();
+        }
         this.state.configUpdated = true;
         this.renderUI();
     }
@@ -92,11 +95,18 @@ export class ClassesView {
     async addClass(className) {
         if (!className || this.state.config.classes.includes(className)) return;
         this.state.config.classes.push(className);
+        this.state.config.classes.sort();
+        if (this.state.classColors instanceof Map) {
+            this.state.classColors.clear();
+        }
         this.state.configUpdated = true;
         this.renderUI();
     }
     async removeClass(className) {
         this.state.config.classes = this.state.config.classes.filter(c => c !== className);
+        if (this.state.classColors instanceof Map) {
+            this.state.classColors.clear();
+        }
         this.state.configUpdated = true;
         this.renderUI();
     }

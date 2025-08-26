@@ -8,21 +8,33 @@ export class PointsClassesView extends ClassesView {
     // Compute a distinct color per class index, stable across renders.
     generateClassColor(index) {
         const colors = [
-            '#FF6B6B', // red
-            '#4ECDC4', // teal
-            '#45B7D1', // blue
-            '#96CEB4', // green
-            '#FFEAA7', // yellow
-            '#DDA0DD', // plum
-            '#98D8C8', // mint
-            '#F7DC6F', // light yellow
-            '#BB8FCE', // light purple
-            '#85C1E9', // light blue
-            '#F8C471', // orange
-            '#82E0AA', // light green
-            '#F1948A', // light red
-            '#85929E', // gray
-            '#D7BDE2', // lavender
+            '#0080FF',
+            '#FFFF80',
+            '#000080',
+            '#008080',
+            '#00FF00',
+            '#800000',
+            '#80FFFF',
+            '#0000FF',
+            '#808000',
+            '#8080FF',
+            '#FF0080',
+            '#008000',
+            '#FF8000',
+            '#FFFF00',
+            '#80FF00',
+            '#FF00FF',
+            '#FFFFFF',
+            '#00FF80',
+            '#00FFFF',
+            '#80FF80',
+            '#FF0000',
+            '#808080',
+            '#8000FF',
+            '#FF8080',
+            '#000000',
+            '#FF80FF',
+            '#800080',
         ];
         return colors[index % colors.length];
     }

@@ -133,7 +133,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                         const cfg = await api.getConfig();
                         if (cfg) {
                                 state.config = {
-                                        classes: cfg.classes || [],
+                                        classes: (cfg.classes || []).sort(),
                                         aiShouldBeRun: cfg.ai_should_be_run || false,
                                         architecture: cfg.architecture || 'resnet18',
                                         budget: cfg.budget || 1000,
