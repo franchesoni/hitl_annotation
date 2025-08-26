@@ -1,4 +1,3 @@
-dinov3
 fastai
 fastprogress
 flask
