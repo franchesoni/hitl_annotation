@@ -20,50 +20,6 @@ document.addEventListener('DOMContentLoaded', async () => {
         classColors: new Map(), // Map class names to colors
     };
 
-    // Generate distinct colors for classes
-    function generateClassColor(index) {
-        const colors = [
-            '#0080FF',
-            '#FFFF80',
-            '#000080',
-            '#008080',
-            '#00FF00',
-            '#800000',
-            '#80FFFF',
-            '#0000FF',
-            '#808000',
-            '#8080FF',
-            '#FF0080',
-            '#008000',
-            '#FF8000',
-            '#FFFF00',
-            '#80FF00',
-            '#FF00FF',
-            '#FFFFFF',
-            '#00FF80',
-            '#00FFFF',
-            '#80FF80',
-            '#FF0000',
-            '#808080',
-            '#8000FF',
-            '#FF8080',
-            '#000000',
-            '#FF80FF',
-            '#800080',
-        ];
-        return colors[index % colors.length];
-    }
-
-    // Get color for a class, assigning one if not exists
-    function getClassColor(className) {
-        if (!state.classColors.has(className)) {
-            const classIndex = state.config.classes.indexOf(className);
-            const color = generateClassColor(classIndex);
-            state.classColors.set(className, color);
-        }
-        return state.classColors.get(className);
-    }
-
     // -----------------------------------------------------------
     // ----------  COMPONENTS  -----------------------------------
     // -----------------------------------------------------------
@@ -105,6 +61,13 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Use segmentation-specific architectures for points annotation
     const segmentationArchitectures = ['small', 'small+', 'base', 'large'];
     const aiControlsView = new AIControlsView(api, state, segmentationArchitectures);
+
+    // Utility to retrieve the color for a class from the view so that
+    // all components use the same color palette and assignments.
+    function getClassColor(className) {
+        return classesView.getClassColor(className);
+    }
+
     // -----------------------------------------------------------
     // ----------  ACTIONS  --------------------------------------
     // -----------------------------------------------------------
@@ -203,7 +166,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             const cfg = await api.getConfig();
             if (cfg) {
                 state.config = {
-                    classes: cfg.classes || [],
+                    classes: (cfg.classes || []).sort(),
                     aiShouldBeRun: cfg.ai_should_be_run || false,
                     architecture: cfg.architecture || 'small', // Default to 'small' for segmentation
                     budget: cfg.budget || 1000,
@@ -211,6 +174,9 @@ document.addEventListener('DOMContentLoaded', async () => {
                     resize: cfg.resize || 224,
                     available_architectures: cfg.available_architectures || []
                 };
+                if (state.classColors instanceof Map) {
+                    state.classColors.clear();
+                }
             }
             state.configUpdated = false; // config synchronized with backend
         } catch (e) {
