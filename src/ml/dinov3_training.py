@@ -189,7 +189,7 @@ def save_classifier(clf: SGDClassifier, path: Path) -> None:
 # ---------------------------------------------------------------------------
 
 
-def run_forever(model_size: str, sleep_seconds: int) -> None:
+def run_forever(model_size: str, sleep_seconds: int, resize_dim: int) -> None:
     def _exit_handler(*_):
         print("\n[INFO] Exiting…")
         sys.exit(0)
@@ -202,6 +202,7 @@ def run_forever(model_size: str, sleep_seconds: int) -> None:
     classifier = load_classifier(clf_path)
     prev_config: Optional[dict] = None
     cycle = 0
+    current_resize = resize_dim
 
     while True:
         try:
@@ -214,6 +215,11 @@ def run_forever(model_size: str, sleep_seconds: int) -> None:
         if prev_config != config:
             if prev_config is not None:
                 print("[INFO] Config changed; resetting classifier")
+            arch = config.get("architecture", model_size)
+            if arch and arch != model_size:
+                model = load_dinov3_model(arch)
+                model_size = arch
+            current_resize = config.get("resize", current_resize) or current_resize
             classifier = None
             try:
                 if clf_path.exists():
@@ -224,6 +230,7 @@ def run_forever(model_size: str, sleep_seconds: int) -> None:
             cycle = 0
 
         sleep_s = config.get("sleep", sleep_seconds) or sleep_seconds
+        current_resize = config.get("resize", current_resize) or current_resize
         if not config.get("ai_should_be_run", False):
             print("[INFO] Run flag disabled — sleeping…")
             time.sleep(max(1, sleep_s))
@@ -246,7 +253,7 @@ def run_forever(model_size: str, sleep_seconds: int) -> None:
                 continue
             image = Image.open(image_path)
             orig_w, orig_h = image.size
-            image_padded, new_w, new_h = resize_pad(image)
+            image_padded, new_w, new_h = resize_pad(image, target_size=current_resize)
             image_tensor = normalize_image(image_padded)
             feats = extract_features(model, image_tensor)
             for cls, pts in pts_by_class.items():
@@ -318,7 +325,7 @@ def run_forever(model_size: str, sleep_seconds: int) -> None:
                 continue
             image = Image.open(image_path)
             orig_w, orig_h = image.size
-            image_padded, new_w, new_h = resize_pad(image)
+            image_padded, new_w, new_h = resize_pad(image, target_size=current_resize)
             image_tensor = normalize_image(image_padded)
             feats = extract_features(model, image_tensor)
             F, H, W = feats.shape
@@ -367,13 +374,14 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="DINOv3 feature extraction for point annotations")
     parser.add_argument("--size", choices=["small", "large"], default="small", help="Model size")
     parser.add_argument("--sleep", type=int, default=5, help="Sleep time between checks")
+    parser.add_argument("--resize", type=int, default=1536, help="Image resize dimension")
     parser.add_argument("--db", help="Path to annotation SQLite db", default=None)
     args = parser.parse_args()
 
     if args.db:
         backend_db.DB_PATH = args.db
 
-    run_forever(args.size, args.sleep)
+    run_forever(args.size, args.sleep, args.resize)
 
 
 if __name__ == "__main__":
