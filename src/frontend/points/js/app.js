@@ -229,12 +229,14 @@ document.addEventListener('DOMContentLoaded', async () => {
                         alert('No current sample to navigate from');
                         return;
                 }
-                
+
                 beginWorkflow();
                 try {
+                        await updateConfigIfNeeded();
                         const prevSample = await api.loadSamplePrev(state.currentSampleId);
                         if (prevSample) {
                                 await loadSampleData(prevSample);
+                                await getStatsAndConfig();
                         } else {
                                 alert('No previous image available');
                         }
@@ -248,24 +250,25 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         async function navigateNext() {
                 if (state.workflowInProgress) return;
-                
+
                 beginWorkflow();
                 try {
+                        await updateConfigIfNeeded();
                         let nextSample = null;
-                        
+
                         // Try to get next sample if we have a current sample
                         if (state.currentSampleId) {
                                 nextSample = await api.loadSampleNext(state.currentSampleId);
                         }
-                        
+
                         // If no next sample found, load a new one
                         if (!nextSample) {
                                 await loadNextImage();
-                                await getStatsAndConfig();
                         } else {
                                 await loadSampleData(nextSample);
                         }
-                        
+
+                        await getStatsAndConfig();
                         updateNavigationButtons();
                 } catch (e) {
                         console.error('Navigate next failed:', e);
