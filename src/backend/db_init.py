@@ -46,6 +46,7 @@ def build_initial_db_dict() -> dict:
     # TODO: User should edit this function to load or build their data.
     ### EDIT START
     from pathlib import Path
+    imagedir = "/home/fmarchesoni/repos/hitl_annotation/data/BSDS300/images/test"
 
     db_dict = {
         "samples": [
@@ -53,9 +54,9 @@ def build_initial_db_dict() -> dict:
             # for ppath in Path("/home/franchesoni/Downloads/mnist_png/testing").glob(
             #     "*.jpg"
             # )
-            for ppath in Path("/home/franchesoni/Downloads/berkeley/images/test").glob(
+            for ppath in sorted(Path(imagedir).glob(
                 "*.jpg"
-            )
+            ))
         ],
         "annotations": [],
         "predictions": [],

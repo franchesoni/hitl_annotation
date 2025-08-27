@@ -189,15 +189,8 @@ def save_classifier(clf: SGDClassifier, path: Path) -> None:
 # ---------------------------------------------------------------------------
 
 
-def run_forever() -> None:
-    def _exit_handler(*_):
-        print("\n[INFO] Exiting…")
-        sys.exit(0)
-
-    signal.signal(signal.SIGINT, _exit_handler)
-    signal.signal(signal.SIGTERM, _exit_handler)
-
-    clf_path = Path("dinov3_linear_classifier.pkl")
+def main() -> None:
+    clf_path = Path("session/dinov3_linear_classifier_seg.pkl")
     classifier = load_classifier(clf_path)
     prev_config: Optional[dict] = None
     cycle = 0
@@ -372,20 +365,6 @@ def run_forever() -> None:
 # ---------------------------------------------------------------------------
 # CLI
 # ---------------------------------------------------------------------------
-
-
-def main() -> None:
-    parser = argparse.ArgumentParser(
-        description="DINOv3 feature extraction for point annotations"
-    )
-    parser.add_argument("--db", help="Path to annotation SQLite db", default=None)
-    args = parser.parse_args()
-
-    if args.db:
-        backend_db.DB_PATH = args.db
-
-    run_forever()
-
 
 if __name__ == "__main__":
     main()
