@@ -46,7 +46,7 @@ def build_initial_db_dict() -> dict:
     # TODO: User should edit this function to load or build their data.
     ### EDIT START
     from pathlib import Path
-    imagedir = "/home/fmarchesoni/repos/hitl_annotation/data/BSDS300/images/test"
+    imagedir = "/home/franchesoni/Downloads/berkeley/images/test"
 
     db_dict = {
         "samples": [
@@ -327,6 +327,7 @@ def initialize_database_if_needed(db_path=DB_PATH):
                 y REAL,
                 width REAL,
                 height REAL,
+                mask_path TEXT,
                 timestamp INTEGER,
                 FOREIGN KEY (sample_id) REFERENCES samples (id),
                 FOREIGN KEY (sample_filepath) REFERENCES samples (sample_filepath)

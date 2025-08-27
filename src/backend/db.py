@@ -337,6 +337,7 @@ def set_predictions_batch(predictions_batch):
                     pred.get("row"),
                     pred.get("width"),
                     pred.get("height"),
+                    pred.get("mask_path"),
                     timestamp,
                 ))
         

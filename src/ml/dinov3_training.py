@@ -114,7 +114,7 @@ def gather_annotated_items(samples: Sequence[dict]) -> List[Tuple[str, Dict[str,
             for point in points:
                 cls = point.get("class", "unknown")
                 grouped.setdefault(cls, []).append({"x": point["col"], "y": point["row"], "timestamp": point.get("timestamp", 0)})
-            items.append((s["sample_filepath"], grouped))
+            items.append((s["id"], s["sample_filepath"], grouped))
     return items
 
 
@@ -243,7 +243,7 @@ def main() -> None:
             continue
 
         X, y, img_ids = [], [], []
-        for fp, pts_by_class in annotated:
+        for _, fp, pts_by_class in annotated:
             image_path = Path(fp)
             if not image_path.exists():
                 print(f"[WARN] Image file not found: {fp}")
@@ -255,8 +255,8 @@ def main() -> None:
             feats = extract_features(model, image_tensor)
             for cls, pts in pts_by_class.items():
                 for pt in pts:
-                    col = pt.get("col")
-                    row = pt.get("row")
+                    col = pt.get("x")
+                    row = pt.get("y")
                     if col is None or row is None:
                         continue
                     # Map normalized [0,1] to resized image content (top-left aligned)
@@ -299,23 +299,21 @@ def main() -> None:
         if len(y_val) > 0:
             y_pred = classifier.predict(X_val)
             acc = accuracy_score(y_val, y_pred)
-            try:
-                y_proba = classifier.predict_proba(X_val)
-                loss = log_loss(y_val, y_proba)
-            except Exception:
-                loss = None
-            print(f"[VAL] Accuracy: {acc:.3f} | Loss: {loss if loss is not None else 'N/A'} | n_val: {len(y_val)}")
+            print(f"[VAL] Accuracy: {acc:.3f} | n_val: {len(y_val)}")
         else:
             acc = None
             loss = None
 
-        backend_db.store_training_stats(cycle, None, loss, acc)
+        backend_db.store_training_stats(cycle, None, None, acc)
 
-        labeled_set = set(fp for fp, _ in annotated)
+        labeled_set = set(fp for _, fp, _ in annotated)
         unlabeled = [s for s in samples if s["sample_filepath"] not in labeled_set]
-        to_predict = [fp for fp, _ in annotated] + [s["sample_filepath"] for s in unlabeled[:budget]]
+        to_predict = ([dict(id=s_id, sample_filepath=fp) for s_id, fp, _ in annotated] + [s for s in unlabeled])[:budget]
 
-        for fp in to_predict:
+        Path("session/preds").mkdir(parents=True, exist_ok=True)
+        for dtp in to_predict:
+            fp = dtp["sample_filepath"]
+            s_id = dtp["id"]
             image_path = Path(fp)
             if not image_path.exists():
                 print(f"[WARN] Image file not found: {fp}")
@@ -327,33 +325,19 @@ def main() -> None:
             feats = extract_features(model, image_tensor)
             F, H, W = feats.shape
             feats_np = feats.permute(1, 2, 0).reshape(-1, F).cpu().numpy()
-            pred_labels = classifier.predict(feats_np)
-            try:
-                pred_probs = classifier.predict_proba(feats_np)
-            except Exception:
-                pred_probs = None
-            pred_map = np.array(pred_labels).reshape(H, W)
-            preds_batch = []
-            for y_idx in range(H):
-                for x_idx in range(W):
-                    # Map feature map location to padded image pixel (top-left aligned)
-                    x_padded = (x_idx + 0.5) * 16
-                    y_padded = (y_idx + 0.5) * 16
-                    # Map to normalized [0,1] in original image, then to pixel
-                    if 0 <= x_padded < new_w and 0 <= y_padded < new_h:
-                        col_norm = x_padded / (new_w - 1) if new_w > 1 else 0.0
-                        row_norm = y_padded / (new_h - 1) if new_h > 1 else 0.0
-                        cx = int(round(col_norm * (orig_w - 1)))
-                        cy = int(round(row_norm * (orig_h - 1)))
-                    else:
-                        # Outside image content, set to -1
-                        cx, cy = -1, -1
-                    pred = {"type": "label", "class": str(pred_map[y_idx, x_idx])}
-                    if pred_probs is not None:
-                        pred["probability"] = float(np.max(pred_probs[y_idx * W + x_idx]))
-                    preds_batch.append((None, [pred, {"x": cx, "y": cy}]))
-            backend_db.set_predictions_batch(preds_batch)
-
+            classes_map = classifier.predict(feats_np).reshape(H, W)
+            for class_name in np.unique(classes_map):
+                mask = (classes_map == class_name)
+                outpath = Path("session") / "preds" / (image_path.stem + f"_pred_class_{class_name}.png")
+                Image.fromarray(mask).save(outpath)
+                preds_batch = [{
+                    "sample_id": s_id,
+                    "sample_filepath": str(image_path),
+                    "class": class_name,
+                    "type": "mask",
+                    "mask_path": outpath.as_posix(),
+                }]
+                backend_db.set_predictions_batch(preds_batch)
         print(
             f"[cycle {cycle}] trained on {len(X_train)} pts, val {len(y_val)} pts, predicted {len(to_predict)} images — sleeping {sleep_s}s"
         )
