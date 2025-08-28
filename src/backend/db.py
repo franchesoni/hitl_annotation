@@ -25,6 +25,18 @@ def put_config(config: dict):
     """
     with get_conn() as conn:
         cursor = conn.cursor()
+
+        # Ensure the predictions table has 'mask_path' column (migrate if missing)
+        cursor.execute("PRAGMA table_info(predictions)")
+        cols = {row[1] for row in cursor.fetchall()}
+        has_mask_path = "mask_path" in cols
+        if not has_mask_path:
+            try:
+                cursor.execute("ALTER TABLE predictions ADD COLUMN mask_path TEXT")
+                has_mask_path = True
+            except Exception:
+                # Fallback: operate without mask_path if migration fails
+                has_mask_path = False
         cursor.execute("INSERT OR REPLACE INTO config (key, value) VALUES (?, ?)", (config['key'], config['value']))
 
 def get_config():
@@ -294,65 +306,129 @@ def set_predictions(sample_id, predictions):
 
 def set_predictions_batch(predictions_batch):
     """Efficiently set predictions for multiple samples in a single transaction.
-    
-    Args:
-        predictions_batch: List of (sample_id, predictions_list) tuples
+
+    Accepts two input formats:
+    - Legacy: List of tuples (sample_id, predictions_list)
+    - New:    List of prediction dicts each containing at least
+              {"sample_id", "class", "type", ...}
+
+    Deletion is type-aware: existing predictions are removed only for the
+    (sample_id, type) pairs present in the provided batch. This preserves
+    other prediction types (e.g., keeps label predictions when inserting masks).
     """
     import time
     timestamp = int(time.time())
-    
+
+    if not predictions_batch:
+        return
+
+    # Normalize input into a flat list of prediction dicts with sample_id
+    normalized_preds = []
+    if isinstance(predictions_batch[0], (list, tuple)) and len(predictions_batch[0]) == 2:
+        # Legacy format: [(sample_id, [pred_dict, ...]), ...]
+        for sample_id, preds in predictions_batch:
+            if not preds:
+                continue
+            for pred in preds:
+                # Ensure required keys exist
+                pred = dict(pred)
+                pred["sample_id"] = sample_id
+                normalized_preds.append(pred)
+    else:
+        # New format: [pred_dict_with_sample_id, ...]
+        for pred in predictions_batch:
+            if not isinstance(pred, dict) or "sample_id" not in pred:
+                raise ValueError("Each prediction must be a dict with 'sample_id'.")
+            normalized_preds.append(pred)
+
+    if not normalized_preds:
+        return
+
     with get_conn() as conn:
         cursor = conn.cursor()
-        
-        # Get all sample filepaths in one query
-        sample_ids = [item[0] for item in predictions_batch]
-        placeholders = ",".join("?" * len(sample_ids))
+
+        # Resolve sample_id -> sample_filepath for all involved samples
+        sample_ids = sorted({p["sample_id"] for p in normalized_preds})
+        placeholders = ",".join(["?"] * len(sample_ids))
         cursor.execute(
             f"SELECT id, sample_filepath FROM samples WHERE id IN ({placeholders})",
-            sample_ids
+            sample_ids,
         )
         filepath_map = {row[0]: row[1] for row in cursor.fetchall()}
-        
-        # Delete old predictions for all samples
-        cursor.execute(
-            f"DELETE FROM predictions WHERE sample_id IN ({placeholders})",
-            sample_ids
-        )
-        
-        # Prepare all inserts
-        insert_data = []
-        for sample_id, predictions in predictions_batch:
-            if sample_id not in filepath_map:
-                continue  # Skip missing samples
-            sample_filepath = filepath_map[sample_id]
-            
-            for pred in predictions:
-                insert_data.append((
-                    sample_id,
-                    sample_filepath,
-                    pred.get("class"),
-                    pred.get("type"),
-                    pred.get("probability"),
-                    pred.get("col"),
-                    pred.get("row"),
-                    pred.get("width"),
-                    pred.get("height"),
-                    pred.get("mask_path"),
-                    timestamp,
-                ))
-        
-        # Batch insert all predictions
-        if insert_data:
-            cursor.executemany(
-                """
-                INSERT INTO predictions (
-                    sample_id, sample_filepath, class, type,
-                    probability, x, y, width, height, timestamp
+
+        # Build deletion specs: for 'label' delete by (sample_id, type),
+        # for others (e.g., 'mask', 'bbox') delete by (sample_id, type, class)
+        delete_specs = set()
+        for p in normalized_preds:
+            sid = p["sample_id"]
+            ptype = p.get("type")
+            pclass = p.get("class")
+            if ptype is None:
+                continue
+            if ptype == "label" or pclass is None:
+                delete_specs.add((sid, ptype, None))
+            else:
+                delete_specs.add((sid, ptype, pclass))
+
+        for sid, ptype, pclass in delete_specs:
+            if pclass is None:
+                cursor.execute(
+                    "DELETE FROM predictions WHERE sample_id = ? AND type = ?",
+                    (sid, ptype),
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-                insert_data
-            )
+            else:
+                cursor.execute(
+                    "DELETE FROM predictions WHERE sample_id = ? AND type = ? AND class = ?",
+                    (sid, ptype, pclass),
+                )
+
+        # Prepare batch insert
+        insert_data = []
+        for pred in normalized_preds:
+            sid = pred["sample_id"]
+            sfp = filepath_map.get(sid)
+            if sfp is None:
+                # Skip predictions whose sample_id is not found in samples table
+                continue
+            base = [
+                sid,
+                sfp,
+                pred.get("class"),
+                pred.get("type"),
+                pred.get("probability"),
+                pred.get("col"),
+                pred.get("row"),
+                pred.get("width"),
+                pred.get("height"),
+            ]
+            if has_mask_path:
+                base.append(pred.get("mask_path"))
+            base.append(timestamp)
+            insert_data.append(tuple(base))
+
+        if insert_data:
+            if has_mask_path:
+                cursor.executemany(
+                    """
+                    INSERT INTO predictions (
+                        sample_id, sample_filepath, class, type,
+                        probability, x, y, width, height, mask_path, timestamp
+                    )
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    insert_data,
+                )
+            else:
+                cursor.executemany(
+                    """
+                    INSERT INTO predictions (
+                        sample_id, sample_filepath, class, type,
+                        probability, x, y, width, height, timestamp
+                    )
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    insert_data,
+                )
 
 
 import time
