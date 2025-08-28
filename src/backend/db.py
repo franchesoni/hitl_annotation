@@ -346,6 +346,15 @@ def set_predictions_batch(predictions_batch):
 
     with get_conn() as conn:
         cursor = conn.cursor()
+        cursor.execute("PRAGMA table_info(predictions)")
+        cols = {row[1] for row in cursor.fetchall()}
+        has_mask_path = "mask_path" in cols
+        if not has_mask_path:
+            try:
+                cursor.execute("ALTER TABLE predictions ADD COLUMN mask_path TEXT")
+                has_mask_path = True
+            except Exception:
+                has_mask_path = False
 
         # Resolve sample_id -> sample_filepath for all involved samples
         sample_ids = sorted({p["sample_id"] for p in normalized_preds})
