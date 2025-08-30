@@ -1,3 +1,14 @@
+"""SQLite data access layer for the HITL annotation app.
+
+This module centralizes all reads/writes to the database. Functions are
+small, composable and return primitive Python types (dicts, lists, bools)
+so that the Flask layer can remain thin. All write operations run within
+`with get_conn() as conn:` blocks to ensure transactions are committed or
+rolled back atomically.
+
+Tables used: samples, annotations, predictions, config, curves.
+"""
+
 import sqlite3
 import os
 import json
@@ -6,6 +17,13 @@ import time
 DB_PATH = "session/app.db"
 
 def get_conn():
+    """Open a SQLite connection to the app database.
+
+    Raises if the DB file is missing; initialization is handled elsewhere.
+
+    Returns:
+        sqlite3.Connection: Connection with a 30s timeout.
+    """
     if not os.path.exists(DB_PATH):
         raise RuntimeError(f"Database not found at {DB_PATH}. Did you run db_init.py?")
     return sqlite3.connect(DB_PATH, timeout=30.0)
@@ -30,7 +48,12 @@ def get_config():
         return {}
 
 def update_config(config):
-    """Merge and persist the provided config dict."""
+    """Merge and persist the provided config dict.
+
+    The config supports keys: "classes" (list[str]), "ai_should_be_run"
+    (bool), "architecture" (str), "budget" (int), "sleep" (int),
+    and "resize" (int). Missing keys retain their previous values.
+    """
     current = get_config()
     current.update(config)
     

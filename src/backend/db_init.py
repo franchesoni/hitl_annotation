@@ -1,6 +1,7 @@
 from src.backend.db import DB_PATH
 from pathlib import Path
 import sqlite3
+import os
 
 
 def build_initial_db_dict() -> dict:
@@ -44,25 +45,16 @@ def build_initial_db_dict() -> dict:
         db_dict (dict): The database dictionary in the strict format.
     """
     # TODO: User should edit this function to load or build their data.
-    ### EDIT START
-    from pathlib import Path
     imagedir = "/home/franchesoni/Downloads/berkeley/images/test"
 
-    db_dict = {
+    return {
         "samples": [
             {"sample_filepath": str(ppath)}
-            # for ppath in Path("/home/franchesoni/Downloads/mnist_png/testing").glob(
-            #     "*.jpg"
-            # )
-            for ppath in sorted(Path(imagedir).glob(
-                "*.jpg"
-            ))
+            for ppath in sorted(Path(imagedir).glob("*.jpg"))
         ],
         "annotations": [],
         "predictions": [],
     }
-    ### EDIT END
-    return db_dict
 
 
 def validate_db_dict(db):
@@ -88,10 +80,8 @@ def validate_db_dict(db):
     # Validate samples
     if not isinstance(db["samples"], list):
         raise ValueError("'samples' must be a list.")
-    import os
 
     sample_filepaths = set()
-    seen_filepaths = set()
     for s in db["samples"]:
         if not isinstance(s, dict):
             raise ValueError("Each sample must be a dict.")
@@ -104,11 +94,10 @@ def validate_db_dict(db):
             or not s["sample_filepath"].strip()
         ):
             raise ValueError("'sample_filepath' must be a non-empty string.")
-        if s["sample_filepath"] in seen_filepaths:
+        if s["sample_filepath"] in sample_filepaths:
             raise ValueError(f"Duplicate filepath in samples: {s['sample_filepath']}")
         if not os.path.isfile(s["sample_filepath"]):
             raise ValueError(f"Sample filepath does not exist: {s['sample_filepath']}")
-        seen_filepaths.add(s["sample_filepath"])
         sample_filepaths.add(s["sample_filepath"])
 
     # Validate annotations
@@ -377,8 +366,22 @@ def initialize_database_if_needed(db_path=DB_PATH):
         )
 
         # insert annotations
-        for a in initial_content["annotations"]:
-            conn.execute(
+        ann_rows = [
+            (
+                a["sample_filepath"],
+                a["sample_filepath"],
+                a["class"],
+                a["type"],
+                a.get("col"),  # x
+                a.get("row"),  # y
+                a.get("width"),
+                a.get("height"),
+                a.get("timestamp"),
+            )
+            for a in initial_content["annotations"]
+        ]
+        if ann_rows:
+            conn.executemany(
                 """
                 INSERT INTO annotations (
                     sample_id, sample_filepath, class, type,
@@ -386,26 +389,30 @@ def initialize_database_if_needed(db_path=DB_PATH):
                 )
                 VALUES (
                     (SELECT id FROM samples WHERE sample_filepath = ?),
-                    ?, ?, ?,
-                    ?, ?, ?, ?, ?
+                    ?, ?, ?, ?, ?, ?, ?, ?
                 );
                 """,
-                (
-                    a["sample_filepath"],
-                    a["sample_filepath"],
-                    a["class"],
-                    a["type"],
-                    a.get("col"),  # x
-                    a.get("row"),  # y
-                    a.get("width"),
-                    a.get("height"),
-                    a.get("timestamp"),
-                ),
+                ann_rows,
             )
 
         # insert predictions
-        for p in initial_content["predictions"]:
-            conn.execute(
+        pred_rows = [
+            (
+                p["sample_filepath"],
+                p["sample_filepath"],
+                p["class"],
+                p["type"],
+                p.get("probability"),
+                p.get("col"),  # x
+                p.get("row"),  # y
+                p.get("width"),
+                p.get("height"),
+                p.get("timestamp"),
+            )
+            for p in initial_content["predictions"]
+        ]
+        if pred_rows:
+            conn.executemany(
                 """
                 INSERT INTO predictions (
                     sample_id, sample_filepath, class, type,
@@ -413,22 +420,10 @@ def initialize_database_if_needed(db_path=DB_PATH):
                 )
                 VALUES (
                     (SELECT id FROM samples WHERE sample_filepath = ?),
-                    ?, ?, ?,
-                    ?, ?, ?, ?, ?, ?
+                    ?, ?, ?, ?, ?, ?, ?, ?, ?
                 );
                 """,
-                (
-                    p["sample_filepath"],
-                    p["sample_filepath"],
-                    p["class"],
-                    p["type"],
-                    p.get("probability"),
-                    p.get("col"),  # x
-                    p.get("row"),  # y
-                    p.get("width"),
-                    p.get("height"),
-                    p.get("timestamp"),
-                ),
+                pred_rows,
             )
 
         # Initialize default configuration if not exists
