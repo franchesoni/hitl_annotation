@@ -71,3 +71,11 @@ The frontend keeps a local config mirror that syncs with the backend on specific
 - Keyboard: All primary actions (class selection, next) are keyboard-accessible.
 - Focus: Maintain sensible focus order; avoid stealing focus on image load.
 - Layout: Works across common desktop resolutions without horizontal scrolling.
+
+### Class Names (Frontend Validation)
+- Only accept class names that are safe to append to filenames. Allowed pattern: `^[A-Za-z0-9_-]+$` (letters, digits, underscore, hyphen).
+- No spaces, slashes, backslashes, quotes, or other special characters; reject and prompt the user to edit the name.
+- Recommended max length: 64 characters; trim surrounding whitespace before validating.
+- Rationale: class names may be appended to image filenames before the extension for derived artifacts; unsafe characters can break paths.
+
+

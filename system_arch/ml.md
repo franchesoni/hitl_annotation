@@ -58,3 +58,9 @@
 - Save as fastai export or pickle under `session/`:
   - Classification: `checkpoint.pkl` (fastai Learner export)
   - Segmentation: `dinov3_linear_classifier_seg.pkl` (pickle of `SGDClassifier`)
+
+### Segmentation Masks
+- Filename scheme: write one PNG per binary mask to `session/preds/` named `<sample_id>_<class>.png`.
+- Why: prevents collisions when different folders contain images with the same filename; do not base mask names on image stems or truncated paths.
+- Serving: the backend should expose masks via `/preds/<file>.png` and never leak absolute paths to clients.
+
