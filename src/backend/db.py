@@ -254,10 +254,6 @@ def get_predictions(sample_id):
             predictions.append(pred)
         return predictions
 
-def set_predictions_batch(_):
-    raise NotImplementedError("Moved to src.backend.db_ml.set_predictions_batch")
-
-
 def get_next_sample_by_strategy(strategy=None, pick=None):
     """
     Get the next sample to annotate based on the given strategy.
