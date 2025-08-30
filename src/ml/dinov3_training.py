@@ -248,9 +248,9 @@ def main() -> None:
             if not image_path.exists():
                 print(f"[WARN] Image file not found: {fp}")
                 continue
-            image = Image.open(image_path)
-            orig_w, orig_h = image.size
-            image_padded, new_w, new_h = resize_pad(image, target_size=current_resize)
+            with Image.open(image_path) as image:
+                orig_w, orig_h = image.size
+                image_padded, new_w, new_h = resize_pad(image, target_size=current_resize)
             image_tensor = normalize_image(image_padded)
             feats = extract_features(model, image_tensor)
             for cls, pts in pts_by_class.items():
@@ -262,9 +262,9 @@ def main() -> None:
                     # Map normalized [0,1] to resized image content (top-left aligned)
                     x_padded = float(col) * (new_w - 1)
                     y_padded = float(row) * (new_h - 1)
-                    # Map to feature map coordinates (center of patch)
-                    fx = int(round((x_padded + 0.5 * 16) / 16))
-                    fy = int(round((y_padded + 0.5 * 16) / 16))
+                    # Map to feature map coordinates using floor to select the patch cell
+                    fx = int(np.floor(x_padded / 16.0))
+                    fy = int(np.floor(y_padded / 16.0))
                     F, H, W = feats.shape
                     fx = min(max(fx, 0), W - 1)
                     fy = min(max(fy, 0), H - 1)
@@ -289,11 +289,21 @@ def main() -> None:
         X_train, y_train = X[train_mask], y[train_mask]
         X_val, y_val = X[~train_mask], y[~train_mask]
 
+        # Determine desired class set from config and current labels to handle new classes over time
+        cfg_classes = config.get("classes") or []
+        desired_classes = np.array(sorted(set(cfg_classes) | set(np.unique(y))))
+
         if classifier is None:
             classifier = SGDClassifier(loss="log_loss", max_iter=1000)
-            classifier.partial_fit(X_train, y_train, classes=np.unique(y))
+            classifier.partial_fit(X_train, y_train, classes=desired_classes)
         else:
-            classifier.partial_fit(X_train, y_train)
+            existing = set(getattr(classifier, "classes_", []))
+            if existing != set(desired_classes):
+                print("[INFO] Class set changed; reinitializing classifier")
+                classifier = SGDClassifier(loss="log_loss", max_iter=1000)
+                classifier.partial_fit(X_train, y_train, classes=desired_classes)
+            else:
+                classifier.partial_fit(X_train, y_train)
         save_classifier(classifier, clf_path)
 
         if len(y_val) > 0:
@@ -318,9 +328,9 @@ def main() -> None:
             if not image_path.exists():
                 print(f"[WARN] Image file not found: {fp}")
                 continue
-            image = Image.open(image_path)
-            orig_w, orig_h = image.size
-            image_padded, new_w, new_h = resize_pad(image, target_size=current_resize)
+            with Image.open(image_path) as image:
+                orig_w, orig_h = image.size
+                image_padded, new_w, new_h = resize_pad(image, target_size=current_resize)
             image_tensor = normalize_image(image_padded)
             feats = extract_features(model, image_tensor)
             F, H, W = feats.shape

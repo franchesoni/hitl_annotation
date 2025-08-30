@@ -222,14 +222,23 @@ def get_annotations(sample_id):
         return annotations
 
 def get_predictions(sample_id):
-    """Get all predictions for a specific sample ID."""
+    """Get all predictions for a specific sample ID.
+
+    Includes label, bbox, and mask predictions. For masks, returns
+    the stored mask_path as provided by ML scripts.
+    """
     with _get_conn() as conn:
         cursor = conn.cursor()
-        cursor.execute("""
-            SELECT id, sample_id, sample_filepath, class, type, probability, x, y, width, height, timestamp
+        cursor.execute(
+            """
+            SELECT id, sample_id, sample_filepath, class, type,
+                   probability, x, y, width, height, mask_path, timestamp
             FROM predictions
             WHERE sample_id = ?
-        """, (sample_id,))
+            ORDER BY timestamp ASC
+            """,
+            (sample_id,),
+        )
         results = cursor.fetchall()
         predictions = []
         for row in results:
@@ -239,18 +248,19 @@ def get_predictions(sample_id):
                 "sample_filepath": row[2],
                 "class": row[3],
                 "type": row[4],
-                "timestamp": row[10]
+                "timestamp": row[12] if len(row) > 12 else row[11],
             }
-            # Add type-specific fields
-            if row[4] == "label":  # label type
+            ptype = row[4]
+            if ptype == "label":
                 pred["probability"] = row[5]
-            elif row[4] == "bbox":  # bbox type
+            elif ptype == "bbox":
                 if all(x is not None for x in row[6:10]):
-                    pred["col"] = row[6]    # x -> col
-                    pred["row"] = row[7]    # y -> row
+                    pred["col"] = row[6]
+                    pred["row"] = row[7]
                     pred["width"] = row[8]
                     pred["height"] = row[9]
-            # mask type would need mask_path but it's not in current schema
+            elif ptype == "mask":
+                pred["mask_path"] = row[10]
             predictions.append(pred)
         return predictions
 
