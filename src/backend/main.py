@@ -1,5 +1,5 @@
 from pathlib import Path
-from flask import Flask, send_from_directory, request, jsonify
+from flask import Flask, request, jsonify, send_file
 from functools import lru_cache
 import timm
 
@@ -9,9 +9,10 @@ from src.backend.db import (
     get_annotation_stats, export_annotations, release_claim_by_id,
     get_most_recent_prediction, store_live_accuracy, get_annotations,
     add_point_annotation, delete_point_annotation, clear_point_annotations,
+    get_sample_prev_by_id, get_sample_next_by_id, get_predictions,
 )
 from src.backend.db_init import initialize_database_if_needed
-from src.backend.utils import create_image_response
+import mimetypes
 
 initialize_database_if_needed()
 
@@ -20,7 +21,6 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 FRONTEND_DIR = BASE_DIR / "frontend"
 
 app = Flask(__name__, static_folder=FRONTEND_DIR, static_url_path="")
-app.config.update(DEBUG=False)
 
 
 @lru_cache(maxsize=1)
@@ -30,30 +30,60 @@ def _list_architectures():
     return resnets + [m for m in sorted(timm.list_models()) if m not in resnets]
 
 
+def create_image_response(sample_info):
+    """Create an image response with informative headers.
+
+    Args:
+        sample_info: Dict with 'id' and 'sample_filepath'.
+    """
+    sample_id = sample_info["id"]
+    sample_filepath = sample_info["sample_filepath"]
+
+    mime_type, _ = mimetypes.guess_type(sample_filepath)
+    if mime_type is None:
+        mime_type = "application/octet-stream"
+
+    anns = get_annotations(sample_id)
+    label_ann = next((a for a in anns if a.get("type") == "label"), None)
+
+    headers = {
+        "X-Image-Id": str(sample_id),
+        "X-Image-Filepath": str(sample_filepath),
+    }
+    if label_ann:
+        headers["X-Label-Class"] = str(label_ann.get("class", ""))
+        headers["X-Label-Source"] = "annotation"
+    else:
+        preds = get_predictions(sample_id)
+        pred_candidates = [
+            p for p in preds if p.get("type") == "label" and p.get("probability") is not None
+        ]
+        assert len(pred_candidates) <= 1, "Expected at most one prediction per image"
+        if pred_candidates:
+            pred_ann = pred_candidates[0]
+            headers["X-Label-Class"] = str(pred_ann.get("class", ""))
+            headers["X-Label-Source"] = "prediction"
+            headers["X-Label-Probability"] = str(pred_ann.get("probability", ""))
+
+    response = send_file(sample_filepath, mimetype=mime_type)
+    for key, value in headers.items():
+        response.headers[key] = value
+    return response
+
+
 @app.route("/")
 def index():
-    return send_from_directory(FRONTEND_DIR, "router.html")
+    return app.send_static_file("router.html")
 
 @app.route("/classification")
 def classification():
-    return send_from_directory(FRONTEND_DIR / "classification", "index.html")
+    return app.send_static_file("classification/index.html")
 
 @app.route("/points")
 def points():
-    return send_from_directory(FRONTEND_DIR / "points", "index.html")
+    return app.send_static_file("points/index.html")
 
-# Serve static files for each app
-@app.route("/classification/<path:filename>")
-def classification_static(filename):
-    return send_from_directory(FRONTEND_DIR / "classification", filename)
-
-@app.route("/points/<path:filename>")
-def points_static(filename):
-    return send_from_directory(FRONTEND_DIR / "points", filename)
-
-@app.route("/shared/<path:filename>")
-def shared_static(filename):
-    return send_from_directory(FRONTEND_DIR / "shared", filename)
+# Static files are served by Flask from FRONTEND_DIR via static_url_path=""
 
 
 @app.route("/api/health", methods=["GET"])
@@ -117,7 +147,6 @@ def get_sample_prev(sample_id: int):
     Returns the previous sample by ID (sample with ID < current_id).
     Path param: `sample_id` identifies the current sample.
     """
-    from src.backend.db import get_sample_prev_by_id
     sample_info = get_sample_prev_by_id(sample_id)
     if sample_info:
         return create_image_response(sample_info)
@@ -131,7 +160,6 @@ def get_sample_next(sample_id: int):
     Returns the next sample by ID (sample with ID > current_id).
     Path param: `sample_id` identifies the current sample.
     """
-    from src.backend.db import get_sample_next_by_id
     sample_info = get_sample_next_by_id(sample_id)
     if sample_info:
         return create_image_response(sample_info)
