@@ -226,7 +226,7 @@ def main() -> None:
             prev_config = config
             cycle = 0
 
-        sleep_s = config.get("sleep", 5) or 5
+        sleep_s = 5  # default pause between cycles (seconds)
         current_resize = config.get("resize", current_resize) or current_resize
         if not config.get("ai_should_be_run", False):
             print("[INFO] Run flag disabled — sleeping…")

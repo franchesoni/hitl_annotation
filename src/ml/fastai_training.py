@@ -208,7 +208,7 @@ def _run_forever(flip: bool, max_rotate: float) -> None:
                 pass
             prev_config = config
 
-        sleep_s = config.get("sleep", 5) or 5
+        sleep_s = 5  # default pause between cycles (seconds)
         if not config.get("ai_should_be_run", False):
             print("[INFO] Run flag disabled — sleeping…")
             time.sleep(max(1, sleep_s))

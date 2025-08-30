@@ -10,7 +10,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     // ----------  STATE  ----------------------------------------
     // -----------------------------------------------------------
     const state = {
-        config: { classes: [], aiShouldBeRun: false, architecture: 'small', budget: 1000, sleep: 0, resize: 224 },
+        config: { classes: [], aiShouldBeRun: false, architecture: 'small', budget: 1000, resize: 224 },
         configUpdated: false,
         workflowInProgress: false,
         currentImageFilepath: null,
@@ -170,7 +170,6 @@ document.addEventListener('DOMContentLoaded', async () => {
                     aiShouldBeRun: cfg.ai_should_be_run || false,
                     architecture: cfg.architecture || 'small', // Default to 'small' for segmentation
                     budget: cfg.budget || 1000,
-                    sleep: cfg.sleep || 0,
                     resize: cfg.resize || 224,
                     available_architectures: cfg.available_architectures || []
                 };

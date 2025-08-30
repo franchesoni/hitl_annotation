@@ -7,7 +7,6 @@ export class AIControlsView {
     this.checkbox = document.getElementById('ai-run-checkbox');
     this.aiStatus = document.getElementById('ai-status');
     this.archSelect = document.getElementById('ai-arch');
-    this.sleepInput = document.getElementById('ai-sleep');
     this.budgetInput = document.getElementById('ai-budget');
     this.resizeInput = document.getElementById('ai-resize');
     this.exportDBBtn = document.getElementById('export-db-btn');
@@ -56,7 +55,7 @@ export class AIControlsView {
         this.state.configUpdated = true; // for consistency
       }
     };
-    [this.archSelect, this.sleepInput, this.budgetInput, this.resizeInput].forEach(inp => {
+    [this.archSelect, this.budgetInput, this.resizeInput].forEach(inp => {
       if (inp) inp.addEventListener('change', onInputChange);
     });
 
@@ -70,7 +69,6 @@ export class AIControlsView {
     return {
       aiShouldBeRun: !!(this.checkbox && this.checkbox.checked),
       architecture: this.archSelect?.value || this.state.config.architecture || defaultArch,
-      sleep: Number(this.sleepInput?.value || this.state.config.sleep || 0),
       budget: Number(this.budgetInput?.value || this.state.config.budget || 1000),
       resize: Number(this.resizeInput?.value || this.state.config.resize || 224)
     };
@@ -78,7 +76,6 @@ export class AIControlsView {
 
   _applyConfigToInputs(cfg) {
     if (this.archSelect && cfg.architecture) this.archSelect.value = cfg.architecture;
-    if (this.sleepInput && cfg.sleep !== undefined) this.sleepInput.value = cfg.sleep;
     if (this.budgetInput && cfg.budget !== undefined) this.budgetInput.value = cfg.budget;
     if (this.resizeInput && cfg.resize !== undefined) this.resizeInput.value = cfg.resize;
   }
@@ -86,7 +83,7 @@ export class AIControlsView {
   updateInputsDisabled() {
     const running = !!(this.checkbox && this.checkbox.checked);
     // When running, disable editing (as per requirement: only change when unchecked)
-    [this.archSelect, this.sleepInput, this.budgetInput, this.resizeInput].forEach(inp => {
+    [this.archSelect, this.budgetInput, this.resizeInput].forEach(inp => {
       if (inp) inp.disabled = running;
     });
     if (this.aiStatus) {

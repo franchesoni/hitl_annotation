@@ -11,7 +11,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         // ----------  STATE  ----------------------------------------
         // -----------------------------------------------------------
         const state = {
-                config: { classes: [], aiShouldBeRun: false, architecture: 'resnet18', budget: 1000, sleep: 0, resize: 224 },
+                config: { classes: [], aiShouldBeRun: false, architecture: 'resnet18', budget: 1000, resize: 224 },
                 history: [],
                 configUpdated: false,
                 workflowInProgress: false,
@@ -137,7 +137,6 @@ document.addEventListener('DOMContentLoaded', async () => {
                                         aiShouldBeRun: cfg.ai_should_be_run || false,
                                         architecture: cfg.architecture || 'resnet18',
                                         budget: cfg.budget || 1000,
-                                        sleep: cfg.sleep || 0,
                                         resize: cfg.resize || 224,
                                         available_architectures: cfg.available_architectures || []
                                 };
