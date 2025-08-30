@@ -21,6 +21,13 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 FRONTEND_DIR = BASE_DIR / "frontend"
 
 app = Flask(__name__, static_folder=FRONTEND_DIR, static_url_path="")
+# Fail loudly: enable development-style debugging and exception propagation
+app.config.update(
+    ENV="development",
+    DEBUG=True,
+    PROPAGATE_EXCEPTIONS=True,
+    TRAP_HTTP_EXCEPTIONS=True,
+)
 
 
 @lru_cache(maxsize=1)
@@ -98,7 +105,7 @@ def put_config():
 
     Expects a JSON body with the configuration object.
     """
-    config = request.get_json(silent=True) or {}
+    config = request.get_json(silent=False) or {}
     update_config(config)
     return jsonify({"status": "Config saved successfully"})
 
@@ -174,7 +181,7 @@ def put_annotation(sample_id: int):
     Path param: `sample_id` identifies the resource.
     Body: {"class": str, "type": str (optional), "row": int (optional), "col": int (optional), ...}
     """
-    data = request.get_json(silent=True) or {}
+    data = request.get_json(silent=False) or {}
     class_ = data.get("class")
     if not class_:
         return jsonify({"error": "Missing required field: class"}), 400
@@ -240,7 +247,7 @@ def get_annotations_endpoint(sample_id: int):
 @app.post("/api/annotations/<int:sample_id>/points")
 def add_point_endpoint(sample_id: int):
     """Add a point annotation to a sample."""
-    data = request.get_json(silent=True) or {}
+    data = request.get_json(silent=False) or {}
     class_name = data.get("class")
     x = data.get("x")  # normalized coordinate [0,1]
     y = data.get("y")  # normalized coordinate [0,1]
@@ -250,17 +257,14 @@ def add_point_endpoint(sample_id: int):
     if x is None or y is None:
         return jsonify({"error": "Missing required fields: x, y"}), 400
     
-    try:
-        add_point_annotation(sample_id, class_name, x, y)
-        return jsonify({"status": "Point annotation added successfully"})
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
+    add_point_annotation(sample_id, class_name, x, y)
+    return jsonify({"status": "Point annotation added successfully"})
 
 
 @app.delete("/api/annotations/<int:sample_id>/points")
 def delete_point_endpoint(sample_id: int):
     """Delete a point annotation near the specified coordinates."""
-    data = request.get_json(silent=True) or {}
+    data = request.get_json(silent=False) or {}
     x = data.get("x")  # normalized coordinate [0,1]
     y = data.get("y")  # normalized coordinate [0,1]
     tolerance = data.get("tolerance", 0.02)  # default 2% tolerance
@@ -297,4 +301,4 @@ def export_data():
 
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=8000)
+    app.run(host="0.0.0.0", port=8000, debug=True)

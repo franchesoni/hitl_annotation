@@ -66,11 +66,11 @@ from sklearn.metrics import accuracy_score, log_loss
 
 # ––– local imports –––
 try:
-    from src.backend import db as backend_db
+    from src.backend import db_ml as backend_db
 except ModuleNotFoundError:  # script run from repo root
     _root = Path(__file__).resolve().parents[2]
     sys.path.append(str(_root))
-    from backend import db as backend_db  # type: ignore
+    from backend import db_ml as backend_db  # type: ignore
 
 
 # ---------------------------------------------------------------------------
