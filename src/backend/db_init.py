@@ -266,6 +266,7 @@ def validate_db_dict(db):
 
 
 def initialize_database_if_needed(db_path=DB_PATH):
+    """Create and initialize the database if it does not exist, including tables, indexes, and default config."""
     # create db dir if needed
     Path(db_path).parent.mkdir(parents=True, exist_ok=True)
     # connect to db (creates file if needed)
@@ -290,16 +291,14 @@ def initialize_database_if_needed(db_path=DB_PATH):
             CREATE TABLE IF NOT EXISTS annotations (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 sample_id INTEGER NOT NULL,
-                sample_filepath TEXT NOT NULL,
                 class TEXT NOT NULL,
                 type TEXT NOT NULL,
-                x REAL,
-                y REAL,
-                width REAL,
-                height REAL,
+                col01 INTEGER,
+                row01 INTEGER,
+                width01 INTEGER,
+                height01 INTEGER,
                 timestamp INTEGER,
-                FOREIGN KEY (sample_id) REFERENCES samples (id),
-                FOREIGN KEY (sample_filepath) REFERENCES samples (sample_filepath)
+                FOREIGN KEY (sample_id) REFERENCES samples (id)
             );
         """
         )
@@ -308,18 +307,16 @@ def initialize_database_if_needed(db_path=DB_PATH):
             CREATE TABLE IF NOT EXISTS predictions (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 sample_id INTEGER NOT NULL,
-                sample_filepath TEXT NOT NULL,
                 class TEXT NOT NULL,
                 type TEXT NOT NULL,
-                probability REAL,
-                x REAL,
-                y REAL,
-                width REAL,
-                height REAL,
+                probability INTEGER,
+                col01 INTEGER,
+                row01 INTEGER,
+                width01 INTEGER,
+                height01 INTEGER,
                 mask_path TEXT,
                 timestamp INTEGER,
-                FOREIGN KEY (sample_id) REFERENCES samples (id),
-                FOREIGN KEY (sample_filepath) REFERENCES samples (sample_filepath)
+                FOREIGN KEY (sample_id) REFERENCES samples (id)
             );
         """
         )
@@ -330,11 +327,19 @@ def initialize_database_if_needed(db_path=DB_PATH):
                 ai_should_be_run INTEGER DEFAULT 0,
                 architecture TEXT,
                 budget INTEGER,
-                sleep INTEGER,
-                resize INTEGER
+                resize INTEGER,
+                last_claim_cleanup INTEGER,
+                task TEXT
             );
         """
         )
+
+        # Lightweight migration: ensure 'task' column exists on older DBs
+        cur = conn.cursor()
+        cur.execute("PRAGMA table_info(config);")
+        cols = {row[1] for row in cur.fetchall()}
+        if "task" not in cols:
+            cur.execute("ALTER TABLE config ADD COLUMN task TEXT;")
         conn.execute(
             """
             CREATE TABLE IF NOT EXISTS curves (
@@ -369,13 +374,12 @@ def initialize_database_if_needed(db_path=DB_PATH):
         ann_rows = [
             (
                 a["sample_filepath"],
-                a["sample_filepath"],
                 a["class"],
                 a["type"],
-                a.get("col"),  # x
-                a.get("row"),  # y
-                a.get("width"),
-                a.get("height"),
+                a.get("col01"),
+                a.get("row01"),
+                a.get("width01"),
+                a.get("height01"),
                 a.get("timestamp"),
             )
             for a in initial_content["annotations"]
@@ -384,29 +388,30 @@ def initialize_database_if_needed(db_path=DB_PATH):
             conn.executemany(
                 """
                 INSERT INTO annotations (
-                    sample_id, sample_filepath, class, type,
-                    x, y, width, height, timestamp
+                    sample_id, class, type,
+                    col01, row01, width01, height01, timestamp
                 )
                 VALUES (
                     (SELECT id FROM samples WHERE sample_filepath = ?),
-                    ?, ?, ?, ?, ?, ?, ?, ?
+                    ?, ?, ?, ?, ?, ?, ?
                 );
                 """,
                 ann_rows,
             )
 
         # insert predictions
+        # Always include mask_path column; use NULL for non-mask types
         pred_rows = [
             (
-                p["sample_filepath"],
                 p["sample_filepath"],
                 p["class"],
                 p["type"],
                 p.get("probability"),
-                p.get("col"),  # x
-                p.get("row"),  # y
-                p.get("width"),
-                p.get("height"),
+                p.get("col01"),
+                p.get("row01"),
+                p.get("width01"),
+                p.get("height01"),
+                p.get("mask_path"),
                 p.get("timestamp"),
             )
             for p in initial_content["predictions"]
@@ -415,8 +420,8 @@ def initialize_database_if_needed(db_path=DB_PATH):
             conn.executemany(
                 """
                 INSERT INTO predictions (
-                    sample_id, sample_filepath, class, type,
-                    probability, x, y, width, height, timestamp
+                    sample_id, class, type,
+                    probability, col01, row01, width01, height01, mask_path, timestamp
                 )
                 VALUES (
                     (SELECT id FROM samples WHERE sample_filepath = ?),
@@ -437,12 +442,13 @@ def initialize_database_if_needed(db_path=DB_PATH):
                 "ai_should_be_run": False,
                 "architecture": "resnet18",
                 "budget": 100,
-                "sleep": 5,
-                "resize": 224
+                "resize": 224,
+                "last_claim_cleanup": None,
+                "task": "classification",
             }
             cursor.execute(
-                "INSERT INTO config (classes, ai_should_be_run, architecture, budget, sleep, resize) VALUES (?, ?, ?, ?, ?, ?)",
+                "INSERT INTO config (classes, ai_should_be_run, architecture, budget, resize, last_claim_cleanup, task) VALUES (?, ?, ?, ?, ?, ?, ?)",
                 (json.dumps(default_config["classes"]), int(default_config["ai_should_be_run"]), 
                  default_config["architecture"], default_config["budget"], 
-                 default_config["sleep"], default_config["resize"])
+                 default_config["resize"], default_config["last_claim_cleanup"], default_config["task"])
             )

@@ -11,7 +11,7 @@ from __future__ import annotations
 import time
 from typing import Any, Dict, List
 
-from .db import DB_PATH, _get_conn, get_annotations, get_config  # re-exported
+from .db import DB_PATH, _get_conn, get_annotations, get_config, to_ppm  # re-exported
 
 
 def get_all_samples() -> List[Dict[str, Any]]:
@@ -102,24 +102,30 @@ def set_predictions_batch(predictions_batch):
                     (sid, ptype, pclass),
                 )
 
-        # Prepare batch insert
+        # Prepare batch insert (convert coordinates to PPM and use col01, row01, width01, height01)
         insert_data = []
         for pred in normalized_preds:
             sid = pred["sample_id"]
             sfp = filepath_map.get(sid)
             if sfp is None:
-                # Fail loudly if a provided sample_id does not exist
                 raise ValueError(f"Unknown sample_id {sid} in predictions batch")
+            prob = pred.get("probability")
+            prob_ppm = to_ppm(prob) if prob is not None else None
+            # Convert coordinates to PPM
+            col01 = to_ppm(pred.get("col")) if pred.get("col") is not None else None
+            row01 = to_ppm(pred.get("row")) if pred.get("row") is not None else None
+            width01 = to_ppm(pred.get("width")) if pred.get("width") is not None else None
+            height01 = to_ppm(pred.get("height")) if pred.get("height") is not None else None
             base = [
                 sid,
                 sfp,
                 pred.get("class"),
                 pred.get("type"),
-                pred.get("probability"),
-                pred.get("col"),
-                pred.get("row"),
-                pred.get("width"),
-                pred.get("height"),
+                prob_ppm,
+                col01,
+                row01,
+                width01,
+                height01,
                 pred.get("mask_path"),
             ]
             base.append(timestamp)
@@ -130,7 +136,7 @@ def set_predictions_batch(predictions_batch):
                 """
                 INSERT INTO predictions (
                     sample_id, sample_filepath, class, type,
-                    probability, x, y, width, height, mask_path, timestamp
+                    probability, col01, row01, width01, height01, mask_path, timestamp
                 )
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
@@ -139,7 +145,12 @@ def set_predictions_batch(predictions_batch):
 
 
 def store_training_stats(epoch, train_loss=None, valid_loss=None, accuracy=None):
-    """Store training metrics for an epoch in the curves table."""
+    """Store training metrics for an epoch in the curves table.
+
+    Compatibility: writes validation metrics using 'val_*' names
+    (val_loss, val_accuracy) while keeping the function signature the
+    same for callers providing 'valid_loss' and 'accuracy'.
+    """
     timestamp = int(time.time())
 
     with _get_conn() as conn:
@@ -161,7 +172,7 @@ def store_training_stats(epoch, train_loss=None, valid_loss=None, accuracy=None)
                 INSERT INTO curves (curve_name, value, epoch, timestamp)
                 VALUES (?, ?, ?, ?)
                 """,
-                ("valid_loss", valid_loss, epoch, timestamp),
+                ("val_loss", valid_loss, epoch, timestamp),
             )
 
         if accuracy is not None:
@@ -170,6 +181,5 @@ def store_training_stats(epoch, train_loss=None, valid_loss=None, accuracy=None)
                 INSERT INTO curves (curve_name, value, epoch, timestamp)
                 VALUES (?, ?, ?, ?)
                 """,
-                ("accuracy", accuracy, epoch, timestamp),
+                ("val_accuracy", accuracy, epoch, timestamp),
             )
-

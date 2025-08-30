@@ -29,21 +29,66 @@ def _get_conn():
     return sqlite3.connect(DB_PATH, timeout=30.0)
 
 
+def to_ppm(value):
+    """Convert a float in [0,1] to integer parts-per-million, clamped to [0, 1_000_000]."""
+    v = float(value)
+    ppm = int(round(v * 1_000_000))
+    if ppm < 0:
+        ppm = 0
+    elif ppm > 1_000_000:
+        ppm = 1_000_000
+    return ppm
+
+
+def from_ppm(ppm):
+    """Convert stored coordinate to float in [0,1].
+
+    Backward-compatible: if value already looks like a normalized float in [0,1],
+    return as-is. Otherwise treat as integer PPM and scale down.
+    """
+    if ppm is None:
+        return None
+    try:
+        f = float(ppm)
+    except (TypeError, ValueError):
+        return None
+    # If it's already normalized, pass through
+    if 0.0 <= f <= 1.0:
+        return f
+    # Otherwise interpret as integer PPM
+    try:
+        p = int(round(f))
+    except (TypeError, ValueError):
+        return None
+    if p < 0:
+        p = 0
+    elif p > 1_000_000:
+        p = 1_000_000
+    return p / 1_000_000.0
+
+
 def get_config():
-    """Return the configuration as a dict or empty dict if not set."""
+    """Return the configuration as a dict or empty dict if not set.
+
+    Includes the 'task' field ("classification" | "segmentation").
+    """
     with _get_conn() as conn:
         cursor = conn.cursor()
-        cursor.execute("SELECT classes, ai_should_be_run, architecture, budget, sleep, resize FROM config LIMIT 1")
+        cursor.execute(
+            "SELECT classes, ai_should_be_run, architecture, budget, sleep, resize, last_claim_cleanup, task FROM config LIMIT 1"
+        )
         row = cursor.fetchone()
         if row:
-            classes, ai_should_be_run, architecture, budget, sleep, resize = row
+            classes, ai_should_be_run, architecture, budget, sleep, resize, last_claim_cleanup, task = row
             return {
                 "classes": json.loads(classes) if classes else [],
                 "ai_should_be_run": bool(ai_should_be_run),
                 "architecture": architecture,
                 "budget": budget,
                 "sleep": sleep,
-                "resize": resize
+                "resize": resize,
+                "last_claim_cleanup": last_claim_cleanup,
+                "task": task or "classification",
             }
         return {}
 
@@ -52,35 +97,42 @@ def update_config(config):
 
     The config supports keys: "classes" (list[str]), "ai_should_be_run"
     (bool), "architecture" (str), "budget" (int), "sleep" (int),
-    and "resize" (int). Missing keys retain their previous values.
+    "resize" (int), and "task" (str: "classification" | "segmentation").
+    Missing keys retain their previous values.
     """
     current = get_config()
-    current.update(config)
-    
+    # Only allow known keys to be updated
+    allowed_keys = {"classes", "ai_should_be_run", "architecture", "budget", "sleep", "resize", "task", "last_claim_cleanup"}
+    filtered = {k: v for k, v in config.items() if k in allowed_keys}
+    current.update(filtered)
+
     # Convert classes list to JSON string for storage
     classes_json = json.dumps(current.get("classes", []))
-    
+
     with _get_conn() as conn:
         cursor = conn.cursor()
         cursor.execute("SELECT COUNT(*) FROM config")
         count = cursor.fetchone()[0]
-        
+
         if count > 0:
             cursor.execute(
-                "UPDATE config SET classes = ?, ai_should_be_run = ?, architecture = ?, budget = ?, sleep = ?, resize = ?",
-                (classes_json, int(current.get("ai_should_be_run", False)), 
-                 current.get("architecture"), current.get("budget"), 
-                 current.get("sleep"), current.get("resize"))
+                "UPDATE config SET classes = ?, ai_should_be_run = ?, architecture = ?, budget = ?, sleep = ?, resize = ?, last_claim_cleanup = ?, task = ?",
+                (classes_json, int(current.get("ai_should_be_run", False)),
+                 current.get("architecture"), current.get("budget"),
+                 current.get("sleep"), current.get("resize"), current.get("last_claim_cleanup"),
+                 current.get("task", "classification"))
             )
         else:
             cursor.execute(
-                "INSERT INTO config (classes, ai_should_be_run, architecture, budget, sleep, resize) VALUES (?, ?, ?, ?, ?, ?)",
+                "INSERT INTO config (classes, ai_should_be_run, architecture, budget, sleep, resize, last_claim_cleanup, task) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
                 (classes_json, int(current.get("ai_should_be_run", False)),
                  current.get("architecture"), current.get("budget"),
-                 current.get("sleep"), current.get("resize"))
+                 current.get("sleep"), current.get("resize"), current.get("last_claim_cleanup"),
+                 current.get("task", "classification"))
             )
 
 def get_all_samples():
+    """Return all samples. (Not implemented here; see src.backend.db_ml.get_all_samples)"""
     raise NotImplementedError("Moved to src.backend.db_ml.get_all_samples")
 
 def _get_next_unlabeled_sequential():
@@ -186,14 +238,31 @@ def release_claim_by_id(sample_id):
             WHERE id = ?
         """, (sample_id,))
 
+def cleanup_claims_unconditionally():
+    """Reset all claimed samples to unclaimed (claimed=0) without conditions.
+
+    Intended as a safety/cleanup helper to clear stale claims across sessions.
+    """
+    with _get_conn() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            UPDATE samples
+            SET claimed = 0
+            WHERE claimed = 1
+            """
+        )
+
 def get_annotations(sample_id):
     """Get all annotations for a specific sample ID."""
     with _get_conn() as conn:
         cursor = conn.cursor()
         cursor.execute("""
-            SELECT id, sample_id, sample_filepath, class, type, x, y, width, height, timestamp
-            FROM annotations
-            WHERE sample_id = ?
+            SELECT a.id, a.sample_id, s.sample_filepath, a.class, a.type, 
+                   a.col01, a.row01, a.width01, a.height01, a.timestamp
+            FROM annotations a
+            JOIN samples s ON s.id = a.sample_id
+            WHERE a.sample_id = ?
         """, (sample_id,))
         results = cursor.fetchall()
         annotations = []
@@ -209,14 +278,14 @@ def get_annotations(sample_id):
             # Add coordinates based on type
             if row[4] == "point":  # point type
                 if row[5] is not None and row[6] is not None:
-                    ann["col"] = row[5]  # x -> col
-                    ann["row"] = row[6]  # y -> row
+                    ann["col01"] = row[5]
+                    ann["row01"] = row[6]
             elif row[4] == "bbox":  # bbox type
                 if all(x is not None for x in row[5:9]):
-                    ann["col"] = row[5]    # x -> col
-                    ann["row"] = row[6]    # y -> row  
-                    ann["width"] = row[7]
-                    ann["height"] = row[8]
+                    ann["col01"] = row[5]
+                    ann["row01"] = row[6]
+                    ann["width01"] = row[7]
+                    ann["height01"] = row[8]
             # label type has no coordinates
             annotations.append(ann)
         return annotations
@@ -231,11 +300,12 @@ def get_predictions(sample_id):
         cursor = conn.cursor()
         cursor.execute(
             """
-            SELECT id, sample_id, sample_filepath, class, type,
-                   probability, x, y, width, height, mask_path, timestamp
-            FROM predictions
-            WHERE sample_id = ?
-            ORDER BY timestamp ASC
+            SELECT p.id, p.sample_id, s.sample_filepath, p.class, p.type,
+                   p.probability, p.col01, p.row01, p.width01, p.height01, p.mask_path, p.timestamp
+            FROM predictions p
+            JOIN samples s ON s.id = p.sample_id
+            WHERE p.sample_id = ?
+            ORDER BY p.timestamp ASC
             """,
             (sample_id,),
         )
@@ -248,17 +318,17 @@ def get_predictions(sample_id):
                 "sample_filepath": row[2],
                 "class": row[3],
                 "type": row[4],
-                "timestamp": row[12] if len(row) > 12 else row[11],
+                "timestamp": row[11],
             }
             ptype = row[4]
             if ptype == "label":
-                pred["probability"] = row[5]
+                pred["probability"] = from_ppm(row[5])
             elif ptype == "bbox":
                 if all(x is not None for x in row[6:10]):
-                    pred["col"] = row[6]
-                    pred["row"] = row[7]
-                    pred["width"] = row[8]
-                    pred["height"] = row[9]
+                    pred["col01"] = row[6]
+                    pred["row01"] = row[7]
+                    pred["width01"] = row[8]
+                    pred["height01"] = row[9]
             elif ptype == "mask":
                 pred["mask_path"] = row[10]
             predictions.append(pred)
@@ -368,12 +438,18 @@ def upsert_annotation(sample_id, class_name, annotation_type="label", **kwargs):
             # For labels, replace existing label annotation for this sample
             cursor.execute("DELETE FROM annotations WHERE sample_id = ? AND type = 'label'", (sample_id,))
         
+        # Normalize coordinates to PPM integers if provided
+        col01 = to_ppm(kwargs.get("col")) if kwargs.get("col") is not None else None
+        row01 = to_ppm(kwargs.get("row")) if kwargs.get("row") is not None else None
+        width01 = to_ppm(kwargs.get("width")) if kwargs.get("width") is not None else None
+        height01 = to_ppm(kwargs.get("height")) if kwargs.get("height") is not None else None
+
         # Insert new annotation 
         cursor.execute(
             """
             INSERT INTO annotations (
                 sample_id, sample_filepath, class, type,
-                x, y, width, height, timestamp
+                col01, row01, width01, height01, timestamp
             )
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
@@ -382,10 +458,10 @@ def upsert_annotation(sample_id, class_name, annotation_type="label", **kwargs):
                 sample_filepath,
                 class_name,
                 annotation_type,
-                kwargs.get("col"),  # x
-                kwargs.get("row"),  # y
-                kwargs.get("width"),
-                kwargs.get("height"),
+                col01,
+                row01,
+                width01,
+                height01,
                 kwargs.get("timestamp"),
             ),
         )
@@ -394,21 +470,31 @@ def add_point_annotation(sample_id, class_name, x, y, timestamp=None):
     """Add a single point annotation to a sample."""
     if timestamp is None:
         timestamp = int(time.time())
+    # upsert_annotation handles conversion to PPM
     return upsert_annotation(sample_id, class_name, "point", col=x, row=y, timestamp=timestamp)
 
 def delete_point_annotation(sample_id, x, y, tolerance=0.01):
     """Delete a point annotation near the specified coordinates."""
-    with _get_conn() as conn:
-        cursor = conn.cursor()
-        cursor.execute("""
-            DELETE FROM annotations 
-            WHERE sample_id = ? AND type = 'point'
-            AND ABS(x - ?) < ? AND ABS(y - ?) < ?
-        """, (sample_id, x, tolerance, y, tolerance))
-        return cursor.rowcount > 0
+    """Delete a point annotation near the specified coordinates for a sample."""
+        with _get_conn() as conn:
+                cursor = conn.cursor()
+                # Convert provided normalized floats to PPM space for comparison
+                col01 = to_ppm(x)
+                row01 = to_ppm(y)
+                tol_ppm = to_ppm(tolerance)
+                cursor.execute(
+                        """
+                        DELETE FROM annotations 
+                        WHERE sample_id = ? AND type = 'point'
+                            AND ABS(col01 - ?) <= ? AND ABS(row01 - ?) <= ?
+                        """,
+                        (sample_id, col01, tol_ppm, row01, tol_ppm),
+                )
+                return cursor.rowcount > 0
 
 def clear_point_annotations(sample_id):
     """Clear all point annotations for a sample."""
+    """Delete all point annotations for a sample."""
     with _get_conn() as conn:
         cursor = conn.cursor()
         cursor.execute("""
@@ -417,14 +503,27 @@ def clear_point_annotations(sample_id):
         """, (sample_id,))
         return cursor.rowcount
 
-def delete_annotation_by_sample_id(sample_id):
-    """Delete annotation for a specific sample ID."""
+def delete_annotation_by_sample_id(sample_id, annotation_type=None):
+    """Delete annotation(s) for a specific sample ID. If annotation_type is given, only delete that type."""
+    """Delete annotation(s) for a sample. If annotation_type is given, only delete that type."""
     with _get_conn() as conn:
         cursor = conn.cursor()
-        cursor.execute("""
-            DELETE FROM annotations
-            WHERE sample_id = ?
-        """, (sample_id,))
+        if annotation_type is not None:
+            cursor.execute(
+                """
+                DELETE FROM annotations
+                WHERE sample_id = ? AND type = ?
+                """,
+                (sample_id, annotation_type)
+            )
+        else:
+            cursor.execute(
+                """
+                DELETE FROM annotations
+                WHERE sample_id = ?
+                """,
+                (sample_id,)
+            )
         return cursor.rowcount > 0
 
 def get_annotation_stats():
@@ -496,9 +595,10 @@ def export_annotations():
     with _get_conn() as conn:
         cursor = conn.cursor()
         cursor.execute("""
-            SELECT a.sample_id, a.sample_filepath, a.class, a.type, 
-                   a.x, a.y, a.width, a.height, a.timestamp
+            SELECT a.sample_id, s.sample_filepath, a.class, a.type, 
+                   a.col01, a.row01, a.width01, a.height01, a.timestamp
             FROM annotations a
+            JOIN samples s ON s.id = a.sample_id
             ORDER BY a.sample_id
         """)
         results = cursor.fetchall()
@@ -514,16 +614,16 @@ def export_annotations():
             }
             # Add coordinates based on type
             if row[3] == "point" and row[4] is not None and row[5] is not None:
-                ann["col"] = row[4]  # x -> col
-                ann["row"] = row[5]  # y -> row
+                ann["col01"] = row[4]
+                ann["row01"] = row[5]
             elif row[3] == "bbox" and all(x is not None for x in row[4:8]):
-                ann["col"] = row[4]    # x -> col
-                ann["row"] = row[5]    # y -> row  
-                ann["width"] = row[6]
-                ann["height"] = row[7]
-            
+                ann["col01"] = row[4]
+                ann["row01"] = row[5]
+                ann["width01"] = row[6]
+                ann["height01"] = row[7]
+
             annotations.append(ann)
-        
+
         return annotations
 
 def store_training_stats(*_, **__):
