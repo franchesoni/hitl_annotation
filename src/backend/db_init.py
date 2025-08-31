@@ -1,7 +1,42 @@
-from src.backend.db import DB_PATH
+from src.backend.db import DB_PATH, to_ppm
 from pathlib import Path
 import sqlite3
 import os
+from pathlib import Path as _Path
+
+# Session/preds dirs for mask path normalization
+_SESSION_DIR = _Path(DB_PATH).parent
+_PREDS_DIR = _SESSION_DIR / "preds"
+
+def _normalize_mask_path(mask_path: str | None) -> str | None:
+    if not mask_path:
+        return None
+    try:
+        _PREDS_DIR.mkdir(parents=True, exist_ok=True)
+    except Exception:
+        pass
+    try:
+        p = _Path(mask_path)
+        if p.is_absolute():
+            resolved = p.resolve()
+        else:
+            parts = p.parts
+            if len(parts) > 0 and parts[0] == "preds":
+                resolved = (_SESSION_DIR / p).resolve()
+            else:
+                resolved = (_PREDS_DIR / p).resolve()
+        resolved.relative_to(_PREDS_DIR.resolve())
+    except Exception:
+        return None
+    try:
+        rel = resolved.relative_to(_SESSION_DIR.resolve())
+        return rel.as_posix()
+    except Exception:
+        try:
+            rel = resolved.relative_to(_PREDS_DIR.resolve())
+            return f"preds/{rel.as_posix()}"
+        except Exception:
+            return None
 
 
 def build_initial_db_dict() -> dict:
@@ -355,7 +390,10 @@ def initialize_database_if_needed(db_path=DB_PATH):
         # Create performance indexes to speed up common queries
         conn.execute("CREATE INDEX IF NOT EXISTS idx_samples_claimed ON samples (claimed);")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_annotations_sample_id ON annotations (sample_id);")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_annotations_sample_type ON annotations (sample_id, type);")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_annotations_class_type ON annotations (class, type);")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_predictions_sample_id ON predictions (sample_id);")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_predictions_sample_type ON predictions (sample_id, type);")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_predictions_class_type ON predictions (class, type);")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_predictions_probability ON predictions (probability);")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_curves_name_timestamp ON curves (curve_name, timestamp);")
@@ -401,21 +439,24 @@ def initialize_database_if_needed(db_path=DB_PATH):
 
         # insert predictions
         # Always include mask_path column; use NULL for non-mask types
-        pred_rows = [
-            (
-                p["sample_filepath"],
-                p["class"],
-                p["type"],
-                p.get("probability"),
-                p.get("col01"),
-                p.get("row01"),
-                p.get("width01"),
-                p.get("height01"),
-                p.get("mask_path"),
-                p.get("timestamp"),
+        pred_rows = []
+        for p in initial_content["predictions"]:
+            prob = p.get("probability")
+            prob_ppm = to_ppm(prob) if prob is not None else None
+            pred_rows.append(
+                (
+                    p["sample_filepath"],
+                    p["class"],
+                    p["type"],
+                    prob_ppm,
+                    p.get("col01"),
+                    p.get("row01"),
+                    p.get("width01"),
+                    p.get("height01"),
+                    _normalize_mask_path(p.get("mask_path")),
+                    p.get("timestamp"),
+                )
             )
-            for p in initial_content["predictions"]
-        ]
         if pred_rows:
             conn.executemany(
                 """

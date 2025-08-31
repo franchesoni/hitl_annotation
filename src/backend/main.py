@@ -88,7 +88,7 @@ def create_image_response(sample_info):
     # If mask predictions exist, expose them as a JSON list of {class, url} objects
     import json
     mask_preds = [p for p in preds if p.get("type") == "mask" and p.get("mask_path")]
-    mask_list = []
+    mask_map = {}
     for pred in mask_preds:
         mask_path_raw = str(pred.get("mask_path"))
         mask_url = None
@@ -121,9 +121,11 @@ def create_image_response(sample_info):
         except Exception:
             mask_url = None
         if mask_url:
-            mask_list.append({"class": pred.get("class", ""), "url": mask_url})
-    if mask_list:
-        headers["X-Predictions-Mask"] = json.dumps(mask_list)
+            cls = str(pred.get("class", ""))
+            if cls:
+                mask_map[cls] = mask_url
+    if mask_map:
+        headers["X-Predictions-Mask"] = json.dumps(mask_map)
 
     response = send_file(sample_filepath, mimetype=mime_type)
     for key, value in headers.items():
