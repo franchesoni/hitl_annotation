@@ -14,7 +14,7 @@ This repository implements a lightweight human-in-the-loop image annotation app 
   - Health: `GET /api/health`.
   - Config: `GET/PUT /api/config` with merge-only writes; server also returns `available_architectures`.
   - Samples: `GET /api/samples/next|{id}|{id}/prev|{id}/next` return image bytes plus prediction headers (`X-Predictions-*`). Strategies include `sequential`, `random`, `minority_frontier`, `specific_class`.
-  - Annotations: `GET /api/annotations/{id}`, `PUT /api/annotations/{id}` with overwrite-by-type semantics, and `DELETE /api/annotations/{id}` with optional `type`.
+  - Annotations: `GET /api/annotations/{id}`, `PUT /api/annotations/{id}` with overwrite-by-type semantics, and `DELETE /api/annotations/{id}` to delete all annotations for a sample.
 - Stats/Export: `GET /api/stats` (counts and available curves, including `live_accuracy`) and `GET /api/export` (annotations dump).
 
 - Data Model: See `system_arch/data.md`.
@@ -34,7 +34,7 @@ This repository implements a lightweight human-in-the-loop image annotation app 
 
 - Bold decisions are to keep v1 minimal and unambiguous. Code/schema updates should follow via to-do items.
 
-- API paths: Use `DELETE /api/annotations/{id}` as the canonical delete route. Any `/clear` delete paths referenced elsewhere are legacy and should be removed.
+  - API paths: Use `DELETE /api/annotations/{id}` as the canonical delete route. The endpoint always deletes all annotations for the sample; no query parameters are supported.
 
 - Image response headers: Define and implement only the essentials on image endpoints (`GET /api/samples/...`).
   - `X-Image-Id`: integer sample id.

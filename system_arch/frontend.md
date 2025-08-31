@@ -48,7 +48,7 @@ The frontend keeps a local config mirror that syncs with the backend on specific
 - Edit locally: Maintain a per-class list of points; do not write on every edit.
 - Save on leave (API order): On navigation, push pending config if any → `PUT /api/annotations/{id}` with all `{type:"point", col01, row01, [class]}` for the current image (overwrite-by-type semantics; `col01`/`row01` are integers in ppm of image width/height, 0..1,000,000) → proceed to image fetch per the chosen workflow.
 - Overwrite-by-type reminder: The server replaces all existing annotations of any `type` included in the payload for that sample with exactly those provided. To preserve other types, omit them from the payload. Batch and send the complete list for each included `type`; avoid per-edit writes that could unintentionally overwrite concurrent edits.
-- Delete: Use `DELETE /api/annotations/{id}` with optional `type=point` to clear points for the current image; omit `type` to clear all types.
+- Delete: Use `DELETE /api/annotations/{id}` to delete all annotations for the current image.
 - Rendering note: Apply class colors and composite overlays; resize masks to match the displayed image dimensions before blending.
 
 ## Status & Feedback
