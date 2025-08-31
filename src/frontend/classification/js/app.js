@@ -1,10 +1,11 @@
-import { API } from '/shared/js/api.js';
+import { API, buildNextParams } from '/shared/js/api.js';
 import { ImageView } from '/shared/views/imageView.js';
 import { ClassesView } from '/shared/views/classesView.js';
 import { StatsView } from '/shared/views/statsView.js';
 import { StrategyView } from '/shared/views/strategyView.js';
 import { AIControlsView } from '/shared/views/aiControlsView.js';
 import { TrainingCurveView } from '/shared/views/trainingCurveView.js';
+import { Hotkeys } from '/shared/js/hotkeys.js';
 
 document.addEventListener('DOMContentLoaded', async () => {
         // -----------------------------------------------------------
@@ -81,35 +82,17 @@ document.addEventListener('DOMContentLoaded', async () => {
                         state.configUpdated = false;  // config synchronized with backend
                 }
         }
-        function getStrategyParams(stats = null) {
-                // Determine strategy & class parameters from StrategyView state.
-                const uiStrategy = strategyView.currentStrategy || null;
-                // Map UI convenience to API with safe fallbacks:
-                // - specific_class requires a class; if none selected, fall back to sequential
-                // - last_class uses the last annotated class; if none exists yet, fall back to sequential
-                if (uiStrategy === 'specific_class') {
-                        const pick = strategyView.currentSpecificClass || null;
-                        return pick ? { strategy: 'specific_class', selectedClass: pick }
-                                    : { strategy: 'sequential', selectedClass: null };
-                }
-                if (uiStrategy === 'last_class') {
-                        const last = state.lastAnnotatedClass || null;
-                        return last ? { strategy: 'specific_class', selectedClass: last }
-                                    : { strategy: 'sequential', selectedClass: null };
-                }
-                // Pass-through for supported server strategies
-                return { strategy: uiStrategy, selectedClass: null };
-        }
+        const getStrategyParams = () => buildNextParams(strategyView, state.lastAnnotatedClass);
         
         // Removed minority_frontier_optimized hack to match API spec
         async function loadNextImage() {
-                const { strategy, selectedClass } = getStrategyParams(state.currentStats);
-                const { imageUrl, sampleId, filepath, predictions, labelClass, labelSource, labelProbability } =
+                const { strategy, selectedClass } = getStrategyParams();
+                const { imageUrl, sampleId, filepath, predictions } =
                         await api.loadNextImage(null, strategy, selectedClass);
                 state.currentImageFilepath = filepath; // Store current image filepath in state
                 imageView.loadImage(imageUrl, filepath);
                 await classesView.setCurrentSample(sampleId, filepath);
-                statsView.updatePrediction(predictions ?? labelClass, labelProbability, labelSource);
+                statsView.updatePrediction(predictions);
         }
         async function loadConfigFromServer() {
                 try {
@@ -160,11 +143,11 @@ document.addEventListener('DOMContentLoaded', async () => {
                         if (!prev) {
                                 alert('No previous image available');
                         } else {
-                                const { imageUrl, sampleId: returnedSampleId, filepath, predictions, labelClass, labelSource, labelProbability } = prev;
+                                const { imageUrl, sampleId: returnedSampleId, filepath, predictions } = prev;
                                 state.currentImageFilepath = filepath;
                                 imageView.loadImage(imageUrl, filepath);
                                 await classesView.setCurrentSample(returnedSampleId, filepath);
-                                statsView.updatePrediction(predictions ?? labelClass, labelProbability, labelSource);
+                                statsView.updatePrediction(predictions);
                         }
                         // 4) Refresh stats/config
                         await getStatsAndConfig();
@@ -178,21 +161,16 @@ document.addEventListener('DOMContentLoaded', async () => {
                 undoBtn.addEventListener('click', undo);
         }
         function initKeyboard(api) {
-                document.addEventListener('keydown', (e) => {
-                        if (state.workflowInProgress) return; // block all shortcuts during workflows
-                        if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
-                        const lowerCaseKey = e.key.toLowerCase();
-                        if ((e.ctrlKey || e.metaKey) && lowerCaseKey === 'e') {
-                                e.preventDefault();
-                                api.exportDB();
-                        } else if ((e.ctrlKey || e.metaKey) && lowerCaseKey === 'z') {
-                                e.preventDefault();
-                                undo();
-                        } else if (e.key === 'Backspace' || lowerCaseKey === 'u') {
-                                e.preventDefault();
-                                undo();
-                        }
-                });
+                const hk = new Hotkeys();
+                const guard = (fn) => (e) => { if (state.workflowInProgress) return; fn(e); };
+                hk
+                  .bind('ctrl+e', guard(() => api.exportDB()))
+                  .bind('meta+e', guard(() => api.exportDB()))
+                  .bind('ctrl+z', guard(() => undo()))
+                  .bind('meta+z', guard(() => undo()))
+                  .bind('backspace', guard(() => undo()))
+                  .bind('u', guard(() => undo()))
+                  .attach();
         }
         initKeyboard(api);
         try {

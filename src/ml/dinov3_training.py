@@ -49,9 +49,6 @@ The implementation deliberately avoids ``joblib``; the classifier is serialized 
 ``pickle`` instead.
 """
 from __future__ import annotations
-
-import argparse
-import signal
 import sys
 import time
 import pickle
@@ -62,7 +59,7 @@ import numpy as np
 import torch
 from PIL import Image
 from sklearn.linear_model import SGDClassifier
-from sklearn.metrics import accuracy_score, log_loss
+from sklearn.metrics import accuracy_score
 
 # ––– local imports –––
 try:
@@ -103,18 +100,66 @@ def normalize_image(image: Image.Image) -> torch.Tensor:
     return x
 
 
-def gather_annotated_items(samples: Sequence[dict]) -> List[Tuple[str, Dict[str, List[dict]]]]:
-    """Get images with point annotations as ``(filepath, annotations_by_class)`` list."""
-    items: List[Tuple[str, Dict[str, List[dict]]]] = []
+def _sanitize_for_filename(name: str) -> str:
+    """Sanitize class names for safe filenames (alnum, dash, underscore).
+
+    Keeps the original class string for DB, only sanitizes the PNG filename.
+    """
+    import re
+
+    safe = re.sub(r"[^A-Za-z0-9._-]+", "_", str(name)).strip("._")
+    return safe or "class"
+
+
+def _from_ppm(ppm_val) -> Optional[float]:
+    """Convert stored PPM integer (or already-normalized float) to [0,1]."""
+    if ppm_val is None:
+        return None
+    try:
+        f = float(ppm_val)
+    except (TypeError, ValueError):
+        return None
+    if 0.0 <= f <= 1.0:
+        return f
+    try:
+        i = int(round(f))
+    except (TypeError, ValueError):
+        return None
+    if i < 0:
+        i = 0
+    elif i > 1_000_000:
+        i = 1_000_000
+    return i / 1_000_000.0
+
+
+def gather_annotated_items(samples: Sequence[dict]) -> List[Tuple[int, str, Dict[str, List[dict]]]]:
+    """Get images with point annotations as ``(sample_id, filepath, annotations_by_class)`` list.
+
+    Compliance: read coordinates from ``col01``/``row01`` (PPM ints) and convert to [0,1].
+    """
+    items: List[Tuple[int, str, Dict[str, List[dict]]]] = []
     for s in samples:
         anns = backend_db.get_annotations(s["id"])
-        points = [a for a in anns if a.get("type") == "point" and a.get("col") is not None and a.get("row") is not None]
+        points = [
+            a
+            for a in anns
+            if a.get("type") == "point" and a.get("col01") is not None and a.get("row01") is not None
+        ]
         if points:
             grouped: Dict[str, List[dict]] = {}
             for point in points:
                 cls = point.get("class", "unknown")
-                grouped.setdefault(cls, []).append({"x": point["col"], "y": point["row"], "timestamp": point.get("timestamp", 0)})
-            items.append((s["id"], s["sample_filepath"], grouped))
+                x = _from_ppm(point.get("col01"))
+                y = _from_ppm(point.get("row01"))
+                if x is None or y is None:
+                    continue
+                grouped.setdefault(cls, []).append({
+                    "x": x,
+                    "y": y,
+                    "timestamp": point.get("timestamp", 0),
+                })
+            if grouped:
+                items.append((s["id"], s["sample_filepath"], grouped))
     return items
 
 
@@ -197,6 +242,8 @@ def main() -> None:
     model = None
     model_size = None
     current_resize = 1536
+    # In-memory; lost on process kill (per spec).
+    split_map: dict[int, str] = {}
 
     while True:
         try:
@@ -207,30 +254,29 @@ def main() -> None:
             continue
 
         if prev_config != config:
-            if prev_config is not None:
-                print("[INFO] Config changed; resetting classifier")
+            # Reload backbone only if architecture changed; keep classifier persistent
             arch = config.get("architecture", "small") or "small"
             if arch not in {"small", "large"}:
                 print(f"[WARN] Unknown architecture '{arch}', defaulting to 'small'")
                 arch = "small"
             if model is None or arch != model_size:
+                print("[INFO] Loading DINOv3 backbone:", arch)
                 model = load_dinov3_model(arch)
                 model_size = arch
+            # Update preprocessing resize but do not reset classifier/checkpoint
             current_resize = config.get("resize", 1536) or 1536
-            classifier = None
-            try:
-                if clf_path.exists():
-                    clf_path.unlink()
-            except Exception:
-                pass
             prev_config = config
-            cycle = 0
 
-        sleep_s = 5  # default pause between cycles (seconds)
         current_resize = config.get("resize", current_resize) or current_resize
+        # Run only for segmentation task
+        task = (config.get("task") or "classification").lower()
+        if task != "segmentation":
+            print("[INFO] Task is not 'segmentation' — sleeping 1s…")
+            time.sleep(1)
+            continue
         if not config.get("ai_should_be_run", False):
-            print("[INFO] Run flag disabled — sleeping…")
-            time.sleep(max(1, sleep_s))
+            print("[INFO] Run flag disabled — sleeping 1s…")
+            time.sleep(1)
             continue
 
         budget = config.get("budget", 1000)
@@ -238,18 +284,17 @@ def main() -> None:
         samples = backend_db.get_all_samples()
         annotated = gather_annotated_items(samples)
         if not annotated:
-            print("[WARN] No point annotations available — sleeping…")
-            time.sleep(max(1, sleep_s))
+            print("[WARN] No point annotations available — sleeping 1s…")
+            time.sleep(1)
             continue
 
         X, y, img_ids = [], [], []
-        for _, fp, pts_by_class in annotated:
+        for s_id, fp, pts_by_class in annotated:
             image_path = Path(fp)
             if not image_path.exists():
                 print(f"[WARN] Image file not found: {fp}")
                 continue
             with Image.open(image_path) as image:
-                orig_w, orig_h = image.size
                 image_padded, new_w, new_h = resize_pad(image, target_size=current_resize)
             image_tensor = normalize_image(image_padded)
             feats = extract_features(model, image_tensor)
@@ -265,27 +310,45 @@ def main() -> None:
                     # Map to feature map coordinates using floor to select the patch cell
                     fx = int(np.floor(x_padded / 16.0))
                     fy = int(np.floor(y_padded / 16.0))
-                    F, H, W = feats.shape
+                    _, H, W = feats.shape
                     fx = min(max(fx, 0), W - 1)
                     fy = min(max(fy, 0), H - 1)
                     vec = feats[:, fy, fx].cpu().numpy()
                     X.append(vec)
                     y.append(cls)
-                    img_ids.append(fp)
+                    img_ids.append(s_id)
 
         if not X:
-            print("[WARN] No valid feature/label pairs found — sleeping…")
-            time.sleep(max(1, sleep_s))
+            print("[WARN] No valid feature/label pairs found — sleeping 1s…")
+            time.sleep(1)
             continue
 
         X = np.stack(X)
         y = np.array(y)
-        unique_imgs = list({fp for fp in img_ids})
-        np.random.seed(42)
-        np.random.shuffle(unique_imgs)
-        n_train = int(0.8 * len(unique_imgs))
-        train_imgs = set(unique_imgs[:n_train])
-        train_mask = np.array([fp in train_imgs for fp in img_ids])
+        # In-memory per-process split of labeled images into {train, val}
+        labeled_ids = sorted({int(i) for i in img_ids})
+        # Compute current counts only over currently labeled ids
+        train_count = sum(1 for i in labeled_ids if split_map.get(i) == "train")
+        val_count = sum(1 for i in labeled_ids if split_map.get(i) == "val")
+        def _assign_side() -> str:
+            # Keep ~80/20 ratio while appending
+            total = train_count + val_count
+            if total == 0:
+                return "train"
+            return "train" if (train_count / max(1, total)) < 0.8 else "val"
+
+        # Append new items without reshuffling existing ones
+        for i in labeled_ids:
+            if i not in split_map:
+                side = _assign_side()
+                split_map[i] = side
+                if side == "train":
+                    train_count += 1
+                else:
+                    val_count += 1
+
+        train_imgs = {i for i, side in split_map.items() if side == "train"}
+        train_mask = np.array([int(i) in train_imgs for i in img_ids])
         X_train, y_train = X[train_mask], y[train_mask]
         X_val, y_val = X[~train_mask], y[~train_mask]
 
@@ -293,32 +356,49 @@ def main() -> None:
         cfg_classes = config.get("classes") or []
         desired_classes = np.array(sorted(set(cfg_classes) | set(np.unique(y))))
 
-        if classifier is None:
+        if X_train.shape[0] == 0:
+            print("[INFO] No training samples in current split — skipping training this cycle")
+        elif classifier is None:
             classifier = SGDClassifier(loss="log_loss", max_iter=1000)
             classifier.partial_fit(X_train, y_train, classes=desired_classes)
         else:
-            existing = set(getattr(classifier, "classes_", []))
-            if existing != set(desired_classes):
-                print("[INFO] Class set changed; reinitializing classifier")
+            # Safeguard: if feature dimension changed (e.g., backbone architecture), reinit
+            try:
+                prev_dim = classifier.coef_.shape[1]
+            except Exception:
+                prev_dim = X_train.shape[1]
+            if prev_dim != X_train.shape[1]:
+                print("[INFO] Feature dimension changed; reinitializing classifier")
                 classifier = SGDClassifier(loss="log_loss", max_iter=1000)
                 classifier.partial_fit(X_train, y_train, classes=desired_classes)
             else:
-                classifier.partial_fit(X_train, y_train)
-        save_classifier(classifier, clf_path)
+                existing = set(getattr(classifier, "classes_", []))
+                if existing != set(desired_classes):
+                    print("[INFO] Class set changed; reinitializing classifier")
+                    classifier = SGDClassifier(loss="log_loss", max_iter=1000)
+                    classifier.partial_fit(X_train, y_train, classes=desired_classes)
+                else:
+                    classifier.partial_fit(X_train, y_train)
+        if classifier is not None:
+            save_classifier(classifier, clf_path)
 
-        if len(y_val) > 0:
+        if len(y_val) > 0 and classifier is not None:
             y_pred = classifier.predict(X_val)
             acc = accuracy_score(y_val, y_pred)
             print(f"[VAL] Accuracy: {acc:.3f} | n_val: {len(y_val)}")
         else:
             acc = None
-            loss = None
 
         backend_db.store_training_stats(cycle, None, None, acc)
 
         labeled_set = set(fp for _, fp, _ in annotated)
         unlabeled = [s for s in samples if s["sample_filepath"] not in labeled_set]
         to_predict = ([dict(id=s_id, sample_filepath=fp) for s_id, fp, _ in annotated] + [s for s in unlabeled])[:budget]
+
+        if classifier is None:
+            print("[INFO] No trained classifier available — skipping prediction this cycle; sleeping 1s…")
+            time.sleep(1)
+            continue
 
         Path("session/preds").mkdir(parents=True, exist_ok=True)
         for dtp in to_predict:
@@ -329,31 +409,33 @@ def main() -> None:
                 print(f"[WARN] Image file not found: {fp}")
                 continue
             with Image.open(image_path) as image:
-                orig_w, orig_h = image.size
                 image_padded, new_w, new_h = resize_pad(image, target_size=current_resize)
             image_tensor = normalize_image(image_padded)
             feats = extract_features(model, image_tensor)
             F, H, W = feats.shape
             feats_np = feats.permute(1, 2, 0).reshape(-1, F).cpu().numpy()
             classes_map = classifier.predict(feats_np).reshape(H, W)
+            # One PNG per class under session/preds named <sample_id>_<class>.png
+            preds_batch = []
             for class_name in np.unique(classes_map):
-                mask = (classes_map == class_name)
-                outpath = Path("session") / "preds" / (image_path.stem + f"_pred_class_{class_name}.png")
-                Image.fromarray(mask).save(outpath)
-                preds_batch = [{
+                mask_bool = (classes_map == class_name).astype(bool)
+                safe_cls = _sanitize_for_filename(class_name)
+                outpath = (Path("session") / "preds" / f"{s_id}_{safe_cls}.png").resolve()
+                Image.fromarray(mask_bool).save(outpath)
+                preds_batch.append({
                     "sample_id": s_id,
-                    "sample_filepath": str(image_path),
-                    "class": class_name,
+                    "class": str(class_name),
                     "type": "mask",
                     "mask_path": outpath.as_posix(),
-                }]
+                })
+            if preds_batch:
                 backend_db.set_predictions_batch(preds_batch)
         print(
-            f"[cycle {cycle}] trained on {len(X_train)} pts, val {len(y_val)} pts, predicted {len(to_predict)} images — sleeping {sleep_s}s"
+            f"[cycle {cycle}] trained on {len(X_train)} pts, val {len(y_val)} pts, predicted {len(to_predict)} images"
         )
         cycle += 1
         torch.cuda.empty_cache()
-        time.sleep(max(1, sleep_s))
+        # Normal cycles do not sleep per spec
 
 
 # ---------------------------------------------------------------------------

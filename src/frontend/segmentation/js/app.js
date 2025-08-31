@@ -1,10 +1,11 @@
-import { API } from '/shared/js/api.js';
+import { API, buildNextParams } from '/shared/js/api.js';
 import { ImageView } from '/shared/views/imageView.js';
 import { PointsClassesView } from './views/pointsClassesView.js';
 import { StatsView } from '/shared/views/statsView.js';
 import { StrategyView } from '/shared/views/strategyView.js';
 import { AIControlsView } from '/shared/views/aiControlsView.js';
 import { TrainingCurveView } from '/shared/views/trainingCurveView.js';
+import { Hotkeys } from '/shared/js/hotkeys.js';
 
 document.addEventListener('DOMContentLoaded', async () => {
     // -----------------------------------------------------------
@@ -126,10 +127,8 @@ document.addEventListener('DOMContentLoaded', async () => {
         try {
             await updateConfigIfNeeded();
             await api.annotateSample(sampleId, className);
-
-            await loadNextImage();
-            await getStatsAndConfig();
-            updateNavigationButtons();
+            const params = getStrategyParams();
+            await loadSampleAndContext(null, params);
         } finally {
             endWorkflow();
         }
@@ -142,56 +141,11 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
     }
 
-    function getStrategyParams() {
-        const uiStrategy = strategyView?.currentStrategy || null;
-        if (uiStrategy === 'specific_class') {
-            return { strategy: 'specific_class', selectedClass: strategyView.currentSpecificClass || null };
-        }
-        if (uiStrategy === 'last_class') {
-            // For segmentation, use currently selected class as the last-class proxy
-            return { strategy: 'specific_class', selectedClass: state.selectedClass || null };
-        }
-        return { strategy: uiStrategy, selectedClass: null };
-    }
+    const getStrategyParams = () => buildNextParams(strategyView, state.selectedClass);
 
     async function loadNextImage() {
-        const { strategy, selectedClass } = getStrategyParams();
-        const { imageUrl, sampleId, filepath, predictions } = await api.loadNextImage(null, strategy, selectedClass);
-        state.currentImageFilepath = filepath;
-        state.currentSampleId = parseInt(sampleId);
-
-        imageView.loadImage(imageUrl, filepath);
-        imageView.clearPoints(); // Clear existing points when loading new image
-        state.localPoints = [];
-        state.localPoints = [];
-
-        // Load existing point annotations from backend
-        try {
-            const annotationsData = await api.getAnnotations(sampleId);
-            const pointAnnotations = annotationsData.annotations.filter(ann => ann.type === 'point');
-
-            // Add existing points to the image view & local store
-            pointAnnotations.forEach(ann => {
-                const color = getClassColor(ann.class);
-                const x = (typeof ann.col01 === 'number') ? ann.col01 / 1_000_000 : (ann.col ?? 0);
-                const y = (typeof ann.row01 === 'number') ? ann.row01 / 1_000_000 : (ann.row ?? 0);
-                imageView.addExistingPoint(x, y, ann.class, color);
-                state.localPoints.push({ class: ann.class, x, y });
-            });
-
-            console.log(`Loaded ${pointAnnotations.length} existing points`);
-        } catch (error) {
-            console.error('Failed to load existing annotations:', error);
-        }
-
-        // If mask predictions are advertised, fetch mask assets
-        if (predictions && predictions.type === 'mask' && predictions.mask_map) {
-            await loadMaskAssets(predictions.mask_map);
-        } else if (imageView) {
-            imageView.maskOverlays = null;
-        }
-
-        await classesView.setCurrentSample(sampleId, filepath);
+        const params = getStrategyParams();
+        await loadSampleAndContext(null, params);
         // Note: No prediction display for points annotation
     }
     async function loadConfigFromServer() {
@@ -258,16 +212,12 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         beginWorkflow();
         try {
-            await updateConfigIfNeeded();
-            await savePointsForCurrentImage();
             const prevSample = await api.loadSamplePrev(state.currentSampleId);
-            if (prevSample) {
-                await loadSampleData(prevSample);
-                await getStatsAndConfig();
-            } else {
+            if (!prevSample) {
                 alert('No previous image available');
+            } else {
+                await loadSampleAndContext(prevSample, null);
             }
-            updateNavigationButtons();
         } catch (e) {
             console.error('Navigate prev failed:', e);
         } finally {
@@ -280,8 +230,6 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         beginWorkflow();
         try {
-            await updateConfigIfNeeded();
-            await savePointsForCurrentImage();
             let nextSample = null;
 
             // Try to get next sample if we have a current sample
@@ -290,14 +238,12 @@ document.addEventListener('DOMContentLoaded', async () => {
             }
 
             // If no next sample found, load a new one using strategy params
+            const params = getStrategyParams();
             if (!nextSample) {
-                await loadNextImage();
+                await loadSampleAndContext(null, params);
             } else {
-                await loadSampleData(nextSample);
+                await loadSampleAndContext(nextSample, null);
             }
-
-            await getStatsAndConfig();
-            updateNavigationButtons();
         } catch (e) {
             console.error('Navigate next failed:', e);
         } finally {
@@ -341,6 +287,21 @@ document.addEventListener('DOMContentLoaded', async () => {
         await classesView.setCurrentSample(sampleId, filepath);
     }
 
+    // DRY helper: push config, save points, fetch sample (or use provided),
+    // load annotations, load masks, refresh stats/config, update buttons
+    async function loadSampleAndContext(sampleDataOrNull, strategyParams) {
+        await updateConfigIfNeeded();
+        await savePointsForCurrentImage();
+        let data = sampleDataOrNull;
+        if (!data) {
+            const { strategy, selectedClass } = strategyParams || getStrategyParams();
+            data = await api.loadNextImage(null, strategy, selectedClass);
+        }
+        await loadSampleData(data);
+        await getStatsAndConfig();
+        updateNavigationButtons();
+    }
+
     async function loadMaskAssets(maskMap) {
         const overlays = {};
         const overlayColors = {};
@@ -355,8 +316,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         for (const cls of Object.keys(overlays)) {
             overlayColors[cls] = getClassColor(cls);
         }
-        imageView.maskOverlays = overlays;
-        imageView.maskOverlayColors = overlayColors;
+        imageView.setMaskOverlays({ overlays, colors: overlayColors });
     }
 
     function updateNavigationButtons() {
@@ -378,61 +338,50 @@ document.addEventListener('DOMContentLoaded', async () => {
         nextBtn.addEventListener('click', navigateNext);
     }
     function initKeyboard(api) {
-        document.addEventListener('keydown', (e) => {
-            if (state.workflowInProgress) return; // block all shortcuts during workflows
-            if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
-            const lowerCaseKey = e.key.toLowerCase();
-            if ((e.ctrlKey || e.metaKey) && lowerCaseKey === 'e') {
-                e.preventDefault();
-                api.exportDB();
-            } else if ((e.ctrlKey || e.metaKey) && e.key === 'ArrowLeft') {
-                e.preventDefault();
-                navigatePrev();
-            } else if ((e.ctrlKey || e.metaKey) && e.key === 'ArrowRight') {
-                e.preventDefault();
-                navigateNext();
-            } else if (lowerCaseKey === 'p') {
-                e.preventDefault();
-                navigatePrev();
-            } else if (lowerCaseKey === 'n') {
-                e.preventDefault();
-                navigateNext();
-            } else if (lowerCaseKey === 'u' && (e.ctrlKey || e.metaKey)) {
-                e.preventDefault();
-                // Undo last point
-                const lastPoint = imageView.getLastPoint();
-                if (lastPoint) {
-                    imageView.removeLastPoint();
-                    // Remove from local list too
-                    state.localPoints.pop();
-                }
-            } else if (lowerCaseKey === 'c' && (e.ctrlKey || e.metaKey)) {
-                e.preventDefault();
-                // Clear all points
-                imageView.clearPoints();
-                state.localPoints = [];
-            } else if (e.key >= '1' && e.key <= '9') {
-                e.preventDefault();
-                // Select class by number (1-9)
-                const classIndex = parseInt(e.key) - 1;
-                if (classIndex < state.config.classes.length) {
-                    const className = state.config.classes[classIndex];
-                    selectClassWorkflow(state.currentSampleId, className);
-                }
-            } else if (e.key === '0') {
-                e.preventDefault();
-                // Select 10th class (index 9)
-                if (state.config.classes.length > 9) {
-                    const className = state.config.classes[9];
-                    selectClassWorkflow(state.currentSampleId, className);
-                }
+        const hk = new Hotkeys();
+        const guard = (fn) => (e) => { if (state.workflowInProgress) return; fn(e); };
+        const undoPoint = () => {
+            const lastPoint = imageView.getLastPoint();
+            if (lastPoint) {
+                imageView.removeLastPoint();
+                state.localPoints.pop();
             }
-        });
+        };
+        const clearPoints = () => { imageView.clearPoints(); state.localPoints = []; };
+        const selectIndex = (idx) => {
+            if (idx < state.config.classes.length) {
+                const className = state.config.classes[idx];
+                selectClassWorkflow(state.currentSampleId, className);
+            }
+        };
+        hk
+          .bind('ctrl+e', guard(() => api.exportDB()))
+          .bind('meta+e', guard(() => api.exportDB()))
+          .bind('ctrl+arrowleft', guard(() => navigatePrev()))
+          .bind('meta+arrowleft', guard(() => navigatePrev()))
+          .bind('ctrl+arrowright', guard(() => navigateNext()))
+          .bind('meta+arrowright', guard(() => navigateNext()))
+          .bind('p', guard(() => navigatePrev()))
+          .bind('n', guard(() => navigateNext()))
+          .bind('ctrl+u', guard(() => undoPoint()))
+          .bind('meta+u', guard(() => undoPoint()))
+          .bind('ctrl+c', guard(() => clearPoints()))
+          .bind('meta+c', guard(() => clearPoints()))
+          .bind('1', guard(() => selectIndex(0)))
+          .bind('2', guard(() => selectIndex(1)))
+          .bind('3', guard(() => selectIndex(2)))
+          .bind('4', guard(() => selectIndex(3)))
+          .bind('5', guard(() => selectIndex(4)))
+          .bind('6', guard(() => selectIndex(5)))
+          .bind('7', guard(() => selectIndex(6)))
+          .bind('8', guard(() => selectIndex(7)))
+          .bind('9', guard(() => selectIndex(8)))
+          .bind('0', guard(() => selectIndex(9)))
+          .attach();
     }
     initKeyboard(api);
     try {
-        await loadNextImage();
-        await getStatsAndConfig();
+        await loadNextImage(); // loadSampleAndContext already refreshes stats/config
         updateNavigationButtons(); // Initialize button states
     } catch (e) {
         console.error('Failed to initialize application:', e);

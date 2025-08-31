@@ -145,22 +145,7 @@ export class ImageView {
     }
     
     _removePointNear(x, y) {
-        const threshold = 0.02; // 2% of image size for click tolerance
-        let closestIndex = -1;
-        let closestDistance = Infinity;
-        
-        // Find the closest point to the click
-        this.points.forEach((point, index) => {
-            const dx = point.x - x;
-            const dy = point.y - y;
-            const distance = Math.sqrt(dx * dx + dy * dy);
-            
-            if (distance < threshold && distance < closestDistance) {
-                closestDistance = distance;
-                closestIndex = index;
-            }
-        });
-        
+        const { index: closestIndex } = this._findClosestPoint(x, y, 0.02);
         // Remove the closest point if found
         if (closestIndex !== -1) {
             const removedPoint = this.points.splice(closestIndex, 1)[0];
@@ -175,22 +160,7 @@ export class ImageView {
     }
     
     _updateHoverState(x, y) {
-        const threshold = 0.02; // 2% of image size for hover detection
-        let closestIndex = -1;
-        let closestDistance = Infinity;
-        
-        // Find the closest point to the mouse
-        this.points.forEach((point, index) => {
-            const dx = point.x - x;
-            const dy = point.y - y;
-            const distance = Math.sqrt(dx * dx + dy * dy);
-            
-            if (distance < threshold && distance < closestDistance) {
-                closestDistance = distance;
-                closestIndex = index;
-            }
-        });
-        
+        const { index: closestIndex } = this._findClosestPoint(x, y, 0.02);
         // Update hover state if changed
         if (this.hoveredPointIndex !== closestIndex) {
             this.hoveredPointIndex = closestIndex;
@@ -348,6 +318,37 @@ export class ImageView {
     set maskOverlayColors(val) {
         this._maskOverlayColors = val || null;
         this._drawImageToCanvas();
+    }
+
+    // Unified setter to update overlays, colors, and alpha, then redraw once
+    setMaskOverlays({ overlays = null, colors = null, alpha = undefined } = {}) {
+        if (alpha !== undefined) {
+            const v = Math.max(0, Math.min(1, Number(alpha || 0)));
+            this._overlayAlpha = v;
+        }
+        this._maskOverlays = overlays || null;
+        this._maskOverlayColors = colors || null;
+        this._drawImageToCanvas();
+    }
+
+    // Utility: find closest point to (x,y) within threshold; returns {index, distance}
+    _findClosestPoint(x, y, threshold = 0.02) {
+        let closestIndex = -1;
+        let closestDistance = Infinity;
+        if (!Array.isArray(this.points) || this.points.length === 0) {
+            return { index: -1, distance: Infinity };
+        }
+        for (let i = 0; i < this.points.length; i++) {
+            const p = this.points[i];
+            const dx = p.x - x;
+            const dy = p.y - y;
+            const d = Math.sqrt(dx * dx + dy * dy);
+            if (d < threshold && d < closestDistance) {
+                closestDistance = d;
+                closestIndex = i;
+            }
+        }
+        return { index: closestIndex, distance: closestDistance };
     }
     
     _drawPoints() {
