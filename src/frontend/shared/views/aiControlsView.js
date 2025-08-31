@@ -33,27 +33,18 @@ export class AIControlsView {
       this.checkbox.addEventListener('change', () => {
         this.state.aiRunning = this.checkbox.checked;
         this.state.config.aiShouldBeRun = this.state.aiRunning;
+        // Defer network updates to workflow boundaries
+        Object.assign(this.state.config, this._collectAIConfig());
         this.state.configUpdated = true;
-        // If turning OFF (unchecked), immediately persist only the flag
-        // If turning ON, persist full set of options alongside the flag
-        if (!this.state.aiRunning) {
-          this.persistConfig({ aiShouldBeRun: false });
-        } else {
-          this.persistConfig(this._collectAIConfig());
-        }
         this.updateInputsDisabled();
       });
     }
 
     // Input change handlers: when running (checkbox checked) we update backend with full config on each change.
     const onInputChange = () => {
-      if (this.checkbox && this.checkbox.checked) {
-        this.persistConfig(this._collectAIConfig());
-      } else {
-        // Just keep local until run is enabled
-        Object.assign(this.state.config, this._collectAIConfig());
-        this.state.configUpdated = true; // for consistency
-      }
+      // Always queue config locally; callers push at workflow boundaries
+      Object.assign(this.state.config, this._collectAIConfig());
+      this.state.configUpdated = true;
     };
     [this.archSelect, this.budgetInput, this.resizeInput].forEach(inp => {
       if (inp) inp.addEventListener('change', onInputChange);
@@ -94,59 +85,51 @@ export class AIControlsView {
   async loadArchitectures() {
     if (!this.archSelect) return;
     try {
+      // 1) Determine list of architectures
       let archs = [];
-      
-      // Use custom architectures if provided, otherwise get from config/API
       if (this.customArchitectures) {
         archs = this.customArchitectures;
-      } else {
-        if (this.state.config && Array.isArray(this.state.config.available_architectures)) {
-          archs = this.state.config.available_architectures;
-        }
+      } else if (this.state?.config && Array.isArray(this.state.config.available_architectures)) {
+        archs = this.state.config.available_architectures;
         if (!archs.length) {
           archs = await this.api.getArchitectures();
         }
-      }
-      
-      // Clear existing options except the placeholder
-      const placeholder = this.archSelect.querySelector('option[disabled]');
-      this.archSelect.innerHTML = '';
-      if (placeholder) {
-        this.archSelect.appendChild(placeholder);
       } else {
-        // Create placeholder if it doesn't exist
-        const placeholderOpt = document.createElement('option');
-        placeholderOpt.value = '';
-        placeholderOpt.disabled = true;
-        placeholderOpt.selected = true;
-        placeholderOpt.textContent = 'Select architecture';
-        this.archSelect.appendChild(placeholderOpt);
+        archs = await this.api.getArchitectures();
       }
-      
-      // Add architecture options
+
+      // 2) Rebuild select: always add a disabled, selected placeholder first
+      this.archSelect.innerHTML = '';
+      const placeholderOpt = document.createElement('option');
+      placeholderOpt.value = '';
+      placeholderOpt.disabled = true;
+      placeholderOpt.selected = true;
+      placeholderOpt.textContent = 'Select architecture';
+      this.archSelect.appendChild(placeholderOpt);
+
+      // 3) Append options
       archs.forEach(a => {
         const opt = document.createElement('option');
         opt.value = a;
         opt.textContent = a;
         this.archSelect.appendChild(opt);
       });
+
+      // 4) Try to select current config architecture if present in list
+      const current = this.state?.config?.architecture;
+      if (current && archs.includes(current)) {
+        this.archSelect.value = current;
+      }
     } catch (e) {
       console.error('Failed to load architectures:', e);
     }
   }
 
   async persistConfig(partial) {
-    // Merge with existing config then send
+    // Backwards compat shim: keep only local merge; actual PUT happens elsewhere
     const merged = { ...this.state.config, ...partial };
-    this.state.config = merged; // keep local copy consistent
+    this.state.config = merged;
     this.state.configUpdated = true;
-    try {
-      await this.api.updateConfig(merged);
-      this.state.configUpdated = false;
-    } catch (e) {
-      console.error('Failed to update AI config:', e);
-      if (this.aiStatus) this.aiStatus.textContent = 'Update failed';
-    }
   }
 
   render(cfg) {

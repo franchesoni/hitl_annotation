@@ -25,14 +25,21 @@ export class StrategyView {
   }
   updateClasses(classes) {
     if (this.specificClassSelect) {
-      const previous = this.specificClassSelect.value;
-      this.specificClassSelect.innerHTML = classes.map(c => `<option value="${c}">${c}</option>`).join('');
-      if (classes.includes(previous)) {
-        this.specificClassSelect.value = previous;
-      } else if (classes.length > 0) {
-        this.specificClassSelect.selectedIndex = 0;
+      const select = this.specificClassSelect;
+      const previous = select.value;
+      while (select.firstChild) select.removeChild(select.firstChild);
+      for (const c of classes) {
+        const opt = document.createElement('option');
+        opt.value = c;
+        opt.textContent = c;
+        select.appendChild(opt);
       }
-      this.currentSpecificClass = this.specificClassSelect.value || null;
+      if (classes.includes(previous)) {
+        select.value = previous;
+      } else if (classes.length > 0) {
+        select.selectedIndex = 0;
+      }
+      this.currentSpecificClass = select.value || null;
     }
   }
 }
