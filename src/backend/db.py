@@ -93,18 +93,112 @@ def get_config():
         return {}
 
 def update_config(config):
-    """Merge and persist the provided config dict.
+    """Merge and persist the provided config dict with validation.
 
-    The config supports keys: "classes" (list[str]), "ai_should_be_run"
-    (bool), "architecture" (str), "budget" (int), "sleep" (int),
-    "resize" (int), and "task" (str: "classification" | "segmentation").
-    Missing keys retain their previous values.
+    Accepts keys: classes (list[str]), ai_should_be_run (bool), architecture (str),
+    budget (int), sleep (int), resize (int), task ("classification"|"segmentation"),
+    last_claim_cleanup (int|None). Unknown keys are ignored. Values are validated
+    and coerced where reasonable; out-of-range or invalid types are dropped.
     """
     current = get_config()
-    # Only allow known keys to be updated
-    allowed_keys = {"classes", "ai_should_be_run", "architecture", "budget", "sleep", "resize", "task", "last_claim_cleanup"}
-    filtered = {k: v for k, v in config.items() if k in allowed_keys}
-    current.update(filtered)
+
+    # Helper validators
+    def _bool(v):
+        if isinstance(v, bool):
+            return v
+        if isinstance(v, (int, float)):
+            return bool(v)
+        if isinstance(v, str):
+            return v.strip().lower() in {"1", "true", "yes", "on"}
+        return None
+
+    def _int(v):
+        try:
+            return int(v)
+        except (TypeError, ValueError):
+            return None
+
+    def _clamp(v, lo, hi):
+        if v is None:
+            return None
+        return max(lo, min(hi, v))
+
+    def _classes_list(v):
+        if not isinstance(v, list):
+            return None
+        out = []
+        for it in v:
+            if isinstance(it, str):
+                s = it.strip()
+                if s:
+                    out.append(s)
+        # dedupe while preserving order
+        seen = set()
+        uniq = []
+        for s in out:
+            if s not in seen:
+                seen.add(s)
+                uniq.append(s)
+        return uniq
+
+    def _task(v):
+        if isinstance(v, str) and v in {"classification", "segmentation"}:
+            return v
+        return None
+
+    def _architecture(v):
+        if v is None:
+            return None
+        if not isinstance(v, str) or not v.strip():
+            return None
+        arch = v.strip()
+        # Optional allowlist using timm if available
+        try:
+            import timm  # type: ignore
+            allowed = {"resnet18", "resnet34"} | set(timm.list_models())
+            if arch not in allowed:
+                return None
+        except Exception:
+            # If timm not available here, accept any non-empty string
+            pass
+        return arch
+
+    # Build a proposed update with validation/coercion
+    proposed = {}
+    if "classes" in config:
+        cl = _classes_list(config.get("classes"))
+        if cl is not None:
+            proposed["classes"] = cl
+    if "ai_should_be_run" in config:
+        b = _bool(config.get("ai_should_be_run"))
+        if b is not None:
+            proposed["ai_should_be_run"] = b
+    if "architecture" in config:
+        a = _architecture(config.get("architecture"))
+        if a is not None:
+            proposed["architecture"] = a
+    if "budget" in config:
+        n = _int(config.get("budget"))
+        if n is not None:
+            proposed["budget"] = max(0, n)
+    if "sleep" in config:
+        n = _int(config.get("sleep"))
+        if n is not None:
+            proposed["sleep"] = max(0, n)
+    if "resize" in config:
+        n = _int(config.get("resize"))
+        if n is not None:
+            proposed["resize"] = _clamp(n, 16, 4096)
+    if "task" in config:
+        t = _task(config.get("task"))
+        if t is not None:
+            proposed["task"] = t
+    if "last_claim_cleanup" in config:
+        n = _int(config.get("last_claim_cleanup"))
+        proposed["last_claim_cleanup"] = n
+
+    # Merge
+    current.update(proposed)
 
     # Convert classes list to JSON string for storage
     classes_json = json.dumps(current.get("classes", []))
@@ -136,74 +230,103 @@ def get_all_samples():
     raise NotImplementedError("Moved to src.backend.db_ml.get_all_samples")
 
 def _get_next_unlabeled_sequential():
-    """Returns the next unlabeled sample info without claiming it."""
+    """Returns the next unlabeled sample info without claiming it.
+
+    "Unlabeled" depends on the current task:
+      - classification → no label annotations
+      - segmentation   → no point annotations
+    """
+    task = (get_config() or {}).get("task", "classification")
+    target_type = "point" if task == "segmentation" else "label"
     with _get_conn() as conn:
         cursor = conn.cursor()
-        # Find the first sample that has no annotations and is not claimed
-        cursor.execute("""
-            SELECT s.id, s.sample_filepath 
-            FROM samples s 
-            LEFT JOIN annotations a ON s.id = a.sample_id 
-            WHERE a.sample_id IS NULL 
-            AND s.claimed = 0
-            ORDER BY s.id 
+        cursor.execute(
+            """
+            SELECT s.id, s.sample_filepath
+            FROM samples s
+            WHERE s.claimed = 0
+              AND NOT EXISTS (
+                SELECT 1 FROM annotations a
+                WHERE a.sample_id = s.id AND a.type = ?
+              )
+            ORDER BY s.id
             LIMIT 1
-        """)
+            """,
+            (target_type,),
+        )
         result = cursor.fetchone()
         return {"id": result[0], "sample_filepath": result[1]} if result else None
 
 
 def _get_next_unlabeled_random():
-    """Returns a random unlabeled sample info without claiming it."""
+    """Returns a random unlabeled sample info without claiming it (task-aware)."""
+    task = (get_config() or {}).get("task", "classification")
+    target_type = "point" if task == "segmentation" else "label"
     with _get_conn() as conn:
         cursor = conn.cursor()
-        # Find a random sample that has no annotations and is not claimed
-        cursor.execute("""
-            SELECT s.id, s.sample_filepath 
-            FROM samples s 
-            LEFT JOIN annotations a ON s.id = a.sample_id 
-            WHERE a.sample_id IS NULL 
-            AND s.claimed = 0
-            ORDER BY RANDOM() 
+        cursor.execute(
+            """
+            SELECT s.id, s.sample_filepath
+            FROM samples s
+            WHERE s.claimed = 0
+              AND NOT EXISTS (
+                SELECT 1 FROM annotations a
+                WHERE a.sample_id = s.id AND a.type = ?
+              )
+            ORDER BY RANDOM()
             LIMIT 1
-        """)
+            """,
+            (target_type,),
+        )
         result = cursor.fetchone()
         return {"id": result[0], "sample_filepath": result[1]} if result else None
 
 
 def _get_unlabeled_pick(pick, highest_probability=True):
-    """Returns the sample of the provided class with the highest/lowest predicted probability.
-    If not found returns None."""
+    """Return unlabeled sample predicted as class `pick`, ordered by probability.
+
+    Unlabeled criterion is task-aware; predictions are label-type.
+    """
+    task = (get_config() or {}).get("task", "classification")
+    target_type = "point" if task == "segmentation" else "label"
+    order_direction = "DESC" if highest_probability else "ASC"
     with _get_conn() as conn:
         cursor = conn.cursor()
-        # Find unlabeled, unclaimed samples with predictions for the given class,
-        # ordered by prediction probability (highest or lowest first)
-        order_direction = "DESC" if highest_probability else "ASC"
-        cursor.execute(f"""
+        cursor.execute(
+            f"""
             SELECT s.id, s.sample_filepath, p.probability
             FROM samples s
-            INNER JOIN predictions p ON s.id = p.sample_id
-            LEFT JOIN annotations a ON s.id = a.sample_id
-            WHERE a.sample_id IS NULL 
-            AND s.claimed = 0
-            AND p.class = ?
-            AND p.type = 'label'
+            JOIN predictions p ON s.id = p.sample_id AND p.type = 'label'
+            WHERE s.claimed = 0
+              AND p.class = ?
+              AND NOT EXISTS (
+                SELECT 1 FROM annotations a
+                WHERE a.sample_id = s.id AND a.type = ?
+              )
             ORDER BY p.probability {order_direction}
             LIMIT 1
-        """, (pick,))
+            """,
+            (pick, target_type),
+        )
         result = cursor.fetchone()
         return {"id": result[0], "sample_filepath": result[1], "probability": result[2]} if result else None
 
 def _get_annotation_counts():
-    """Returns a dict with annotation counts per class, ordered by count (ascending)."""
+    """Return counts per class considering only label annotations.
+
+    Used to determine the minority class for sampling strategies.
+    """
     with _get_conn() as conn:
         cursor = conn.cursor()
-        cursor.execute("""
+        cursor.execute(
+            """
             SELECT class, COUNT(*) as count
             FROM annotations
+            WHERE type = 'label'
             GROUP BY class
             ORDER BY count ASC
-        """)
+            """
+        )
         results = cursor.fetchall()
         return {row[0]: row[1] for row in results}
 
@@ -359,8 +482,8 @@ def get_next_sample_by_strategy(strategy=None, pick=None):
         raise ValueError(f"Unknown strategy: {strategy}")
     
     if strategy != "sequential" and sample_info is None:
-        # default to sequential if we got nothing
-        return get_next_sample_by_strategy("sequential", None)
+        # Per spec, fall back to random if no candidate found
+        return get_next_sample_by_strategy("random", None)
 
     if not sample_info:
         return None
@@ -427,35 +550,52 @@ def upsert_annotation(sample_id, class_name, annotation_type="label", **kwargs):
     with _get_conn() as conn:
         cursor = conn.cursor()
         
-        # Get sample_filepath for the annotation
-        cursor.execute("SELECT sample_filepath FROM samples WHERE id = ?", (sample_id,))
+        # Ensure sample exists
+        cursor.execute("SELECT 1 FROM samples WHERE id = ?", (sample_id,))
         result = cursor.fetchone()
         if not result:
             raise ValueError(f"Sample with ID {sample_id} not found")
-        sample_filepath = result[0]
         
         if annotation_type == "label":
             # For labels, replace existing label annotation for this sample
             cursor.execute("DELETE FROM annotations WHERE sample_id = ? AND type = 'label'", (sample_id,))
         
-        # Normalize coordinates to PPM integers if provided
-        col01 = to_ppm(kwargs.get("col")) if kwargs.get("col") is not None else None
-        row01 = to_ppm(kwargs.get("row")) if kwargs.get("row") is not None else None
-        width01 = to_ppm(kwargs.get("width")) if kwargs.get("width") is not None else None
-        height01 = to_ppm(kwargs.get("height")) if kwargs.get("height") is not None else None
+        # Normalize coordinates to PPM integers if provided.
+        # Accept either normalized floats (col,row,width,height) or ppm ints (col01,row01,width01,height01).
+        def _clamp_ppm_int(v):
+            try:
+                iv = int(round(float(v)))
+            except (TypeError, ValueError):
+                return None
+            if iv < 0:
+                iv = 0
+            elif iv > 1_000_000:
+                iv = 1_000_000
+            return iv
+
+        # Prefer explicit ppm fields when present
+        if any(k in kwargs for k in ("col01", "row01", "width01", "height01")):
+            col01 = _clamp_ppm_int(kwargs.get("col01")) if kwargs.get("col01") is not None else None
+            row01 = _clamp_ppm_int(kwargs.get("row01")) if kwargs.get("row01") is not None else None
+            width01 = _clamp_ppm_int(kwargs.get("width01")) if kwargs.get("width01") is not None else None
+            height01 = _clamp_ppm_int(kwargs.get("height01")) if kwargs.get("height01") is not None else None
+        else:
+            col01 = to_ppm(kwargs.get("col")) if kwargs.get("col") is not None else None
+            row01 = to_ppm(kwargs.get("row")) if kwargs.get("row") is not None else None
+            width01 = to_ppm(kwargs.get("width")) if kwargs.get("width") is not None else None
+            height01 = to_ppm(kwargs.get("height")) if kwargs.get("height") is not None else None
 
         # Insert new annotation 
         cursor.execute(
             """
             INSERT INTO annotations (
-                sample_id, sample_filepath, class, type,
+                sample_id, class, type,
                 col01, row01, width01, height01, timestamp
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 sample_id,
-                sample_filepath,
                 class_name,
                 annotation_type,
                 col01,
@@ -549,15 +689,30 @@ def get_annotation_stats():
         
         # Get training stats from curves table
         cursor.execute("""
-            SELECT epoch, 
-                   MAX(CASE WHEN curve_name = 'train_loss' THEN value END) as train_loss,
-                   MAX(CASE WHEN curve_name = 'valid_loss' THEN value END) as valid_loss,
-                   MAX(CASE WHEN curve_name = 'accuracy' THEN value END) as accuracy,
-                   MAX(timestamp) as timestamp
-            FROM curves 
-            WHERE epoch IS NOT NULL
-            GROUP BY epoch
-            ORDER BY epoch
+            SELECT e.epoch,
+                   (
+                       SELECT value FROM curves c
+                       WHERE c.epoch = e.epoch AND c.curve_name = 'train_loss'
+                       ORDER BY c.timestamp DESC LIMIT 1
+                   ) AS train_loss,
+                   (
+                       SELECT value FROM curves c
+                       WHERE c.epoch = e.epoch AND c.curve_name IN ('val_loss','valid_loss')
+                       ORDER BY c.timestamp DESC LIMIT 1
+                   ) AS valid_loss,
+                   (
+                       SELECT value FROM curves c
+                       WHERE c.epoch = e.epoch AND c.curve_name IN ('val_accuracy','accuracy')
+                       ORDER BY c.timestamp DESC LIMIT 1
+                   ) AS accuracy,
+                   (
+                       SELECT MAX(timestamp) FROM curves c
+                       WHERE c.epoch = e.epoch
+                   ) AS timestamp
+            FROM (
+                SELECT DISTINCT epoch FROM curves WHERE epoch IS NOT NULL
+            ) e
+            ORDER BY e.epoch
         """)
         training_rows = cursor.fetchall()
         training_stats = [
