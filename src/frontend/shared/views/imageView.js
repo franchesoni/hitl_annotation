@@ -21,10 +21,11 @@ export class ImageView {
         this.isLoading = false;
         this.previousObjectUrl = null;
         
-        // Optional mask overlays and alpha (0..1)
-        this._overlayAlpha = 0; // default off
-        this._maskOverlays = null; // { [className]: HTMLImageElement }
-        this._maskOverlayColors = null; // { [className]: "#RRGGBB" }
+    // Optional mask overlays and alpha (0..1)
+    this._overlayAlpha = 0; // default off
+    this._maskOverlays = null; // { [className]: HTMLImageElement }
+    this._maskOverlayColors = null; // { [className]: "#RRGGBB" }
+    this.overlayVisible = true; // flag to control mask overlay visibility
         
         // Points annotation state
         this.points = []; // Array to store added points {x, y, className, color}
@@ -234,14 +235,15 @@ export class ImageView {
         // Draw points on top of the image
         this._drawPoints();
 
-        // Draw mask overlays (if any) scaled to image bounds, then points
-        this._drawMaskOverlays();
+    // Draw mask overlays (if any) scaled to image bounds, then points
+    this._drawMaskOverlays();
         
         this._setLoading(false);
     }
 
     // Draw any provided mask overlays, scaled to the displayed image bounds
     _drawMaskOverlays() {
+        if (!this.overlayVisible) return;
         if (!this._maskOverlays || !this.imageTransform.width) return;
         const alpha = Math.max(0, Math.min(1, Number(this._overlayAlpha || 0)));
         if (alpha <= 0) return;
@@ -289,6 +291,14 @@ export class ImageView {
             }
         }
         this.ctx.restore();
+    }
+    // Overlay visibility accessor triggers redraw
+    get overlayVisible() { return this._overlayVisible !== false; }
+    set overlayVisible(val) {
+        const v = !!val;
+        if (v === this._overlayVisible) return;
+        this._overlayVisible = v;
+        this._drawImageToCanvas();
     }
 
     // Overlay alpha accessor triggers redraw

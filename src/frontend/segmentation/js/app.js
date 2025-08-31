@@ -39,15 +39,16 @@ document.addEventListener('DOMContentLoaded', async () => {
             const pct = Number(overlaySlider.value || 0);
             if (overlayValue) overlayValue.textContent = `${pct}%`;
             imageView.overlayAlpha = Math.max(0, Math.min(1, pct / 100));
-            // Also update overlay visibility in case it was toggled
-            imageView.overlayVisible = overlayToggle ? overlayToggle.checked : true;
-            if (imageView.render) imageView.render();
         };
         overlaySlider.addEventListener('input', applyOverlay);
-        if (overlayToggle) {
-            overlayToggle.addEventListener('change', applyOverlay);
-        }
         applyOverlay();
+    }
+    if (overlayToggle) {
+        overlayToggle.addEventListener('change', () => {
+            imageView.overlayVisible = overlayToggle.checked;
+        });
+        // Set initial state
+        imageView.overlayVisible = overlayToggle.checked;
     }
 
     const classesView = new PointsClassesView(classPanel, selectClassWorkflow, state);
