@@ -230,11 +230,12 @@ export class ImageView {
         };
         
         this.ctx.drawImage(this.img, x, y, drawWidth * scale, drawHeight * scale);
-        // Draw mask overlays (if any) scaled to image bounds, then points
-        this._drawMaskOverlays();
         
         // Draw points on top of the image
         this._drawPoints();
+
+        // Draw mask overlays (if any) scaled to image bounds, then points
+        this._drawMaskOverlays();
         
         this._setLoading(false);
     }
@@ -245,21 +246,19 @@ export class ImageView {
         const alpha = Math.max(0, Math.min(1, Number(this._overlayAlpha || 0)));
         if (alpha <= 0) return;
         const { x, y, width, height } = this.imageTransform;
-        
+
         this.ctx.save();
         this.ctx.globalAlpha = alpha;
-        // Support either a single Image or a map of className -> Image
         const overlays = this._maskOverlays;
         if (overlays instanceof window.Image) {
-            if (overlays.complete && overlays.naturalWidth) {
-                this.ctx.drawImage(overlays, x, y, width, height);
+            if (img.complete && img.naturalWidth) {
+                this.ctx.drawImage(img, x, y, width, height);
             }
         } else if (typeof overlays === 'object') {
             for (const key of Object.keys(overlays)) {
                 let img = overlays[key];
                 let tintColor = null;
                 if (img && !(img instanceof window.Image) && typeof img === 'object') {
-                    // Accept structures like { image: Image, color: string } or { img: Image, color }
                     if (img.image instanceof window.Image) {
                         tintColor = img.color || null;
                         img = img.image;
@@ -273,22 +272,17 @@ export class ImageView {
                 }
                 if (img && img.complete && img.naturalWidth) {
                     if (tintColor) {
-                        // Draw tinted using offscreen canvas and source-in composite
                         const off = document.createElement('canvas');
                         off.width = Math.max(1, Math.floor(width));
                         off.height = Math.max(1, Math.floor(height));
                         const offCtx = off.getContext('2d');
-                        // Draw the mask scaled to the offscreen
                         offCtx.clearRect(0, 0, off.width, off.height);
                         offCtx.drawImage(img, 0, 0, off.width, off.height);
-                        // Use the existing alpha of the mask to clip the fill
                         offCtx.globalCompositeOperation = 'source-in';
                         offCtx.fillStyle = tintColor;
                         offCtx.fillRect(0, 0, off.width, off.height);
-                        // Paint onto main canvas at image bounds
                         this.ctx.drawImage(off, x, y, width, height);
                     } else {
-                        // No tint provided; draw raw mask
                         this.ctx.drawImage(img, x, y, width, height);
                     }
                 }

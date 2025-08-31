@@ -276,13 +276,49 @@ document.addEventListener('DOMContentLoaded', async () => {
         updateNavigationButtons();
     }
 
+    // Helper: convert 1-bit PNG mask to alpha mask (white->opaque, black->transparent)
+    function toAlphaMask(img, width, height) {
+        const tmp = document.createElement('canvas');
+        tmp.width = width;
+        tmp.height = height;
+        const ctx = tmp.getContext('2d');
+        ctx.drawImage(img, 0, 0, width, height);
+        const imageData = ctx.getImageData(0, 0, width, height);
+        let needsAlpha = false;
+        for (let i = 0; i < imageData.data.length; i += 4) {
+            if (imageData.data[i+3] < 255) {
+                // Already has alpha
+                return img;
+            }
+            if (imageData.data[i] > 200 && imageData.data[i+1] > 200 && imageData.data[i+2] > 200) {
+                imageData.data[i+3] = 255;
+                needsAlpha = true;
+            } else {
+                imageData.data[i+3] = 0;
+                needsAlpha = true;
+            }
+        }
+        if (!needsAlpha) return img;
+        ctx.putImageData(imageData, 0, 0);
+        const outImg = new window.Image();
+        outImg.src = tmp.toDataURL();
+        return outImg;
+    }
+
     async function loadMaskAssets(maskMap) {
         const overlays = {};
         const overlayColors = {};
         const entries = Object.entries(maskMap || {});
-        await Promise.all(entries.map(([cls, url]) => new Promise((resolve) => {
-            const img = new Image();
-            img.onload = () => { overlays[cls] = img; resolve(); };
+        let maskImgs = [];
+        await Promise.all(entries.map(([cls, url], idx) => new Promise((resolve) => {
+            const img = new window.Image();
+            img.onload = () => {
+                // Convert to alpha mask immediately
+                const alphaImg = toAlphaMask(img, img.width, img.height);
+                overlays[cls] = alphaImg;
+                maskImgs.push(alphaImg);
+                resolve();
+            };
             img.onerror = () => { console.warn('Failed to load mask asset', url); resolve(); };
             img.src = url;
         })));

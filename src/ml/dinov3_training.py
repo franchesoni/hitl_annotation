@@ -415,10 +415,20 @@ def main() -> None:
             F, H, W = feats.shape
             feats_np = feats.permute(1, 2, 0).reshape(-1, F).cpu().numpy()
             classes_map = classifier.predict(feats_np).reshape(H, W)
+            # crop the map to the image 
+            image_rows_01 = new_h / max(new_w, new_h)
+            image_cols_01 = new_w / max(new_w, new_h)
+            assert image_rows_01 == 1.0 or image_cols_01 == 1.0, "Only one side should be padded"
+            if image_rows_01 < 1.0:
+                # Zero-padded columns on right
+                classes_map = classes_map[:int(H * image_rows_01)]
+            elif image_cols_01 < 1.0:
+                # Zero-padded rows on bottom
+                classes_map = classes_map[:, :int(W * image_cols_01)]
             # One PNG per class under session/preds named <sample_id>_<class>.png
             preds_batch = []
             for class_name in np.unique(classes_map):
-                mask_bool = (classes_map == class_name).astype(bool)
+                mask_bool = (classes_map == class_name).astype(bool)  # this should be squared with image at the top left
                 safe_cls = _sanitize_for_filename(class_name)
                 outpath = (Path("session") / "preds" / f"{s_id}_{safe_cls}.png").resolve()
                 Image.fromarray(mask_bool).save(outpath)
