@@ -23,9 +23,15 @@
                                 <p>4. Use number keys (1-0) to select classes</p>
                                 <p>5. Ctrl+U to undo last point, Ctrl+C to clear all</p>
                         </div>
-                        <div class="accuracy-filter"><label for="overlay-slider">Overlay:</label><input
-                                        type="range" id="overlay-slider" min="0" max="100" value="50"><span
-                                        id="overlay-slider-value">50%</span></div>
+                                                <div class="accuracy-filter">
+                                                        <label for="overlay-slider">Overlay:</label>
+                                                        <input type="range" id="overlay-slider" min="0" max="100" value="50">
+                                                        <span id="overlay-slider-value">50%</span>
+                                                        <label style="margin-left:12px;">
+                                                                <input type="checkbox" id="overlay-toggle" checked>
+                                                                Show overlay (M)
+                                                        </label>
+                                                </div>
                         <div id="stats-display" class="info-display"></div>
                         <!-- Strategy controls intentionally omitted for segmentation -->
                         <div class="accuracy-filter"><label for="accuracy-slider">Accuracy window:</label><input

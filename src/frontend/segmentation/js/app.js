@@ -33,14 +33,20 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Overlay slider controls prediction/annotation overlay strength (0-100%)
     const overlaySlider = document.getElementById('overlay-slider');
     const overlayValue = document.getElementById('overlay-slider-value');
+    const overlayToggle = document.getElementById('overlay-toggle');
     if (overlaySlider) {
         const applyOverlay = () => {
             const pct = Number(overlaySlider.value || 0);
             if (overlayValue) overlayValue.textContent = `${pct}%`;
-            // Store on imageView for future overlay rendering logic
             imageView.overlayAlpha = Math.max(0, Math.min(1, pct / 100));
+            // Also update overlay visibility in case it was toggled
+            imageView.overlayVisible = overlayToggle ? overlayToggle.checked : true;
+            if (imageView.render) imageView.render();
         };
         overlaySlider.addEventListener('input', applyOverlay);
+        if (overlayToggle) {
+            overlayToggle.addEventListener('change', applyOverlay);
+        }
         applyOverlay();
     }
 
@@ -363,6 +369,12 @@ document.addEventListener('DOMContentLoaded', async () => {
                 selectClassWorkflow(state.currentSampleId, className);
             }
         };
+        const toggleOverlay = () => {
+            if (overlayToggle) {
+                overlayToggle.checked = !overlayToggle.checked;
+                overlayToggle.dispatchEvent(new Event('change'));
+            }
+        };
         hk
           .bind('ctrl+e', guard(() => api.exportDB()))
           .bind('meta+e', guard(() => api.exportDB()))
@@ -370,8 +382,9 @@ document.addEventListener('DOMContentLoaded', async () => {
           .bind('meta+arrowleft', guard(() => navigatePrev()))
           .bind('ctrl+arrowright', guard(() => navigateNext()))
           .bind('meta+arrowright', guard(() => navigateNext()))
-          .bind('p', guard(() => navigatePrev()))
+          .bind('b', guard(() => navigatePrev()))
           .bind('n', guard(() => navigateNext()))
+          .bind('m', guard(() => toggleOverlay()))
           .bind('ctrl+u', guard(() => undoPoint()))
           .bind('meta+u', guard(() => undoPoint()))
           .bind('ctrl+c', guard(() => clearPoints()))
