@@ -1,5 +1,7 @@
 from pathlib import Path
 from flask import Flask, request, jsonify, send_file
+from io import BytesIO
+import base64
 from functools import lru_cache
 import timm
 import time
@@ -175,6 +177,16 @@ def segmentation():
 
 
 # Static files are served by Flask from FRONTEND_DIR via static_url_path=""
+
+
+@app.route("/favicon.ico")
+def favicon():
+    """Serve a tiny transparent favicon to avoid 404s."""
+    png_b64 = (
+        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO2l0XQAAAAASUVORK5CYII="
+    )
+    data = base64.b64decode(png_b64)
+    return send_file(BytesIO(data), mimetype="image/png")
 
 
 @app.get("/preds/<path:relpath>")

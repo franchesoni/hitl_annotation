@@ -10,7 +10,7 @@ Cycle logic
 2. Fit the existing learner **one epoch** (weights accumulate over cycles).
 3. Measure epoch wall‑clock time *T* → predict on ``budget = 2 × T`` *unlabeled*
    images; write predictions via the database API.
-4. Sleep and repeat.
+4. Pause briefly and repeat.
 
 Model size flag
 ~~~~~~~~~~~~~~~
@@ -20,7 +20,7 @@ Model size flag
 Usage example
 ~~~~~~~~~~~~~
 ```bash
-python -m src.ml.fastai_training --arch small --sleep 10
+python -m src.ml.fastai_training --arch small
 ```
 
 The process handles Ctrl‑C/SIGTERM gracefully.
@@ -208,16 +208,16 @@ def _run_forever(flip: bool, max_rotate: float) -> None:
                 pass
             prev_config = config
 
-        sleep_s = 5  # default pause between cycles (seconds)
+        pause_s = 5  # default pause between cycles (seconds)
         if not config.get("ai_should_be_run", False):
-            print("[INFO] Run flag disabled — sleeping…")
-            time.sleep(max(1, sleep_s))
+            print("[INFO] Run flag disabled — pausing…")
+            time.sleep(max(1, pause_s))
             continue
 
         # Only run this FastAI trainer for classification tasks
         task = (config.get("task") or "").lower()
         if task and task != "classification":
-            print(f"[INFO] Task '{task}' not supported by fastai trainer — sleeping…")
+            print(f"[INFO] Task '{task}' not supported by fastai trainer — pausing…")
             time.sleep(1)
             continue
 
@@ -232,8 +232,8 @@ def _run_forever(flip: bool, max_rotate: float) -> None:
             samples = backend_db.get_all_samples()
             train_items = _gather_training_items(samples)
             if not train_items:
-                print("[WARN] No label annotations available — sleeping…")
-                time.sleep(max(1, sleep_s))
+                print("[WARN] No label annotations available — pausing…")
+                time.sleep(max(1, pause_s))
                 continue
 
             paths, labels = zip(*train_items)
@@ -268,15 +268,14 @@ def _run_forever(flip: bool, max_rotate: float) -> None:
             predicted_n = _predict_subset(learner, unlabeled, budget)
 
             print(
-                f"[cycle {cycle}] epoch {epoch_time:.1f}s — predicted {predicted_n}/{len(unlabeled)} "
-                f"unlabeled — sleeping {sleep_s}s"
+                f"[cycle {cycle}] epoch {epoch_time:.1f}s — predicted {predicted_n}/{len(unlabeled)} unlabeled — pausing {pause_s}s"
             )
             cycle += 1
         except Exception as e:
             print(f"[ERR][cycle {cycle}] {e}", file=sys.stderr)
         finally:
             torch.cuda.empty_cache()
-            time.sleep(max(1, sleep_s))
+            time.sleep(max(1, pause_s))
 
 
 # ---------------------------------------------------------------------------

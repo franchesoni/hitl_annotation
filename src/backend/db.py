@@ -75,17 +75,16 @@ def get_config():
     with _get_conn() as conn:
         cursor = conn.cursor()
         cursor.execute(
-            "SELECT classes, ai_should_be_run, architecture, budget, sleep, resize, last_claim_cleanup, task FROM config LIMIT 1"
+            "SELECT classes, ai_should_be_run, architecture, budget, resize, last_claim_cleanup, task FROM config LIMIT 1"
         )
         row = cursor.fetchone()
         if row:
-            classes, ai_should_be_run, architecture, budget, sleep, resize, last_claim_cleanup, task = row
+            classes, ai_should_be_run, architecture, budget, resize, last_claim_cleanup, task = row
             return {
                 "classes": json.loads(classes) if classes else [],
                 "ai_should_be_run": bool(ai_should_be_run),
                 "architecture": architecture,
                 "budget": budget,
-                "sleep": sleep,
                 "resize": resize,
                 "last_claim_cleanup": last_claim_cleanup,
                 "task": task or "classification",
@@ -96,7 +95,7 @@ def update_config(config):
     """Merge and persist the provided config dict with validation.
 
     Accepts keys: classes (list[str]), ai_should_be_run (bool), architecture (str),
-    budget (int), sleep (int), resize (int), task ("classification"|"segmentation"),
+    budget (int), resize (int), task ("classification"|"segmentation"),
     last_claim_cleanup (int|None). Unknown keys are ignored. Values are validated
     and coerced where reasonable; out-of-range or invalid types are dropped.
     """
@@ -181,10 +180,6 @@ def update_config(config):
         n = _int(config.get("budget"))
         if n is not None:
             proposed["budget"] = max(0, n)
-    if "sleep" in config:
-        n = _int(config.get("sleep"))
-        if n is not None:
-            proposed["sleep"] = max(0, n)
     if "resize" in config:
         n = _int(config.get("resize"))
         if n is not None:
@@ -210,18 +205,18 @@ def update_config(config):
 
         if count > 0:
             cursor.execute(
-                "UPDATE config SET classes = ?, ai_should_be_run = ?, architecture = ?, budget = ?, sleep = ?, resize = ?, last_claim_cleanup = ?, task = ?",
+                "UPDATE config SET classes = ?, ai_should_be_run = ?, architecture = ?, budget = ?, resize = ?, last_claim_cleanup = ?, task = ?",
                 (classes_json, int(current.get("ai_should_be_run", False)),
                  current.get("architecture"), current.get("budget"),
-                 current.get("sleep"), current.get("resize"), current.get("last_claim_cleanup"),
+                 current.get("resize"), current.get("last_claim_cleanup"),
                  current.get("task", "classification"))
             )
         else:
             cursor.execute(
-                "INSERT INTO config (classes, ai_should_be_run, architecture, budget, sleep, resize, last_claim_cleanup, task) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                "INSERT INTO config (classes, ai_should_be_run, architecture, budget, resize, last_claim_cleanup, task) VALUES (?, ?, ?, ?, ?, ?, ?)",
                 (classes_json, int(current.get("ai_should_be_run", False)),
                  current.get("architecture"), current.get("budget"),
-                 current.get("sleep"), current.get("resize"), current.get("last_claim_cleanup"),
+                 current.get("resize"), current.get("last_claim_cleanup"),
                  current.get("task", "classification"))
             )
 

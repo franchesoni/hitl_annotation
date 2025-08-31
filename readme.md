@@ -51,7 +51,7 @@ directory wipes all progress so the app starts from scratch on the next run.
   2. Train one epoch on ResNet (34 or `--arch small` for 18).
   3. Export the learner to `<db>.pkl` so progress persists across runs.
   4. Predict on remaining unlabeled images and write predictions to DB.
-  5. Sleep for a configurable delay and repeat.
+  5. Pause briefly and repeat.
   - Preprocessing options like resize, flip and rotation can be set via `PUT /config` in
     a `preprocessing` dictionary before launching the trainer.
 
@@ -69,4 +69,3 @@ directory wipes all progress so the app starts from scratch on the next run.
 - implement show -> save -> prefetch pattern
 - better model export
 - model inference example
-

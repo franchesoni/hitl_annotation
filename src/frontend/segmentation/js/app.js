@@ -1,8 +1,7 @@
-import { API, buildNextParams } from '/shared/js/api.js';
+import { API } from '/shared/js/api.js';
 import { ImageView } from '/shared/views/imageView.js';
 import { PointsClassesView } from './views/pointsClassesView.js';
 import { StatsView } from '/shared/views/statsView.js';
-import { StrategyView } from '/shared/views/strategyView.js';
 import { AIControlsView } from '/shared/views/aiControlsView.js';
 import { TrainingCurveView } from '/shared/views/trainingCurveView.js';
 import { Hotkeys } from '/shared/js/hotkeys.js';
@@ -69,7 +68,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Use segmentation-specific architectures for points annotation
     const segmentationArchitectures = ['small', 'small+', 'base', 'large'];
     const aiControlsView = new AIControlsView(api, state, segmentationArchitectures);
-    const strategyView = new StrategyView();
+    // No strategy selection in segmentation frontend
 
     // Utility to retrieve the color for a class from the view so that
     // all components use the same color palette and assignments.
@@ -116,10 +115,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         // You can also trigger visual updates here if needed
         // For example, update cursor style or selected point color preview
     }
-    // Keep strategyView class list in sync with classes view
-    if (classesView && typeof classesView.setOnClassesUpdate === 'function') {
-        classesView.setOnClassesUpdate((classes) => strategyView.updateClasses(classes));
-    }
+    // No strategy view in segmentation; nothing to sync
 
     async function annotateWorkflow(sampleId, className) {
         if (state.workflowInProgress) return; // guard
@@ -127,8 +123,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         try {
             await updateConfigIfNeeded();
             await api.annotateSample(sampleId, className);
-            const params = getStrategyParams();
-            await loadSampleAndContext(null, params);
+            await loadSampleAndContext(null, null);
         } finally {
             endWorkflow();
         }
@@ -141,11 +136,9 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
     }
 
-    const getStrategyParams = () => buildNextParams(strategyView, state.selectedClass);
-
+    // No next-image strategy: always use default backend selection
     async function loadNextImage() {
-        const params = getStrategyParams();
-        await loadSampleAndContext(null, params);
+        await loadSampleAndContext(null, null);
         // Note: No prediction display for points annotation
     }
     async function loadConfigFromServer() {
@@ -238,9 +231,8 @@ document.addEventListener('DOMContentLoaded', async () => {
             }
 
             // If no next sample found, load a new one using strategy params
-            const params = getStrategyParams();
             if (!nextSample) {
-                await loadSampleAndContext(null, params);
+                await loadSampleAndContext(null, null);
             } else {
                 await loadSampleAndContext(nextSample, null);
             }
@@ -289,13 +281,13 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // DRY helper: push config, save points, fetch sample (or use provided),
     // load annotations, load masks, refresh stats/config, update buttons
-    async function loadSampleAndContext(sampleDataOrNull, strategyParams) {
+    async function loadSampleAndContext(sampleDataOrNull, _unused) {
         await updateConfigIfNeeded();
         await savePointsForCurrentImage();
         let data = sampleDataOrNull;
         if (!data) {
-            const { strategy, selectedClass } = strategyParams || getStrategyParams();
-            data = await api.loadNextImage(null, strategy, selectedClass);
+            // No strategy: call API without query params
+            data = await api.loadNextImage(null, null, null);
         }
         await loadSampleData(data);
         await getStatsAndConfig();

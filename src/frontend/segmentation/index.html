@@ -27,16 +27,7 @@
                                         type="range" id="overlay-slider" min="0" max="100" value="50"><span
                                         id="overlay-slider-value">50%</span></div>
                         <div id="stats-display" class="info-display"></div>
-                        <div class="strategy-control"><label for="strategy-select">Next image strategy:</label><select
-                                        id="strategy-select">
-                                        <option value="minority_frontier">Low prob low count</option>
-                                        <option value="sequential">Sequential</option>
-                                        <option value="random">Random</option>
-                                        <option value="last_class">High prob last label</option>
-                                        <option value="specific_class">Specific Class</option>
-                                </select><label id="specific-class-label" for="specific-class-select"
-                                        style="display:none;">Class:</label><select id="specific-class-select"
-                                        style="display:none;"></select></div>
+                        <!-- Strategy controls intentionally omitted for segmentation -->
                         <div class="accuracy-filter"><label for="accuracy-slider">Accuracy window:</label><input
                                         type="range" id="accuracy-slider" min="0" max="100" value="100"><span
                                         id="accuracy-slider-value">100%</span></div>

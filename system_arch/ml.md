@@ -41,7 +41,7 @@
   - Classification: choose unlabeled samples.
   - Segmentation: include both labeled and unlabeled samples (to refresh masks after additional point labels).
   - Write predictions to DB in batches via `set_predictions_batch()`; for segmentation, store per-class mask paths per sample.
-- Looping: each cycle re-evaluates the gate, data availability, model freshness, performs training (if applicable), then prediction, and persists metrics and checkpoints. Sleep 1 sec between cycles that are skipped.
+- Looping: each cycle re-evaluates the gate, data availability, model freshness, performs training (if applicable), then prediction, and persists metrics and checkpoints. Pause 1 sec between cycles that are skipped.
 - Masks are one png per binary mask (which is the lightest) and their size is such that when resized to orig image dimensions they align nicely. No separate alignment metadata is needed.
 
 ### Persistent Split (Leakage Prevention)
@@ -64,4 +64,3 @@
 - Why: prevents collisions when different folders contain images with the same filename; do not base mask names on image stems or truncated paths.
 - Serving: the backend should expose masks via `/preds/<file>.png` and never leak absolute paths to clients.
 - Format: save as 1-bit binary PNG (lightest)
-

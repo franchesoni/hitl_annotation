@@ -80,12 +80,12 @@ def build_initial_db_dict() -> dict:
         db_dict (dict): The database dictionary in the strict format.
     """
     # TODO: User should edit this function to load or build their data.
-    imagedir = "/home/franchesoni/Downloads/berkeley/images/test"
+    imagedir = "/home/diego/Desktop/hitl_annotation/data/recoating_v3/test/"
 
     return {
         "samples": [
             {"sample_filepath": str(ppath)}
-            for ppath in sorted(Path(imagedir).glob("*.jpg"))
+            for ppath in sorted(Path(imagedir).glob("**/*.png"))
         ],
         "annotations": [],
         "predictions": [],

@@ -271,11 +271,11 @@ def main() -> None:
         # Run only for segmentation task
         task = (config.get("task") or "classification").lower()
         if task != "segmentation":
-            print("[INFO] Task is not 'segmentation' — sleeping 1s…")
+            print("[INFO] Task is not 'segmentation' — pausing 1s…")
             time.sleep(1)
             continue
         if not config.get("ai_should_be_run", False):
-            print("[INFO] Run flag disabled — sleeping 1s…")
+            print("[INFO] Run flag disabled — pausing 1s…")
             time.sleep(1)
             continue
 
@@ -284,7 +284,7 @@ def main() -> None:
         samples = backend_db.get_all_samples()
         annotated = gather_annotated_items(samples)
         if not annotated:
-            print("[WARN] No point annotations available — sleeping 1s…")
+            print("[WARN] No point annotations available — pausing 1s…")
             time.sleep(1)
             continue
 
@@ -319,7 +319,7 @@ def main() -> None:
                     img_ids.append(s_id)
 
         if not X:
-            print("[WARN] No valid feature/label pairs found — sleeping 1s…")
+            print("[WARN] No valid feature/label pairs found — pausing 1s…")
             time.sleep(1)
             continue
 
@@ -396,7 +396,7 @@ def main() -> None:
         to_predict = ([dict(id=s_id, sample_filepath=fp) for s_id, fp, _ in annotated] + [s for s in unlabeled])[:budget]
 
         if classifier is None:
-            print("[INFO] No trained classifier available — skipping prediction this cycle; sleeping 1s…")
+            print("[INFO] No trained classifier available — skipping prediction this cycle; pausing 1s…")
             time.sleep(1)
             continue
 
@@ -435,7 +435,7 @@ def main() -> None:
         )
         cycle += 1
         torch.cuda.empty_cache()
-        # Normal cycles do not sleep per spec
+        # Normal cycles do not pause per spec
 
 
 # ---------------------------------------------------------------------------
