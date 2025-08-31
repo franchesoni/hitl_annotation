@@ -262,7 +262,7 @@ def get_next_sample():
     if sample_info:
         return create_image_response(sample_info)
     else:
-        return jsonify({"error": "No more samples available for annotation"}), 404
+        return jsonify({"error": "No more samples available for annotation"})
 
 
 @app.get("/api/samples/<int:sample_id>")
@@ -288,7 +288,7 @@ def get_sample_prev(sample_id: int):
     if sample_info:
         return create_image_response(sample_info)
     else:
-        return jsonify({"error": f"No previous sample found before ID {sample_id}"}), 404
+        return get_sample_by_id_endpoint(sample_id)
 
 
 @app.get("/api/samples/<int:sample_id>/next")
@@ -301,7 +301,7 @@ def get_sample_next(sample_id: int):
     if sample_info:
         return create_image_response(sample_info)
     else:
-        return jsonify({"error": f"No next sample found after ID {sample_id}"}), 404
+        return get_sample_by_id_endpoint(sample_id)
 
 
 
@@ -314,11 +314,7 @@ def delete_annotations_endpoint(sample_id: int):
     Returns: {ok: true}
     """
     success = delete_annotation_by_sample_id(sample_id)
-    if success:
-        release_claim_by_id(sample_id)
-        return jsonify({"ok": True})
-    else:
-        return jsonify({"error": f"No annotation(s) found for sample ID {sample_id}"}), 404
+    return jsonify({"ok": True})
 
 
 @app.get("/api/annotations/<int:sample_id>")
@@ -347,7 +343,7 @@ def put_annotations_bulk(sample_id: int):
     total = 0
     for ann_type, anns in grouped.items():
         # Remove existing annotations of this type
-        delete_annotation_by_sample_id(sample_id, ann_type)
+        delete_annotation_by_sample_id(sample_id)
         # Insert new ones
         for ann in anns:
             class_ = ann.get("class")

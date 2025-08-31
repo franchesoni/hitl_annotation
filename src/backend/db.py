@@ -637,27 +637,18 @@ def clear_point_annotations(sample_id):
         """, (sample_id,))
         return cursor.rowcount
 
-def delete_annotation_by_sample_id(sample_id, annotation_type=None):
+def delete_annotation_by_sample_id(sample_id):
     """Delete annotation(s) for a specific sample ID. If annotation_type is given, only delete that type."""
     """Delete annotation(s) for a sample. If annotation_type is given, only delete that type."""
     with _get_conn() as conn:
         cursor = conn.cursor()
-        if annotation_type is not None:
-            cursor.execute(
-                """
-                DELETE FROM annotations
-                WHERE sample_id = ? AND type = ?
-                """,
-                (sample_id, annotation_type)
-            )
-        else:
-            cursor.execute(
-                """
-                DELETE FROM annotations
-                WHERE sample_id = ?
-                """,
-                (sample_id,)
-            )
+        cursor.execute(
+            """
+            DELETE FROM annotations
+            WHERE sample_id = ?
+            """,
+            (sample_id,)
+        )
         return cursor.rowcount > 0
 
 def get_annotation_stats():

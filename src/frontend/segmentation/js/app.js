@@ -19,7 +19,6 @@ document.addEventListener('DOMContentLoaded', async () => {
         currentStats: null,  // Store current stats for optimization
         selectedClass: null,
         classColors: new Map(), // Map class names to colors
-        localPoints: [] // Local per-image list of points {class, x, y}
     };
 
     // -----------------------------------------------------------
@@ -45,23 +44,6 @@ document.addEventListener('DOMContentLoaded', async () => {
         applyOverlay();
     }
 
-    // Set up point addition callback: local only
-    imageView.onPointAdd = async (point) => {
-        state.localPoints.push({ class: point.className, x: point.x, y: point.y });
-        console.log('Point added locally:', point);
-    };
-
-    // Set up point removal callback: local only
-    imageView.onPointRemove = async (point, index) => {
-        console.log('Point removed locally:', point, 'at index:', index);
-        if (index >= 0 && index < state.localPoints.length) {
-            state.localPoints.splice(index, 1);
-        } else {
-            const TH = 1e-6;
-            const i = state.localPoints.findIndex(p => p.class === point.className && Math.abs(p.x - point.x) < TH && Math.abs(p.y - point.y) < TH);
-            if (i >= 0) state.localPoints.splice(i, 1);
-        }
-    };
     const classesView = new PointsClassesView(classPanel, selectClassWorkflow, state);
     const statsView = new StatsView(api, classesView);
     const trainingCurveView = new TrainingCurveView(api);
@@ -185,11 +167,13 @@ document.addEventListener('DOMContentLoaded', async () => {
     async function savePointsForCurrentImage() {
         if (!state.currentSampleId) return;
         try {
-            if (!state.localPoints || state.localPoints.length === 0) {
+            const points = imageView.points || [];
+            console.log('savePointsForCurrentImage:', { sampleId: state.currentSampleId, points });
+            if (!points || points.length === 0) {
                 // Explicitly clear points for this image when the set is empty
                 await api.clearPoints(state.currentSampleId);
             } else {
-                await api.savePointAnnotations(state.currentSampleId, state.localPoints);
+                await api.savePointAnnotations(state.currentSampleId, points);
             }
         } catch (e) {
             console.error('Failed to persist point annotations:', e);
@@ -255,16 +239,14 @@ document.addEventListener('DOMContentLoaded', async () => {
             const annotationsData = await api.getAnnotations(sampleId);
             const pointAnnotations = annotationsData.annotations.filter(ann => ann.type === 'point');
 
-            // Add existing points to the image view & local store
+            // Add existing points to the image view
             pointAnnotations.forEach(ann => {
                 const color = getClassColor(ann.class);
                 const x = (typeof ann.col01 === 'number') ? ann.col01 / 1_000_000 : (ann.col ?? 0);
                 const y = (typeof ann.row01 === 'number') ? ann.row01 / 1_000_000 : (ann.row ?? 0);
                 imageView.addExistingPoint(x, y, ann.class, color);
-                state.localPoints.push({ class: ann.class, x, y });
             });
 
-            console.log(`Loaded ${pointAnnotations.length} existing points`);
         } catch (error) {
             console.error('Failed to load existing annotations:', error);
         }
@@ -336,10 +318,9 @@ document.addEventListener('DOMContentLoaded', async () => {
             const lastPoint = imageView.getLastPoint();
             if (lastPoint) {
                 imageView.removeLastPoint();
-                state.localPoints.pop();
             }
         };
-        const clearPoints = () => { imageView.clearPoints(); state.localPoints = []; };
+        const clearPoints = () => { imageView.clearPoints(); };
         const selectIndex = (idx) => {
             if (idx < state.config.classes.length) {
                 const className = state.config.classes[idx];

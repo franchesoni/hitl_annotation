@@ -85,7 +85,7 @@ export class API {
         // points: [{ class: string, x: number, y: number }] with normalized coords [0,1]
         const payload = points.map(p => ({
             type: 'point',
-            class: p.class,
+            class: p.className,
             col01: Math.max(0, Math.min(1_000_000, Math.round((p.x ?? 0) * 1_000_000))),
             row01: Math.max(0, Math.min(1_000_000, Math.round((p.y ?? 0) * 1_000_000)))
         }));
