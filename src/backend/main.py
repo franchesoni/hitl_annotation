@@ -305,16 +305,15 @@ def get_sample_next(sample_id: int):
 
 
 
-# Implements DELETE /api/annotations/<int:sample_id> with optional 'type' query param
+
+# Implements DELETE /api/annotations/<int:sample_id> as described in api.md: no parameters, always deletes all annotations for the sample.
 @app.delete("/api/annotations/<int:sample_id>")
 def delete_annotations_endpoint(sample_id: int):
     """
-    Deletes all annotations for the sample, or only the specified type if provided.
-    Query param: 'type' (optional) to scope deletion (e.g., label, point, bbox).
+    Deletes all annotations for the sample.
     Returns: {ok: true}
     """
-    ann_type = request.args.get("type")
-    success = delete_annotation_by_sample_id(sample_id, ann_type) if ann_type else delete_annotation_by_sample_id(sample_id)
+    success = delete_annotation_by_sample_id(sample_id)
     if success:
         release_claim_by_id(sample_id)
         return jsonify({"ok": True})

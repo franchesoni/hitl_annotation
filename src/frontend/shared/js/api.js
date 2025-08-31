@@ -99,7 +99,8 @@ export class API {
     }
 
     async clearPoints(sampleId) {
-        const res = await fetch(`/api/annotations/${sampleId}?type=point`, {
+        // API spec: DELETE /api/annotations/<sampleId> deletes all annotations for the sample
+        const res = await fetch(`/api/annotations/${sampleId}`, {
             method: 'DELETE'
         });
         if (!res.ok) throw new Error('Clear points failed');
