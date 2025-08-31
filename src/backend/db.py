@@ -474,23 +474,22 @@ def add_point_annotation(sample_id, class_name, x, y, timestamp=None):
     return upsert_annotation(sample_id, class_name, "point", col=x, row=y, timestamp=timestamp)
 
 def delete_point_annotation(sample_id, x, y, tolerance=0.01):
-    """Delete a point annotation near the specified coordinates."""
     """Delete a point annotation near the specified coordinates for a sample."""
-        with _get_conn() as conn:
-                cursor = conn.cursor()
-                # Convert provided normalized floats to PPM space for comparison
-                col01 = to_ppm(x)
-                row01 = to_ppm(y)
-                tol_ppm = to_ppm(tolerance)
-                cursor.execute(
-                        """
-                        DELETE FROM annotations 
-                        WHERE sample_id = ? AND type = 'point'
-                            AND ABS(col01 - ?) <= ? AND ABS(row01 - ?) <= ?
-                        """,
-                        (sample_id, col01, tol_ppm, row01, tol_ppm),
-                )
-                return cursor.rowcount > 0
+    with _get_conn() as conn:
+            cursor = conn.cursor()
+            # Convert provided normalized floats to PPM space for comparison
+            col01 = to_ppm(x)
+            row01 = to_ppm(y)
+            tol_ppm = to_ppm(tolerance)
+            cursor.execute(
+                    """
+                    DELETE FROM annotations 
+                    WHERE sample_id = ? AND type = 'point'
+                        AND ABS(col01 - ?) <= ? AND ABS(row01 - ?) <= ?
+                    """,
+                    (sample_id, col01, tol_ppm, row01, tol_ppm),
+            )
+            return cursor.rowcount > 0
 
 def clear_point_annotations(sample_id):
     """Clear all point annotations for a sample."""
