@@ -154,7 +154,7 @@ def update_config(config):
         # Optional allowlist using timm if available
         try:
             import timm  # type: ignore
-            allowed = {"resnet18", "resnet34"} | set(timm.list_models())
+            allowed = {"resnet18", "resnet34", "small", "small+", "base", "large"} | set(timm.list_models())
             if arch not in allowed:
                 return None
         except Exception:

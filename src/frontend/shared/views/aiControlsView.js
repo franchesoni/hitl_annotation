@@ -30,13 +30,19 @@ export class AIControlsView {
     // Checkbox logic
     if (this.checkbox) {
       this.checkbox.checked = !!this.state.aiRunning;
-      this.checkbox.addEventListener('change', () => {
+      this.checkbox.addEventListener('change', async () => {
         this.state.aiRunning = this.checkbox.checked;
         this.state.config.aiShouldBeRun = this.state.aiRunning;
-        // Defer network updates to workflow boundaries
         Object.assign(this.state.config, this._collectAIConfig());
         this.state.configUpdated = true;
         this.updateInputsDisabled();
+        // Immediately persist config to backend when checkbox is changed
+        try {
+          await this.api.updateConfig(this.state.config);
+          this.state.configUpdated = false;
+        } catch (e) {
+          console.error('Failed to update config on AI checkbox change:', e);
+        }
       });
     }
 
