@@ -236,6 +236,7 @@ def save_classifier(clf: SGDClassifier, path: Path) -> None:
 
 def main() -> None:
     clf_path = Path("session/dinov3_linear_classifier_seg.pkl")
+    print("[INIT] Loading classifier from", clf_path)
     classifier = load_classifier(clf_path)
     prev_config: Optional[dict] = None
     cycle = 0
@@ -246,6 +247,7 @@ def main() -> None:
     split_map: dict[int, str] = {}
 
     while True:
+        print(f"\n[LOOP] Starting cycle {cycle}")
         try:
             config = backend_db.get_config()
         except Exception as e:
@@ -254,6 +256,7 @@ def main() -> None:
             continue
 
         if prev_config != config:
+            print("[CONFIG] Detected config change or first load.")
             # Reload backbone only if architecture changed; keep classifier persistent
             arch = config.get("architecture", "small") or "small"
             if arch not in {"small", "large"}:
@@ -265,6 +268,7 @@ def main() -> None:
                 model_size = arch
             # Update preprocessing resize but do not reset classifier/checkpoint
             current_resize = config.get("resize", 1536) or 1536
+            print(f"[CONFIG] Set resize to {current_resize}")
             prev_config = config
 
         current_resize = config.get("resize", current_resize) or current_resize
@@ -280,14 +284,20 @@ def main() -> None:
             continue
 
         budget = config.get("budget", 1000)
+        print(f"[INFO] Budget for this cycle: {budget}")
 
+        print("[DB] Fetching all samples…")
         samples = backend_db.get_all_samples()
+        print(f"[DB] Found {len(samples)} samples.")
+        print("[DB] Gathering annotated items…")
         annotated = gather_annotated_items(samples)
+        print(f"[DB] Found {len(annotated)} annotated items.")
         if not annotated:
             print("[WARN] No point annotations available — pausing 1s…")
             time.sleep(1)
             continue
 
+        print("[FEAT] Extracting features for annotated points…")
         X, y, img_ids = [], [], []
         for s_id, fp, pts_by_class in annotated:
             image_path = Path(fp)
@@ -318,6 +328,7 @@ def main() -> None:
                     y.append(cls)
                     img_ids.append(s_id)
 
+        print(f"[FEAT] Extracted {len(X)} feature/label pairs.")
         if not X:
             print("[WARN] No valid feature/label pairs found — pausing 1s…")
             time.sleep(1)
@@ -347,6 +358,7 @@ def main() -> None:
                 else:
                     val_count += 1
 
+        print(f"[SPLIT] {train_count} train, {val_count} val images.")
         train_imgs = {i for i, side in split_map.items() if side == "train"}
         train_mask = np.array([int(i) in train_imgs for i in img_ids])
         X_train, y_train = X[train_mask], y[train_mask]
@@ -359,6 +371,7 @@ def main() -> None:
         if X_train.shape[0] == 0:
             print("[INFO] No training samples in current split — skipping training this cycle")
         elif classifier is None:
+            print(f"[TRAIN] Initializing new classifier with {X_train.shape[0]} samples and {len(desired_classes)} classes.")
             classifier = SGDClassifier(loss="log_loss", max_iter=1000)
             classifier.partial_fit(X_train, y_train, classes=desired_classes)
         else:
@@ -368,18 +381,20 @@ def main() -> None:
             except Exception:
                 prev_dim = X_train.shape[1]
             if prev_dim != X_train.shape[1]:
-                print("[INFO] Feature dimension changed; reinitializing classifier")
+                print("[TRAIN] Feature dimension changed; reinitializing classifier")
                 classifier = SGDClassifier(loss="log_loss", max_iter=1000)
                 classifier.partial_fit(X_train, y_train, classes=desired_classes)
             else:
                 existing = set(getattr(classifier, "classes_", []))
                 if existing != set(desired_classes):
-                    print("[INFO] Class set changed; reinitializing classifier")
+                    print("[TRAIN] Class set changed; reinitializing classifier")
                     classifier = SGDClassifier(loss="log_loss", max_iter=1000)
                     classifier.partial_fit(X_train, y_train, classes=desired_classes)
                 else:
+                    print(f"[TRAIN] Incremental fit on {X_train.shape[0]} samples.")
                     classifier.partial_fit(X_train, y_train)
         if classifier is not None:
+            print("[TRAIN] Saving classifier checkpoint…")
             save_classifier(classifier, clf_path)
 
         if len(y_val) > 0 and classifier is not None:
@@ -389,11 +404,13 @@ def main() -> None:
         else:
             acc = None
 
+        print("[DB] Storing training stats…")
         backend_db.store_training_stats(cycle, None, None, acc)
 
         labeled_set = set(fp for _, fp, _ in annotated)
         unlabeled = [s for s in samples if s["sample_filepath"] not in labeled_set]
         to_predict = ([dict(id=s_id, sample_filepath=fp) for s_id, fp, _ in annotated] + [s for s in unlabeled])[:budget]
+        print(f"[PRED] Will predict on {len(to_predict)} images (labeled + unlabeled, up to budget)")
 
         if classifier is None:
             print("[INFO] No trained classifier available — skipping prediction this cycle; pausing 1s…")
@@ -401,6 +418,7 @@ def main() -> None:
             continue
 
         Path("session/preds").mkdir(parents=True, exist_ok=True)
+        # Don't print inside the prediction for loop to avoid console bloat
         for dtp in to_predict:
             fp = dtp["sample_filepath"]
             s_id = dtp["id"]
