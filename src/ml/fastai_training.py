@@ -214,6 +214,13 @@ def _run_forever(flip: bool, max_rotate: float) -> None:
             time.sleep(max(1, sleep_s))
             continue
 
+        # Only run this FastAI trainer for classification tasks
+        task = (config.get("task") or "").lower()
+        if task and task != "classification":
+            print(f"[INFO] Task '{task}' not supported by fastai trainer — sleeping…")
+            time.sleep(1)
+            continue
+
         arch = config.get("architecture", "resnet18")
         model_arch = resnet18 if arch == "resnet18" else (
             resnet34 if arch == "resnet34" else arch
