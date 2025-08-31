@@ -82,48 +82,34 @@ document.addEventListener('DOMContentLoaded', async () => {
                 }
         }
         function getStrategyParams(stats = null) {
-                // Determine strategy & pick parameters from StrategyView state.
-                // Silent bug fix: strategy selection in UI was never applied to image fetching.
-                const strategy = strategyView.currentStrategy || null;
-                let pick = null;
-                if (strategy === 'specific_class') {
-                        pick = strategyView.currentSpecificClass || null;
-                } else if (strategy === 'pick_class') {
-                        // Use the last annotated class for "High prob last label" strategy
-                        pick = state.lastAnnotatedClass || null;
-                } else if (strategy === 'minority_frontier' && stats && stats.annotation_counts) {
-                        // Optimize by calculating minority class on frontend
-                        const minorityClass = findMinorityClass(stats.annotation_counts);
-                        if (minorityClass) {
-                                return { strategy: 'minority_frontier_optimized', pick: minorityClass };
-                        }
+                // Determine strategy & class parameters from StrategyView state.
+                const uiStrategy = strategyView.currentStrategy || null;
+                // Map UI convenience to API with safe fallbacks:
+                // - specific_class requires a class; if none selected, fall back to sequential
+                // - last_class uses the last annotated class; if none exists yet, fall back to sequential
+                if (uiStrategy === 'specific_class') {
+                        const pick = strategyView.currentSpecificClass || null;
+                        return pick ? { strategy: 'specific_class', selectedClass: pick }
+                                    : { strategy: 'sequential', selectedClass: null };
                 }
-                return { strategy, pick };
+                if (uiStrategy === 'last_class') {
+                        const last = state.lastAnnotatedClass || null;
+                        return last ? { strategy: 'specific_class', selectedClass: last }
+                                    : { strategy: 'sequential', selectedClass: null };
+                }
+                // Pass-through for supported server strategies
+                return { strategy: uiStrategy, selectedClass: null };
         }
         
-        function findMinorityClass(annotationCounts) {
-                // Find the class with the minimum annotation count
-                if (!annotationCounts || Object.keys(annotationCounts).length === 0) {
-                        return null;
-                }
-                let minClass = null;
-                let minCount = Infinity;
-                for (const [className, count] of Object.entries(annotationCounts)) {
-                        if (count < minCount) {
-                                minCount = count;
-                                minClass = className;
-                        }
-                }
-                return minClass;
-        }
+        // Removed minority_frontier_optimized hack to match API spec
         async function loadNextImage() {
-                const { strategy, pick } = getStrategyParams(state.currentStats);
-                const { imageUrl, sampleId, filepath, labelClass, labelSource, labelProbability } =
-                        await api.loadNextImage(null, strategy, pick);
+                const { strategy, selectedClass } = getStrategyParams(state.currentStats);
+                const { imageUrl, sampleId, filepath, predictions, labelClass, labelSource, labelProbability } =
+                        await api.loadNextImage(null, strategy, selectedClass);
                 state.currentImageFilepath = filepath; // Store current image filepath in state
                 imageView.loadImage(imageUrl, filepath);
                 await classesView.setCurrentSample(sampleId, filepath);
-                statsView.updatePrediction(labelClass, labelProbability, labelSource);
+                statsView.updatePrediction(predictions ?? labelClass, labelProbability, labelSource);
         }
         async function loadConfigFromServer() {
                 try {
@@ -165,13 +151,22 @@ document.addEventListener('DOMContentLoaded', async () => {
                 const sampleId = state.history.pop();
                 beginWorkflow();
                 try {
+                        // 1) Push any pending config
                         await updateConfigIfNeeded();
-                        const { imageUrl, sampleId: returnedSampleId, filepath, labelClass, labelSource, labelProbability } = await api.loadSample(sampleId);
-                        state.currentImageFilepath = filepath; // Store current image filepath in state
-                        imageView.loadImage(imageUrl, filepath);
-                        await classesView.setCurrentSample(returnedSampleId, filepath);
-                        statsView.updatePrediction(labelClass, labelProbability, labelSource);
+                        // 2) Delete annotation for the current id
                         await api.deleteAnnotation(sampleId);
+                        // 3) Load previous image deterministically
+                        const prev = await api.loadSamplePrev(sampleId);
+                        if (!prev) {
+                                alert('No previous image available');
+                        } else {
+                                const { imageUrl, sampleId: returnedSampleId, filepath, predictions, labelClass, labelSource, labelProbability } = prev;
+                                state.currentImageFilepath = filepath;
+                                imageView.loadImage(imageUrl, filepath);
+                                await classesView.setCurrentSample(returnedSampleId, filepath);
+                                statsView.updatePrediction(predictions ?? labelClass, labelProbability, labelSource);
+                        }
+                        // 4) Refresh stats/config
                         await getStatsAndConfig();
                 } catch (e) {
                         console.error('Undo workflow failed:', e);

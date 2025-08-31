@@ -73,10 +73,13 @@ export class PointsClassesView extends ClassesView {
 
         addBtn.onclick = () => {
             const className = input.value.trim();
-            if (className) {
-                this.addClass(className);
-                input.value = '';
+            if (!className) return;
+            if (!/^[A-Za-z0-9_-]{1,64}$/.test(className)) {
+                alert('Invalid class name. Use letters, digits, underscore or hyphen (max 64).');
+                return;
             }
+            this.addClass(className);
+            input.value = '';
         };
         input.onkeydown = (e) => {
             if (e.key === 'Enter') addBtn.click();

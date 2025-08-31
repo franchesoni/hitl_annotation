@@ -28,8 +28,9 @@ The frontend keeps a local config mirror that syncs with the backend on specific
 
 - Undo (return to previous image):
   1) Update config first: `PUT /api/config` if there are any pending changes.
-  2) Load the previous image deterministically via `GET /api/samples/{id}/prev`.
-  3) Refresh session state with `GET /api/config` and `GET /api/stats`.
+  2) `DELETE /api/annotations/{id}` to remove the last annotation for the current image (classification only; segmentation has no undo).
+  3) Load the previous image deterministically via `GET /api/samples/{id}/prev`.
+  4) Refresh session state with `GET /api/config` and `GET /api/stats`.
 
 ## Classification View
 

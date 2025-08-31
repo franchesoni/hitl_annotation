@@ -9,23 +9,43 @@ export class StatsView {
     this.accuracyPct = this.accuracySlider ? Number(this.accuracySlider.value) : 100;
     if (this.accuracyValue) this.accuracyValue.textContent = `${this.accuracyPct}%`;
     this.statsRequestId = 0;
+    this.currentStats = null; // cache of latest stats provided by the app
     if (this.accuracySlider) {
       this.accuracySlider.addEventListener('input', () => {
         this.accuracyPct = Number(this.accuracySlider.value);
         if (this.accuracyValue) this.accuracyValue.textContent = `${this.accuracyPct}%`;
-        this.update(); // Call without parameters to fetch fresh stats with new percentage
+        // Recompute from cached stats; do not fetch here.
+        this.update();
       });
     }
   }
-  updatePrediction(labelClass, labelProbability, labelSource) {
+  updatePrediction(predictionsOrLabelClass, labelProbability = null, labelSource = null) {
     if (!this.predictionDiv) return;
-    if (labelSource === 'prediction' && labelClass) {
-      const prob = labelProbability ? Number(labelProbability) : null;
-      const pct = prob !== null && !isNaN(prob) ? (prob * 100).toFixed(1) : null;
-      const text = pct !== null ? `${labelClass} (${pct}%)` : labelClass;
-      this.predictionDiv.innerHTML = `<b>Prediction:</b> <span class="prediction-badge">${text}</span>`;
+    let label = null;
+    let prob01 = null;
+    // New path: predictions object
+    if (predictionsOrLabelClass && typeof predictionsOrLabelClass === 'object' && 'type' in predictionsOrLabelClass) {
+      const preds = predictionsOrLabelClass;
+      if (preds.type === 'label') {
+        label = preds.label || null;
+        if (preds.probability_ppm != null) {
+          const v = Number(preds.probability_ppm);
+          prob01 = isNaN(v) ? null : Math.max(0, Math.min(1, v / 1_000_000));
+        }
+      }
+    } else {
+      // Back-compat: old args (labelClass, labelProbability [0..1], labelSource)
+      if (labelSource === 'prediction' && predictionsOrLabelClass) {
+        label = predictionsOrLabelClass;
+        prob01 = (typeof labelProbability === 'number') ? labelProbability : null;
+      }
+    }
+
+    if (label) {
+      const pctText = (typeof prob01 === 'number') ? ` (${(prob01 * 100).toFixed(1)}%)` : '';
+      this.predictionDiv.innerHTML = `<b>Prediction:</b> <span class="prediction-badge">${label}${pctText}</span>`;
       if (this.classesView && typeof this.classesView.setPrediction === 'function') {
-        this.classesView.setPrediction(labelClass);
+        this.classesView.setPrediction(label);
       }
     } else {
       this.predictionDiv.innerHTML = '';
@@ -37,10 +57,12 @@ export class StatsView {
   async update(stats = null, currentImageFilename = null) {
     if (!this.statsDiv) return;
     const requestId = ++this.statsRequestId;
-    
-    // If stats not provided, fetch them
-    if (!stats) {
-      stats = await this.api.getStats();
+
+    // If stats are provided by caller, cache them. Otherwise reuse cached stats.
+    if (stats) {
+      this.currentStats = stats;
+    } else {
+      stats = this.currentStats;
     }
     
     if (requestId !== this.statsRequestId) return;

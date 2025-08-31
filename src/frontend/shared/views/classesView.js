@@ -93,8 +93,15 @@ export class ClassesView {
         });
     }
     async addClass(className) {
-        if (!className || this.state.config.classes.includes(className)) return;
-        this.state.config.classes.push(className);
+        // Trim and validate class name per frontend spec: ^[A-Za-z0-9_-]{1,64}$
+        const name = (className || '').trim();
+        const valid = /^[A-Za-z0-9_-]{1,64}$/.test(name);
+        if (!valid) {
+            alert('Invalid class name. Use letters, digits, underscore or hyphen (max 64).');
+            return;
+        }
+        if (this.state.config.classes.includes(name)) return;
+        this.state.config.classes.push(name);
         this.state.config.classes.sort();
         if (this.state.classColors instanceof Map) {
             this.state.classColors.clear();

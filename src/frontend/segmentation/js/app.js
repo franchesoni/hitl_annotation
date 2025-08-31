@@ -2,6 +2,7 @@ import { API } from '/shared/js/api.js';
 import { ImageView } from '/shared/views/imageView.js';
 import { PointsClassesView } from './views/pointsClassesView.js';
 import { StatsView } from '/shared/views/statsView.js';
+import { StrategyView } from '/shared/views/strategyView.js';
 import { AIControlsView } from '/shared/views/aiControlsView.js';
 import { TrainingCurveView } from '/shared/views/trainingCurveView.js';
 
@@ -18,6 +19,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         currentStats: null,  // Store current stats for optimization
         selectedClass: null,
         classColors: new Map(), // Map class names to colors
+        localPoints: [] // Local per-image list of points {class, x, y}
     };
 
     // -----------------------------------------------------------
@@ -29,30 +31,35 @@ document.addEventListener('DOMContentLoaded', async () => {
     await loadConfigFromServer();
     const imageView = new ImageView(leftPanel, 'loading-overlay', 'c');
 
-    // Set up point addition callback
+    // Overlay slider controls prediction/annotation overlay strength (0-100%)
+    const overlaySlider = document.getElementById('overlay-slider');
+    const overlayValue = document.getElementById('overlay-slider-value');
+    if (overlaySlider) {
+        const applyOverlay = () => {
+            const pct = Number(overlaySlider.value || 0);
+            if (overlayValue) overlayValue.textContent = `${pct}%`;
+            // Store on imageView for future overlay rendering logic
+            imageView.overlayAlpha = Math.max(0, Math.min(1, pct / 100));
+        };
+        overlaySlider.addEventListener('input', applyOverlay);
+        applyOverlay();
+    }
+
+    // Set up point addition callback: local only
     imageView.onPointAdd = async (point) => {
-        console.log('Point added:', point);
-        try {
-            await api.addPoint(state.currentSampleId, point.className, point.x, point.y);
-            console.log('Point saved to backend');
-        } catch (error) {
-            console.error('Failed to save point:', error);
-            // Optionally remove the point from frontend if backend save failed
-            imageView.removeLastPoint();
-            alert('Failed to save point annotation');
-        }
+        state.localPoints.push({ class: point.className, x: point.x, y: point.y });
+        console.log('Point added locally:', point);
     };
 
-    // Set up point removal callback
+    // Set up point removal callback: local only
     imageView.onPointRemove = async (point, index) => {
-        console.log('Point removed:', point, 'at index:', index);
-        try {
-            await api.deletePoint(state.currentSampleId, point.x, point.y);
-            console.log('Point removed from backend');
-        } catch (error) {
-            console.error('Failed to remove point:', error);
-            // Optionally re-add the point to frontend if backend delete failed
-            alert('Failed to remove point annotation');
+        console.log('Point removed locally:', point, 'at index:', index);
+        if (index >= 0 && index < state.localPoints.length) {
+            state.localPoints.splice(index, 1);
+        } else {
+            const TH = 1e-6;
+            const i = state.localPoints.findIndex(p => p.class === point.className && Math.abs(p.x - point.x) < TH && Math.abs(p.y - point.y) < TH);
+            if (i >= 0) state.localPoints.splice(i, 1);
         }
     };
     const classesView = new PointsClassesView(classPanel, selectClassWorkflow, state);
@@ -61,6 +68,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Use segmentation-specific architectures for points annotation
     const segmentationArchitectures = ['small', 'small+', 'base', 'large'];
     const aiControlsView = new AIControlsView(api, state, segmentationArchitectures);
+    const strategyView = new StrategyView();
 
     // Utility to retrieve the color for a class from the view so that
     // all components use the same color palette and assignments.
@@ -107,6 +115,10 @@ document.addEventListener('DOMContentLoaded', async () => {
         // You can also trigger visual updates here if needed
         // For example, update cursor style or selected point color preview
     }
+    // Keep strategyView class list in sync with classes view
+    if (classesView && typeof classesView.setOnClassesUpdate === 'function') {
+        classesView.setOnClassesUpdate((classes) => strategyView.updateClasses(classes));
+    }
 
     async function annotateWorkflow(sampleId, className) {
         if (state.workflowInProgress) return; // guard
@@ -130,29 +142,53 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
     }
 
+    function getStrategyParams() {
+        const uiStrategy = strategyView?.currentStrategy || null;
+        if (uiStrategy === 'specific_class') {
+            return { strategy: 'specific_class', selectedClass: strategyView.currentSpecificClass || null };
+        }
+        if (uiStrategy === 'last_class') {
+            // For segmentation, use currently selected class as the last-class proxy
+            return { strategy: 'specific_class', selectedClass: state.selectedClass || null };
+        }
+        return { strategy: uiStrategy, selectedClass: null };
+    }
+
     async function loadNextImage() {
-        const { imageUrl, sampleId, filepath, labelClass, labelSource, labelProbability } =
-            await api.loadNextImage();
+        const { strategy, selectedClass } = getStrategyParams();
+        const { imageUrl, sampleId, filepath, predictions } = await api.loadNextImage(null, strategy, selectedClass);
         state.currentImageFilepath = filepath;
         state.currentSampleId = parseInt(sampleId);
 
         imageView.loadImage(imageUrl, filepath);
         imageView.clearPoints(); // Clear existing points when loading new image
+        state.localPoints = [];
+        state.localPoints = [];
 
         // Load existing point annotations from backend
         try {
             const annotationsData = await api.getAnnotations(sampleId);
             const pointAnnotations = annotationsData.annotations.filter(ann => ann.type === 'point');
 
-            // Add existing points to the image view
+            // Add existing points to the image view & local store
             pointAnnotations.forEach(ann => {
                 const color = getClassColor(ann.class);
-                imageView.addExistingPoint(ann.col, ann.row, ann.class, color);
+                const x = (typeof ann.col01 === 'number') ? ann.col01 / 1_000_000 : (ann.col ?? 0);
+                const y = (typeof ann.row01 === 'number') ? ann.row01 / 1_000_000 : (ann.row ?? 0);
+                imageView.addExistingPoint(x, y, ann.class, color);
+                state.localPoints.push({ class: ann.class, x, y });
             });
 
             console.log(`Loaded ${pointAnnotations.length} existing points`);
         } catch (error) {
             console.error('Failed to load existing annotations:', error);
+        }
+
+        // If mask predictions are advertised, fetch mask assets
+        if (predictions && predictions.type === 'mask' && predictions.mask_map) {
+            await loadMaskAssets(predictions.mask_map);
+        } else if (imageView) {
+            imageView.maskOverlays = null;
         }
 
         await classesView.setCurrentSample(sampleId, filepath);
@@ -199,6 +235,19 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
     const prevBtn = document.getElementById('prev-btn');
     const nextBtn = document.getElementById('next-btn');
+    async function savePointsForCurrentImage() {
+        if (!state.currentSampleId) return;
+        try {
+            if (!state.localPoints || state.localPoints.length === 0) {
+                // Explicitly clear points for this image when the set is empty
+                await api.clearPoints(state.currentSampleId);
+            } else {
+                await api.savePointAnnotations(state.currentSampleId, state.localPoints);
+            }
+        } catch (e) {
+            console.error('Failed to persist point annotations:', e);
+        }
+    }
 
     async function navigatePrev() {
         if (state.workflowInProgress) return;
@@ -210,6 +259,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         beginWorkflow();
         try {
             await updateConfigIfNeeded();
+            await savePointsForCurrentImage();
             const prevSample = await api.loadSamplePrev(state.currentSampleId);
             if (prevSample) {
                 await loadSampleData(prevSample);
@@ -231,6 +281,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         beginWorkflow();
         try {
             await updateConfigIfNeeded();
+            await savePointsForCurrentImage();
             let nextSample = null;
 
             // Try to get next sample if we have a current sample
@@ -238,7 +289,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 nextSample = await api.loadSampleNext(state.currentSampleId);
             }
 
-            // If no next sample found, load a new one
+            // If no next sample found, load a new one using strategy params
             if (!nextSample) {
                 await loadNextImage();
             } else {
@@ -255,7 +306,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     async function loadSampleData(sampleData) {
-        const { imageUrl, sampleId, filepath } = sampleData;
+        const { imageUrl, sampleId, filepath, predictions } = sampleData;
         state.currentImageFilepath = filepath;
         state.currentSampleId = parseInt(sampleId);
         imageView.loadImage(imageUrl, filepath);
@@ -266,10 +317,13 @@ document.addEventListener('DOMContentLoaded', async () => {
             const annotationsData = await api.getAnnotations(sampleId);
             const pointAnnotations = annotationsData.annotations.filter(ann => ann.type === 'point');
 
-            // Add existing points to the image view
+            // Add existing points to the image view & local store
             pointAnnotations.forEach(ann => {
                 const color = getClassColor(ann.class);
-                imageView.addExistingPoint(ann.col, ann.row, ann.class, color);
+                const x = (typeof ann.col01 === 'number') ? ann.col01 / 1_000_000 : (ann.col ?? 0);
+                const y = (typeof ann.row01 === 'number') ? ann.row01 / 1_000_000 : (ann.row ?? 0);
+                imageView.addExistingPoint(x, y, ann.class, color);
+                state.localPoints.push({ class: ann.class, x, y });
             });
 
             console.log(`Loaded ${pointAnnotations.length} existing points`);
@@ -277,7 +331,32 @@ document.addEventListener('DOMContentLoaded', async () => {
             console.error('Failed to load existing annotations:', error);
         }
 
+        // If mask predictions are advertised, fetch mask assets
+        if (predictions && predictions.type === 'mask' && predictions.mask_map) {
+            await loadMaskAssets(predictions.mask_map);
+        } else if (imageView) {
+            imageView.maskOverlays = null;
+        }
+
         await classesView.setCurrentSample(sampleId, filepath);
+    }
+
+    async function loadMaskAssets(maskMap) {
+        const overlays = {};
+        const overlayColors = {};
+        const entries = Object.entries(maskMap || {});
+        await Promise.all(entries.map(([cls, url]) => new Promise((resolve) => {
+            const img = new Image();
+            img.onload = () => { overlays[cls] = img; resolve(); };
+            img.onerror = () => { console.warn('Failed to load mask asset', url); resolve(); };
+            img.src = url;
+        })));
+        // Assign class colors for tinting
+        for (const cls of Object.keys(overlays)) {
+            overlayColors[cls] = getClassColor(cls);
+        }
+        imageView.maskOverlays = overlays;
+        imageView.maskOverlayColors = overlayColors;
     }
 
     function updateNavigationButtons() {
@@ -324,19 +403,14 @@ document.addEventListener('DOMContentLoaded', async () => {
                 const lastPoint = imageView.getLastPoint();
                 if (lastPoint) {
                     imageView.removeLastPoint();
-                    // Remove from backend too
-                    api.deletePoint(state.currentSampleId, lastPoint.x, lastPoint.y).catch(err => {
-                        console.error('Failed to remove point from backend:', err);
-                    });
+                    // Remove from local list too
+                    state.localPoints.pop();
                 }
             } else if (lowerCaseKey === 'c' && (e.ctrlKey || e.metaKey)) {
                 e.preventDefault();
                 // Clear all points
                 imageView.clearPoints();
-                // Clear from backend too
-                api.clearPoints(state.currentSampleId).catch(err => {
-                    console.error('Failed to clear points from backend:', err);
-                });
+                state.localPoints = [];
             } else if (e.key >= '1' && e.key <= '9') {
                 e.preventDefault();
                 // Select class by number (1-9)
