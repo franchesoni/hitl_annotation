@@ -2,23 +2,37 @@ from pathlib import Path
 from flask import Flask, request, jsonify, send_file
 from functools import lru_cache
 import timm
+import time
+import mimetypes
+from collections import defaultdict
 
 from src.backend.db import (
     get_config, update_config, get_next_sample_by_strategy,
     get_sample_by_id, upsert_annotation, delete_annotation_by_sample_id,
     get_annotation_stats, export_annotations, release_claim_by_id,
     get_most_recent_prediction, store_live_accuracy, get_annotations,
+    cleanup_claims_unconditionally,
     add_point_annotation, delete_point_annotation, clear_point_annotations,
     get_sample_prev_by_id, get_sample_next_by_id, get_predictions,
 )
 from src.backend.db_init import initialize_database_if_needed
-import mimetypes
 
 initialize_database_if_needed()
 
 ####### INITIALIZE APP #######
+
+# ...existing code...
+
+# Place the endpoint after app is defined
+
+# ...existing code...
+
 BASE_DIR = Path(__file__).resolve().parent.parent
 FRONTEND_DIR = BASE_DIR / "frontend"
+# Runtime artifacts live at repo-root/session, not under src/
+REPO_ROOT = BASE_DIR.parent
+SESSION_DIR = REPO_ROOT / "session"
+PREDS_DIR = SESSION_DIR / "preds"
 
 app = Flask(__name__, static_folder=FRONTEND_DIR, static_url_path="")
 # Fail loudly: enable development-style debugging and exception propagation
@@ -51,26 +65,65 @@ def create_image_response(sample_info):
         mime_type = "application/octet-stream"
 
     anns = get_annotations(sample_id)
+    preds = get_predictions(sample_id)
     label_ann = next((a for a in anns if a.get("type") == "label"), None)
 
     headers = {
         "X-Image-Id": str(sample_id),
         "X-Image-Filepath": str(sample_filepath),
     }
-    if label_ann:
-        headers["X-Label-Class"] = str(label_ann.get("class", ""))
-        headers["X-Label-Source"] = "annotation"
-    else:
-        preds = get_predictions(sample_id)
-        pred_candidates = [
-            p for p in preds if p.get("type") == "label" and p.get("probability") is not None
-        ]
-        assert len(pred_candidates) <= 1, "Expected at most one prediction per image"
-        if pred_candidates:
-            pred_ann = pred_candidates[0]
-            headers["X-Label-Class"] = str(pred_ann.get("class", ""))
-            headers["X-Label-Source"] = "prediction"
-            headers["X-Label-Probability"] = str(pred_ann.get("probability", ""))
+    # Only add X-Predictions-* headers for predictions
+    pred_candidates = [
+        p for p in preds if p.get("type") == "label" and p.get("probability") is not None
+    ]
+    assert len(pred_candidates) <= 1, "Expected at most one prediction per image"
+    if pred_candidates:
+        pred_ann = pred_candidates[0]
+        headers["X-Predictions-Type"] = "label"
+        headers["X-Predictions-Label"] = str(pred_ann.get("class", ""))
+        from src.backend.db import to_ppm
+        prob = pred_ann.get("probability", None)
+        headers["X-Predictions-Probability"] = str(to_ppm(prob) if prob is not None else "")
+
+    # If mask predictions exist, expose them as a JSON list of {class, url} objects
+    import json
+    mask_preds = [p for p in preds if p.get("type") == "mask" and p.get("mask_path")]
+    mask_list = []
+    for pred in mask_preds:
+        mask_path_raw = str(pred.get("mask_path"))
+        mask_url = None
+        try:
+            p = Path(mask_path_raw)
+            # If absolute, ensure it's under PREDS_DIR and relativize
+            if p.is_absolute():
+                p_res = p.resolve()
+                preds_root = PREDS_DIR.resolve()
+                try:
+                    rel = p_res.relative_to(preds_root)
+                    mask_url = f"/preds/{rel.as_posix()}"
+                except Exception:
+                    mask_url = None
+            else:
+                parts = p.parts
+                if len(parts) >= 2 and parts[0] == "session" and parts[1] == "preds":
+                    rel = Path(*parts[2:])
+                    mask_url = f"/preds/{rel.as_posix()}"
+                elif len(parts) >= 1 and parts[0] == "preds":
+                    rel = Path(*parts[1:])
+                    mask_url = f"/preds/{rel.as_posix()}"
+                else:
+                    candidate = (PREDS_DIR / p).resolve()
+                    try:
+                        rel = candidate.relative_to(PREDS_DIR.resolve())
+                        mask_url = f"/preds/{rel.as_posix()}"
+                    except Exception:
+                        mask_url = None
+        except Exception:
+            mask_url = None
+        if mask_url:
+            mask_list.append({"class": pred.get("class", ""), "url": mask_url})
+    if mask_list:
+        headers["X-Predictions-Mask"] = json.dumps(mask_list)
 
     response = send_file(sample_filepath, mimetype=mime_type)
     for key, value in headers.items():
@@ -78,19 +131,61 @@ def create_image_response(sample_info):
     return response
 
 
+def _safe_pred_path(relpath: str) -> Path | None:
+    """Resolve a relative path under PREDS_DIR safely.
+
+    Returns the resolved Path if it is a file strictly under PREDS_DIR.
+    Otherwise returns None.
+    """
+    try:
+        candidate = (PREDS_DIR / relpath).resolve()
+    except Exception:
+        return None
+
+    try:
+        # Ensure the resolved path is under PREDS_DIR
+        candidate.relative_to(PREDS_DIR)
+    except Exception:
+        return None
+
+    if candidate.is_file():
+        return candidate
+    return None
+
+
 @app.route("/")
 def index():
     return app.send_static_file("router.html")
 
+
 @app.route("/classification")
 def classification():
+    # Set config.task to 'classification' (merge)
+    update_config({"task": "classification"})
     return app.send_static_file("classification/index.html")
 
-@app.route("/points")
-def points():
-    return app.send_static_file("points/index.html")
+# Add segmentation route
+@app.route("/segmentation")
+def segmentation():
+    # Set config.task to 'segmentation' (merge)
+    update_config({"task": "segmentation"})
+    return app.send_static_file("segmentation/index.html")
+
 
 # Static files are served by Flask from FRONTEND_DIR via static_url_path=""
+
+
+@app.get("/preds/<path:relpath>")
+def get_pred_mask(relpath: str):
+    """Serve prediction mask files from session/preds safely (read-only)."""
+    safe_path = _safe_pred_path(relpath)
+    if safe_path is None:
+        return jsonify({"error": "Prediction file not found"}), 404
+
+    mime_type, _ = mimetypes.guess_type(str(safe_path))
+    if mime_type is None:
+        mime_type = "application/octet-stream"
+    return send_file(safe_path, mimetype=mime_type)
 
 
 @app.route("/api/health", methods=["GET"])
@@ -107,13 +202,29 @@ def put_config():
     """
     config = request.get_json(silent=False) or {}
     update_config(config)
-    return jsonify({"status": "Config saved successfully"})
+    # Return the full, updated config (same as GET /api/config)
+    updated_config = get_config()
+    updated_config["available_architectures"] = _list_architectures()
+    return jsonify(updated_config)
 
 
 @app.get("/api/config")  # available architectures should go here
 def get_config_endpoint():
     """Gets the config from the db."""
+    # Opportunistic in-memory cleanup: at most once per 60 minutes
+    global _last_claim_cleanup_ts
+    now = time.time()
+    did_cleanup = False
+    if _last_claim_cleanup_ts is None or (now - _last_claim_cleanup_ts) >= 60 * 60:
+        try:
+            cleanup_claims_unconditionally()
+            did_cleanup = True
+        finally:
+            _last_claim_cleanup_ts = now
     config = get_config()
+    # If cleanup was performed, update last_claim_cleanup in the response
+    if did_cleanup:
+        config["last_claim_cleanup"] = int(_last_claim_cleanup_ts)
     # Add available architectures to the config response
     config["available_architectures"] = _list_architectures()
     return jsonify(config)
@@ -127,7 +238,12 @@ def get_next_sample():
     Query param: `pick` specifies class for pick_class strategy.
     """
     strategy = request.args.get("strategy")
-    pick = request.args.get("pick")  # For pick_class strategy
+    # Accept ?class=<name> for strategy=specific_class, fallback to legacy pick
+    pick = None
+    if strategy == "specific_class":
+        pick = request.args.get("class") or request.args.get("pick")
+    else:
+        pick = request.args.get("pick")
     sample_info = get_next_sample_by_strategy(strategy, pick)
     if sample_info:
         return create_image_response(sample_info)
@@ -174,67 +290,22 @@ def get_sample_next(sample_id: int):
         return jsonify({"error": f"No next sample found after ID {sample_id}"}), 404
 
 
-@app.put("/api/annotate/<int:sample_id>")
-def put_annotation(sample_id: int):
+
+# Implements DELETE /api/annotations/<int:sample_id> with optional 'type' query param
+@app.delete("/api/annotations/<int:sample_id>")
+def delete_annotations_endpoint(sample_id: int):
     """
-    Replaces an existing annotation in the database.
-    Path param: `sample_id` identifies the resource.
-    Body: {"class": str, "type": str (optional), "row": int (optional), "col": int (optional), ...}
+    Deletes all annotations for the sample, or only the specified type if provided.
+    Query param: 'type' (optional) to scope deletion (e.g., label, point, bbox).
+    Returns: {ok: true}
     """
-    data = request.get_json(silent=False) or {}
-    class_ = data.get("class")
-    if not class_:
-        return jsonify({"error": "Missing required field: class"}), 400
-
-    # Default to label type if not specified
-    annotation_type = data.get("type", "label")
-
-    # Prepare annotation data
-    annotation_data = {
-        "timestamp": data.get("timestamp"),
-    }
-
-    # Add coordinates if provided
-    if annotation_type in ["point", "bbox"]:
-        if "row" in data:
-            annotation_data["row"] = data["row"]
-        if "col" in data:
-            annotation_data["col"] = data["col"]
-
-    if annotation_type == "bbox":
-        if "width" in data:
-            annotation_data["width"] = data["width"]
-        if "height" in data:
-            annotation_data["height"] = data["height"]
-
-    upsert_annotation(sample_id, class_, annotation_type, **annotation_data)
-
-    # Check for live accuracy if this is a label annotation
-    if annotation_type == "label":
-        predicted_class = get_most_recent_prediction(sample_id)
-        if predicted_class:
-            is_correct = (predicted_class == class_)
-            store_live_accuracy(sample_id, is_correct)
-
-    # Release the claim since annotation is complete
-    release_claim_by_id(sample_id)
-
-    return jsonify({"status": "Annotation saved successfully"})
-
-
-@app.delete("/api/annotate/<int:sample_id>")
-def delete_annotation(sample_id: int):
-    """
-    Deletes an existing annotation in the database.
-    Path param: `sample_id` identifies the resource.
-    """
-    success = delete_annotation_by_sample_id(sample_id)
+    ann_type = request.args.get("type")
+    success = delete_annotation_by_sample_id(sample_id, ann_type) if ann_type else delete_annotation_by_sample_id(sample_id)
     if success:
-        # Release the claim since annotation is removed
         release_claim_by_id(sample_id)
-        return jsonify({"status": "Annotation deleted successfully"})
+        return jsonify({"ok": True})
     else:
-        return jsonify({"error": f"No annotation found for sample ID {sample_id}"}), 404
+        return jsonify({"error": f"No annotation(s) found for sample ID {sample_id}"}), 404
 
 
 @app.get("/api/annotations/<int:sample_id>")
@@ -243,47 +314,47 @@ def get_annotations_endpoint(sample_id: int):
     annotations = get_annotations(sample_id)
     return jsonify({"annotations": annotations})
 
+@app.put("/api/annotations/<int:sample_id>")
+def put_annotations_bulk(sample_id: int):
+    """
+    Replace all annotations for a sample, grouped by type, atomically per type.
+    Accepts a JSON list of annotation dicts.
+    On success, releases claim and returns {ok: true, count: <n>}.
+    Implements overwrite-by-type semantics: for each type present in the payload, replaces all existing annotations of that type for the sample.
+    Also stores live accuracy for label annotations as described in api.md and frontend.md.
+    """
+    items = request.get_json(silent=False) or []
+    if not isinstance(items, list):
+        return jsonify({"error": "Expected a JSON list of annotation objects"}), 400
+    # Group by type
+    grouped = defaultdict(list)
+    for ann in items:
+        ann_type = ann.get("type", "label")
+        grouped[ann_type].append(ann)
+    total = 0
+    for ann_type, anns in grouped.items():
+        # Remove existing annotations of this type
+        delete_annotation_by_sample_id(sample_id, ann_type)
+        # Insert new ones
+        for ann in anns:
+            class_ = ann.get("class")
+            if not class_:
+                continue
+            # Prepare annotation data (supporting optional fields)
+            annotation_data = {k: v for k, v in ann.items() if k not in ("class", "type")}
+            upsert_annotation(sample_id, class_, ann_type, **annotation_data)
+            total += 1
+            # Store live accuracy for label annotations
+            if ann_type == "label":
+                predicted_class = get_most_recent_prediction(sample_id)
+                if predicted_class is not None:
+                    is_correct = (predicted_class == class_)
+                    store_live_accuracy(sample_id, float(is_correct))
+    release_claim_by_id(sample_id)
+    return jsonify({"ok": True, "count": total})
 
-@app.post("/api/annotations/<int:sample_id>/points")
-def add_point_endpoint(sample_id: int):
-    """Add a point annotation to a sample."""
-    data = request.get_json(silent=False) or {}
-    class_name = data.get("class")
-    x = data.get("x")  # normalized coordinate [0,1]
-    y = data.get("y")  # normalized coordinate [0,1]
-    
-    if not class_name:
-        return jsonify({"error": "Missing required field: class"}), 400
-    if x is None or y is None:
-        return jsonify({"error": "Missing required fields: x, y"}), 400
-    
-    add_point_annotation(sample_id, class_name, x, y)
-    return jsonify({"status": "Point annotation added successfully"})
 
 
-@app.delete("/api/annotations/<int:sample_id>/points")
-def delete_point_endpoint(sample_id: int):
-    """Delete a point annotation near the specified coordinates."""
-    data = request.get_json(silent=False) or {}
-    x = data.get("x")  # normalized coordinate [0,1]
-    y = data.get("y")  # normalized coordinate [0,1]
-    tolerance = data.get("tolerance", 0.02)  # default 2% tolerance
-    
-    if x is None or y is None:
-        return jsonify({"error": "Missing required fields: x, y"}), 400
-    
-    success = delete_point_annotation(sample_id, x, y, tolerance)
-    if success:
-        return jsonify({"status": "Point annotation deleted successfully"})
-    else:
-        return jsonify({"error": "No point annotation found near the specified coordinates"}), 404
-
-
-@app.delete("/api/annotations/<int:sample_id>/points/all")
-def clear_points_endpoint(sample_id: int):
-    """Clear all point annotations for a sample."""
-    count = clear_point_annotations(sample_id)
-    return jsonify({"status": f"Cleared {count} point annotations"})
 
 
 @app.get("/api/stats")
@@ -302,3 +373,6 @@ def export_data():
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=8000, debug=True)
+
+# Module-level timestamp for opportunistic cleanup throttling
+_last_claim_cleanup_ts = None
