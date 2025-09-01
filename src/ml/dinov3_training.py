@@ -54,7 +54,11 @@ import time
 import pickle
 from pathlib import Path
 from typing import Dict, List, Optional, Sequence, Tuple
+import os
+FEAT_CACHE: dict[str, torch.Tensor] = {}
+FEAT_CACHE_MAX = 2000  # tune; each ~7 MB in fp16 for 1536→96x96x384
 
+import tqdm
 import numpy as np
 import torch
 from PIL import Image
@@ -193,6 +197,28 @@ def load_dinov3_model(size: str = "small") -> torch.nn.Module:
     return model
 
 
+def extract_features_cached(model: torch.nn.Module,
+                            image_padded: Image.Image,
+                            fp: str,
+                            resize_used: int,
+                            arch: str) -> torch.Tensor:
+    """Return F×H×W torch tensor on CPU (fp16), cached by (fp, mtime, resize, arch)."""
+    key = f"{fp}:{int(os.path.getmtime(fp))}:{resize_used}:{arch}"
+    feats = FEAT_CACHE.get(key)
+    if feats is not None:
+        return feats
+    # compute once
+    image_tensor = normalize_image(image_padded)
+    with torch.no_grad():
+        feats = extract_features(model, image_tensor)  # F×H×W on device
+    feats = feats.to("cpu").to(torch.float16).contiguous()
+    # tiny FIFO eviction
+    if len(FEAT_CACHE) >= FEAT_CACHE_MAX:
+        FEAT_CACHE.pop(next(iter(FEAT_CACHE)))
+    FEAT_CACHE[key] = feats
+    return feats
+
+
 def extract_features(model: torch.nn.Module, image_tensor: torch.Tensor) -> torch.Tensor:
     """Extract DINOv3 features for an image tensor of shape ``(1, C, H, W)``."""
     device = next(model.parameters()).device
@@ -299,15 +325,14 @@ def main() -> None:
 
         print("[FEAT] Extracting features for annotated points…")
         X, y, img_ids = [], [], []
-        for s_id, fp, pts_by_class in annotated:
+        for s_id, fp, pts_by_class in tqdm.tqdm(annotated):
             image_path = Path(fp)
             if not image_path.exists():
                 print(f"[WARN] Image file not found: {fp}")
                 continue
             with Image.open(image_path) as image:
                 image_padded, new_w, new_h = resize_pad(image, target_size=current_resize)
-            image_tensor = normalize_image(image_padded)
-            feats = extract_features(model, image_tensor)
+            feats = extract_features_cached(model, image_padded, fp, current_resize, model_size)
             for cls, pts in pts_by_class.items():
                 for pt in pts:
                     col = pt.get("x")
@@ -419,7 +444,7 @@ def main() -> None:
 
         Path("session/preds").mkdir(parents=True, exist_ok=True)
         # Don't print inside the prediction for loop to avoid console bloat
-        for dtp in to_predict:
+        for dtp in tqdm.tqdm(to_predict):
             fp = dtp["sample_filepath"]
             s_id = dtp["id"]
             image_path = Path(fp)
@@ -428,8 +453,7 @@ def main() -> None:
                 continue
             with Image.open(image_path) as image:
                 image_padded, new_w, new_h = resize_pad(image, target_size=current_resize)
-            image_tensor = normalize_image(image_padded)
-            feats = extract_features(model, image_tensor)
+            feats = extract_features_cached(model, image_padded, fp, current_resize, model_size)
             F, H, W = feats.shape
             feats_np = feats.permute(1, 2, 0).reshape(-1, F).cpu().numpy()
             classes_map = classifier.predict(feats_np).reshape(H, W)
