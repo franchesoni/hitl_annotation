@@ -62,7 +62,7 @@ import tqdm
 import numpy as np
 import torch
 from PIL import Image
-from sklearn.linear_model import SGDClassifier
+from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import accuracy_score
 
 # ––– local imports –––
@@ -237,7 +237,7 @@ def extract_features(model: torch.nn.Module, image_tensor: torch.Tensor) -> torc
 # ---------------------------------------------------------------------------
 
 
-def load_classifier(path: Path) -> Optional[SGDClassifier]:
+def load_classifier(path: Path) -> Optional[LogisticRegression]:
     if path.exists():
         try:
             with path.open("rb") as f:
@@ -247,7 +247,7 @@ def load_classifier(path: Path) -> Optional[SGDClassifier]:
     return None
 
 
-def save_classifier(clf: SGDClassifier, path: Path) -> None:
+def save_classifier(clf: LogisticRegression, path: Path) -> None:
     try:
         with path.open("wb") as f:
             pickle.dump(clf, f)
@@ -263,6 +263,8 @@ def save_classifier(clf: SGDClassifier, path: Path) -> None:
 def main() -> None:
     clf_path = Path("session/dinov3_linear_classifier_seg.pkl")
     print("[INIT] Loading classifier from", clf_path)
+
+    LOGREG_KW = dict(class_weight="balanced")
     classifier = load_classifier(clf_path)
     prev_config: Optional[dict] = None
     cycle = 0
@@ -292,6 +294,8 @@ def main() -> None:
                 print("[INFO] Loading DINOv3 backbone:", arch)
                 model = load_dinov3_model(arch)
                 model_size = arch
+            backend_db.reset_training_stats()
+            print("[METRICS] Cleared train/val curves due to config change.")
             # Update preprocessing resize but do not reset classifier/checkpoint
             current_resize = config.get("resize", 1536) or 1536
             print(f"[CONFIG] Set resize to {current_resize}")
@@ -389,35 +393,52 @@ def main() -> None:
         X_train, y_train = X[train_mask], y[train_mask]
         X_val, y_val = X[~train_mask], y[~train_mask]
 
-        # Determine desired class set from config and current labels to handle new classes over time
-        cfg_classes = config.get("classes") or []
-        desired_classes = np.array(sorted(set(cfg_classes) | set(np.unique(y))))
+        # Train/val split already computed above -> X_train, y_train, X_val, y_val
 
-        if X_train.shape[0] == 0:
-            print("[INFO] No training samples in current split — skipping training this cycle")
-        elif classifier is None:
-            print(f"[TRAIN] Initializing new classifier with {X_train.shape[0]} samples and {len(desired_classes)} classes.")
-            classifier = SGDClassifier(loss="log_loss", max_iter=1000)
-            classifier.partial_fit(X_train, y_train, classes=desired_classes)
+        # 1) Bail if you don’t have at least 2 classes
+        labels_present = np.unique(y_train)
+        if labels_present.size < 2:
+            print("[INFO] Not enough classes in train split — skipping training this cycle")
+            acc = None
         else:
-            # Safeguard: if feature dimension changed (e.g., backbone architecture), reinit
-            try:
-                prev_dim = classifier.coef_.shape[1]
-            except Exception:
-                prev_dim = X_train.shape[1]
-            if prev_dim != X_train.shape[1]:
-                print("[TRAIN] Feature dimension changed; reinitializing classifier")
-                classifier = SGDClassifier(loss="log_loss", max_iter=1000)
-                classifier.partial_fit(X_train, y_train, classes=desired_classes)
+            # 2) Reinit if first time or feature dim changed
+            need_new = False
+            if classifier is None:
+                need_new = True
             else:
-                existing = set(getattr(classifier, "classes_", []))
-                if existing != set(desired_classes):
-                    print("[TRAIN] Class set changed; reinitializing classifier")
-                    classifier = SGDClassifier(loss="log_loss", max_iter=1000)
-                    classifier.partial_fit(X_train, y_train, classes=desired_classes)
-                else:
-                    print(f"[TRAIN] Incremental fit on {X_train.shape[0]} samples.")
-                    classifier.partial_fit(X_train, y_train)
+                try:
+                    prev_dim = classifier.coef_.shape[1]
+                except Exception:
+                    prev_dim = -1
+                if prev_dim != X_train.shape[1]:
+                    print("[TRAIN] Feature dimension changed; reinitializing LogisticRegression.")
+                    need_new = True
+
+            if need_new:
+                backend_db.reset_training_stats()
+                classifier = LogisticRegression(**LOGREG_KW)
+
+            # 3) Fit fresh each cycle for stability/determinism
+            classifier.set_params(**LOGREG_KW)  # keep config stable if something touched it
+            classifier.fit(X_train, y_train)
+            print(f"[TRAIN] Trained multinomial LR on {X_train.shape[0]} samples, {len(classifier.classes_)} classes.")
+
+            # 4) Validation
+            if y_val.size:
+                y_pred = classifier.predict(X_val)
+                acc = accuracy_score(y_val, y_pred)
+                print(f"[VAL] Accuracy: {acc:.3f} | n_val: {len(y_val)}")
+            else:
+                acc = None
+
+            # 5) Save checkpoint
+            print("[TRAIN] Saving classifier checkpoint…")
+            save_classifier(classifier, clf_path)
+
+        # Store training stats (acc may be None above)
+        print("[DB] Storing training stats…")
+        backend_db.store_training_stats(cycle, None, None, acc)
+
         if classifier is not None:
             print("[TRAIN] Saving classifier checkpoint…")
             save_classifier(classifier, clf_path)

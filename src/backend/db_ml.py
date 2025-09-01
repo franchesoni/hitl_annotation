@@ -232,3 +232,21 @@ def store_training_stats(epoch, train_loss=None, valid_loss=None, accuracy=None)
                 """,
                 ("val_accuracy", accuracy, epoch, timestamp),
             )
+
+def reset_training_stats(curve_names: List[str] | None = None) -> None:
+    """
+    Delete all rows created by store_training_stats() from the 'curves' table.
+    By default removes: train_loss, val_loss, val_accuracy.
+
+    Note: there is no run_id, so this wipes history globally.
+    """
+    if curve_names is None:
+        curve_names = ["train_loss", "val_loss", "val_accuracy"]
+
+    if not curve_names:
+        return
+
+    placeholders = ",".join(["?"] * len(curve_names))
+    with _get_conn() as conn:
+        cursor = conn.cursor()
+        cursor.execute(f"DELETE FROM curves WHERE curve_name IN ({placeholders})", curve_names)
