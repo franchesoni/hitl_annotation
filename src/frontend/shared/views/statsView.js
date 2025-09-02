@@ -4,20 +4,8 @@ export class StatsView {
     this.classesView = classesView;
     this.statsDiv = document.getElementById('stats-display');
     this.predictionDiv = document.getElementById('prediction-display');
-    this.accuracySlider = document.getElementById('accuracy-slider');
-    this.accuracyValue = document.getElementById('accuracy-slider-value');
-    this.accuracyPct = this.accuracySlider ? Number(this.accuracySlider.value) : 100;
-    if (this.accuracyValue) this.accuracyValue.textContent = `${this.accuracyPct}%`;
     this.statsRequestId = 0;
     this.currentStats = null; // cache of latest stats provided by the app
-    if (this.accuracySlider) {
-      this.accuracySlider.addEventListener('input', () => {
-        this.accuracyPct = Number(this.accuracySlider.value);
-        if (this.accuracyValue) this.accuracyValue.textContent = `${this.accuracyPct}%`;
-        // Recompute from cached stats; do not fetch here.
-        this.update();
-      });
-    }
   }
   updatePrediction(predictionsOrLabelClass, labelProbability = null, labelSource = null) {
     if (!this.predictionDiv) return;
@@ -67,9 +55,6 @@ export class StatsView {
     
     if (requestId !== this.statsRequestId) return;
     if (stats) {
-      // Calculate windowed live accuracy stats
-      const liveAccuracyStats = this.calculateLiveAccuracyStats(stats.live_accuracy_points || [], this.accuracyPct);
-      
       let html = '';
       if (currentImageFilename) {
         html += `<div><b>Current image:</b> <span title="${currentImageFilename}">${currentImageFilename}</span></div>`;
@@ -84,33 +69,9 @@ export class StatsView {
           .join('');
         html += `<div><b>Annotations per class:</b>${counts}</div>`;
       }
-      html += `<div><b>Tries:</b> ${liveAccuracyStats.tries}</div>`;
-      html += `<div><b>Correct:</b> ${liveAccuracyStats.correct}</div>`;
-      if (typeof liveAccuracyStats.accuracy === 'number') {
-        const pct = (liveAccuracyStats.accuracy * 100).toFixed(1);
-        html += `<div><b>Live Accuracy:</b> <span class="accuracy-badge">${pct}%</span></div>`;
-      } else {
-        html += `<div><b>Live Accuracy:</b> <span class="accuracy-badge">0%</span></div>`;
-      }
       this.statsDiv.innerHTML = html;
     }
   }
   
-  calculateLiveAccuracyStats(liveAccuracyPoints, windowPercentage) {
-    if (!liveAccuracyPoints || liveAccuracyPoints.length === 0) {
-      return { tries: 0, correct: 0, accuracy: 0.0 };
-    }
-    
-    const totalPoints = liveAccuracyPoints.length;
-    const windowSize = Math.max(1, Math.floor(totalPoints * windowPercentage / 100));
-    
-    // Get the last windowSize points
-    const windowPoints = liveAccuracyPoints.slice(-windowSize);
-    
-    const tries = windowPoints.length;
-    const correct = windowPoints.filter(p => p.value === 1.0).length;
-    const accuracy = tries > 0 ? correct / tries : 0.0;
-    
-    return { tries, correct, accuracy };
-  }
+  // Removed live accuracy calculation for segmentation frontend
 }
