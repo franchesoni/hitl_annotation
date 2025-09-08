@@ -49,7 +49,7 @@ app.config.update(
 @lru_cache(maxsize=1)
 def _list_architectures():
     """Return all allowed model architectures."""
-    resnets = ["resnet18", "resnet34"]
+    resnets = ["small", "resnet18", "resnet34"]
     return resnets + [m for m in sorted(timm.list_models()) if m not in resnets]
 
 
