@@ -44,6 +44,11 @@
             grid-template-columns: 1fr 1fr;
             gap: 20px;
             margin-bottom: 30px;
+            justify-items: stretch;
+        }
+
+        .app-grid.single {
+            grid-template-columns: 1fr;
         }
         
         .app-card {
@@ -95,23 +100,60 @@
         <div class="subtitle">Choose your annotation task</div>
         
         <div class="app-grid">
-            <a href="/classification" class="app-card">
+            <a href="/classification" class="app-card" data-task="classification">
                 <span class="app-icon">🏷️</span>
                 <div class="app-title">Image Classification</div>
                 <div class="app-description">Classify entire images into categories with AI assistance</div>
             </a>
             
-            <a href="/segmentation" class="app-card">
+            <a href="/segmentation" class="app-card" data-task="segmentation">
                 <span class="app-icon">📍</span>
                 <div class="app-title">Segmentation</div>
                 <div class="app-description">Annotate with labeled points; view model masks</div>
             </a>
         </div>
-        
+
         <div class="footer">
             Select an annotation type to begin your human-in-the-loop workflow
         </div>
     </div>
+    <script>
+        (async function configureRouterView() {
+            const grid = document.querySelector('.app-grid');
+            const subtitle = document.querySelector('.subtitle');
+            const footer = document.querySelector('.footer');
+            const cards = Array.from(grid.querySelectorAll('.app-card'));
+
+            try {
+                const response = await fetch('/api/config');
+                if (!response.ok) throw new Error('Config request failed');
+                const config = await response.json();
+                const task = config && config.task;
+
+                if (task === 'classification' || task === 'segmentation') {
+                    cards.forEach((card) => {
+                        if (card.dataset.task !== task) {
+                            card.remove();
+                        }
+                    });
+                    subtitle.textContent = task === 'classification'
+                        ? 'Continue your classification workflow'
+                        : 'Continue your segmentation workflow';
+                    footer.textContent = 'Reset the session directory to switch tasks.';
+                } else {
+                    subtitle.textContent = 'Choose your annotation task';
+                }
+
+                if (grid.querySelectorAll('.app-card').length === 1) {
+                    grid.classList.add('single');
+                }
+            } catch (err) {
+                console.error('Failed to load configuration:', err);
+                subtitle.textContent = 'Unable to load task configuration';
+                footer.textContent = 'Check the backend service and reload this page.';
+            }
+        })();
+    </script>
 </body>
 
 </html>

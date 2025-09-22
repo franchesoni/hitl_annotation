@@ -1,8 +1,9 @@
 from pathlib import Path
-from flask import Flask, request, jsonify, send_file
+from flask import Flask, request, jsonify, send_file, Response
 from io import BytesIO
 import base64
 from functools import lru_cache
+import json
 import timm
 import time
 import mimetypes
@@ -44,6 +45,26 @@ app.config.update(
     PROPAGATE_EXCEPTIONS=True,
     TRAP_HTTP_EXCEPTIONS=True,
 )
+
+
+def _task_conflict_response(current_task: str | None, requested_task: str) -> Response:
+    """Return an HTML response that alerts the user about task mismatch."""
+    message_task = current_task or "unknown"
+    message = (
+        f"The current task is {message_task}. You tried to open {requested_task}. "
+        "You can't change tasks. To switch, reset or rename the session directory and restart the app."
+    )
+    html = (
+        "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\"><title>Task Locked</title>"
+        "</head><body><script>"
+        f"alert({json.dumps(message)});"
+        "window.location.replace('/');"
+        "</script></body></html>"
+    )
+    response = app.make_response(html)
+    response.status_code = 409
+    response.headers["Content-Type"] = "text/html; charset=utf-8"
+    return response
 
 
 @lru_cache(maxsize=1)
@@ -88,7 +109,6 @@ def create_image_response(sample_info):
         headers["X-Predictions-Probability"] = str(to_ppm(prob) if prob is not None else "")
 
     # If mask predictions exist, expose them as a JSON list of {class, url} objects
-    import json
     mask_preds = [p for p in preds if p.get("type") == "mask" and p.get("mask_path")]
     mask_map = {}
     for pred in mask_preds:
@@ -164,16 +184,26 @@ def index():
 
 @app.route("/classification")
 def classification():
-    # Set config.task to 'classification' (merge)
-    update_config({"task": "classification"})
-    return app.send_static_file("classification/index.html")
+    config = get_config() or {}
+    current_task = config.get("task")
+    if current_task is None:
+        update_config({"task": "classification"})
+        return app.send_static_file("classification/index.html")
+    if current_task == "classification":
+        return app.send_static_file("classification/index.html")
+    return _task_conflict_response(current_task, "classification")
 
 # Add segmentation route
 @app.route("/segmentation")
 def segmentation():
-    # Set config.task to 'segmentation' (merge)
-    update_config({"task": "segmentation"})
-    return app.send_static_file("segmentation/index.html")
+    config = get_config() or {}
+    current_task = config.get("task")
+    if current_task is None:
+        update_config({"task": "segmentation"})
+        return app.send_static_file("segmentation/index.html")
+    if current_task == "segmentation":
+        return app.send_static_file("segmentation/index.html")
+    return _task_conflict_response(current_task, "segmentation")
 
 
 # Static files are served by Flask from FRONTEND_DIR via static_url_path=""

@@ -33,12 +33,23 @@ and the AI, which is one of the following:
     python -m src.ml.dinov3_training 
     ```
 
+## changelog
+- 25-09-22: 
+    - make the router show both options if task is not set in config and show only the selected task if it is, and fail if going directly (using url) to one of the tasks if it's not the selected task, and if it is the right one and no task was set, set it. essentially, if the task is not set and we hit the router, show both tasks. once we move to a task, if the task is unset, we set it. if one moves to a task that was set and is different, show an alert that says something like 'the current task is X, you can't change tasks, if you want to do another task, reset the app' (resetting means rm / renaming current session dir and relaunching the apps)
+    - check cls frontend works
+    - fix classif undo
+
 ## to-do
-- check cls frontend works
-- make the router show both options if task is not set in config and show only the selected task if it is, and fail if going directly (using url) to one of the tasks if it's not the selected task, and if it is the right one and no task was set, set it. essentially, if the task is not set and we hit the router, show both tasks. once we move to a task, if the task is unset, we set it. if one moves to a task that was set and is different, show an alert that says something like 'the current task is X, you can't change tasks, if you want to do another task, reset the app' (resetting means rm / renaming current session dir and relaunching the apps)
-- make using the keyboard easier (should work everywhere in the app)
+- add mask training
+- filter images via name
+- expose way to add more images if needed
 - when removing a class show warning, remove the annotations for that class, and reset the model
+- make using the keyboard easier (should work everywhere in the app)
+- update live acc thing in classif frontend
 - remove the live accuracy things in the seg frontend 
 - add next image strategy (random, sequential, select class) for seg frontend
 - show image id in frontend
 - allow the user to jump to a specific image id
+- make it possible to start from trained model (maybe self-train?)
+    - train model over horizontal dips
+    - try model over horizontal dips

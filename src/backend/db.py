@@ -87,7 +87,7 @@ def get_config():
                 "budget": budget,
                 "resize": resize,
                 "last_claim_cleanup": last_claim_cleanup,
-                "task": task or "classification",
+                "task": task,
             }
         return {}
 
@@ -209,7 +209,7 @@ def update_config(config):
                 (classes_json, int(current.get("ai_should_be_run", False)),
                  current.get("architecture"), current.get("budget"),
                  current.get("resize"), current.get("last_claim_cleanup"),
-                 current.get("task", "classification"))
+                 current.get("task"))
             )
         else:
             cursor.execute(
@@ -217,7 +217,7 @@ def update_config(config):
                 (classes_json, int(current.get("ai_should_be_run", False)),
                  current.get("architecture"), current.get("budget"),
                  current.get("resize"), current.get("last_claim_cleanup"),
-                 current.get("task", "classification"))
+                 current.get("task"))
             )
 
 def get_all_samples():

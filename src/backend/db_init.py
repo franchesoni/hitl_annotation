@@ -80,7 +80,8 @@ def build_initial_db_dict() -> dict:
         db_dict (dict): The database dictionary in the strict format.
     """
     # TODO: User should edit this function to load or build their data.
-    imagedir = "/home/franchesoni/Downloads/berkeley/images/test"
+    # imagedir = "/home/franchesoni/Downloads/berkeley/images/test"
+    imagedir = "/home/franchesoni/repos/hitl_annotation/data/catsvsdogs"
 
     return {
         "samples": [
@@ -485,7 +486,7 @@ def initialize_database_if_needed(db_path=DB_PATH):
                 "budget": 100,
                 "resize": 224,
                 "last_claim_cleanup": None,
-                "task": "classification",
+                "task": None,
             }
             cursor.execute(
                 "INSERT INTO config (classes, ai_should_be_run, architecture, budget, resize, last_claim_cleanup, task) VALUES (?, ?, ?, ?, ?, ?, ?)",
