@@ -138,18 +138,17 @@ document.addEventListener('DOMContentLoaded', async () => {
                         await updateConfigIfNeeded();
                         // 2) Delete annotation for the current id
                         await api.deleteAnnotation(sampleId);
-                        // 3) Load previous image deterministically
-                        const prev = await api.loadSamplePrev(sampleId);
+                        const prev = await api.loadSample(sampleId);
                         if (!prev) {
-                                alert('No previous image available');
-                        } else {
-                                const { imageUrl, sampleId: returnedSampleId, filepath, predictions } = prev;
-                                state.currentImageFilepath = filepath;
-                                imageView.loadImage(imageUrl, filepath);
-                                await classesView.setCurrentSample(returnedSampleId, filepath);
-                                statsView.updatePrediction(predictions);
+                                alert('Unable to reload undone sample');
+                                return;
                         }
-                        // 4) Refresh stats/config
+                        const { imageUrl, sampleId: returnedSampleId, filepath, predictions } = prev;
+                        state.currentImageFilepath = filepath;
+                        state.lastAnnotatedClass = null;
+                        imageView.loadImage(imageUrl, filepath);
+                        await classesView.setCurrentSample(returnedSampleId, filepath);
+                        statsView.updatePrediction(predictions);
                         await getStatsAndConfig();
                 } catch (e) {
                         console.error('Undo workflow failed:', e);
