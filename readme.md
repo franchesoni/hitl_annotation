@@ -18,18 +18,24 @@ webapp (local):
 ```
 gunicorn src.backend.main:app --bind 127.0.0.1:8001 --reload
 ```
-AI training (classification):
-```
-python -m src.ml.fastai_training --arch vit_medium_patch16_reg4_gap_256.sbb_in12k_ft_in1k
-```
-AI training (segmentation):
-``` 
-python -m src.ml.dinov3_training 
-```
+
+and the AI, which is one of the following:
+- classification training (timm arch):
+    ```
+    python -m src.ml.fastai_training --arch vit_medium_patch16_reg4_gap_256.sbb_in12k_ft_in1k
+    ```
+- classification training (frozen dinov3 + linear):
+    ```
+    python -m src.ml.dinov3_classification
+    ```
+- segmentation training (frozen dinov3 + linear):
+    ``` 
+    python -m src.ml.dinov3_training 
+    ```
+
 ## to-do
 - check cls frontend works
-- fix undo for classification
-- make the router show both options if task is not set in config and show only the selected task if it is, and fail if going directly to one of the tasks if it's not the selected task, and if it is the right one and no task was set, set it 
+- make the router show both options if task is not set in config and show only the selected task if it is, and fail if going directly (using url) to one of the tasks if it's not the selected task, and if it is the right one and no task was set, set it. essentially, if the task is not set and we hit the router, show both tasks. once we move to a task, if the task is unset, we set it. if one moves to a task that was set and is different, show an alert that says something like 'the current task is X, you can't change tasks, if you want to do another task, reset the app' (resetting means rm / renaming current session dir and relaunching the apps)
 - make using the keyboard easier (should work everywhere in the app)
 - when removing a class show warning, remove the annotations for that class, and reset the model
 - remove the live accuracy things in the seg frontend 
