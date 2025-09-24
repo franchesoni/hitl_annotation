@@ -14,6 +14,10 @@ import os
 import json
 import time
 
+
+SKIP_ANNOTATION_TYPE = "skip"
+SKIP_CLASS_SENTINEL = "__SKIP__"
+
 DB_PATH = "session/app.db"
 
 def _get_conn():
@@ -224,6 +228,14 @@ def get_all_samples():
     """Return all samples. (Not implemented here; see src.backend.db_ml.get_all_samples)"""
     raise NotImplementedError("Moved to src.backend.db_ml.get_all_samples")
 
+
+def _unlabeled_annotation_types_for_task():
+    """Return annotation types marking a sample as completed for the current task."""
+    task = (get_config() or {}).get("task", "classification")
+    if task == "segmentation":
+        return ("point",)
+    return ("label", SKIP_ANNOTATION_TYPE)
+
 def _get_next_unlabeled_sequential():
     """Returns the next unlabeled sample info without claiming it.
 
@@ -231,8 +243,8 @@ def _get_next_unlabeled_sequential():
       - classification → no label annotations
       - segmentation   → no point annotations
     """
-    task = (get_config() or {}).get("task", "classification")
-    target_type = "point" if task == "segmentation" else "label"
+    target_types = _unlabeled_annotation_types_for_task()
+    placeholders = ",".join(["?"] * len(target_types))
     with _get_conn() as conn:
         cursor = conn.cursor()
         cursor.execute(
@@ -242,12 +254,12 @@ def _get_next_unlabeled_sequential():
             WHERE s.claimed = 0
               AND NOT EXISTS (
                 SELECT 1 FROM annotations a
-                WHERE a.sample_id = s.id AND a.type = ?
+                WHERE a.sample_id = s.id AND a.type IN ({placeholders})
               )
             ORDER BY s.id
             LIMIT 1
-            """,
-            (target_type,),
+            """.format(placeholders=placeholders),
+            target_types,
         )
         result = cursor.fetchone()
         return {"id": result[0], "sample_filepath": result[1]} if result else None
@@ -255,8 +267,8 @@ def _get_next_unlabeled_sequential():
 
 def _get_next_unlabeled_random():
     """Returns a random unlabeled sample info without claiming it (task-aware)."""
-    task = (get_config() or {}).get("task", "classification")
-    target_type = "point" if task == "segmentation" else "label"
+    target_types = _unlabeled_annotation_types_for_task()
+    placeholders = ",".join(["?"] * len(target_types))
     with _get_conn() as conn:
         cursor = conn.cursor()
         cursor.execute(
@@ -266,12 +278,12 @@ def _get_next_unlabeled_random():
             WHERE s.claimed = 0
               AND NOT EXISTS (
                 SELECT 1 FROM annotations a
-                WHERE a.sample_id = s.id AND a.type = ?
+                WHERE a.sample_id = s.id AND a.type IN ({placeholders})
               )
             ORDER BY RANDOM()
             LIMIT 1
-            """,
-            (target_type,),
+            """.format(placeholders=placeholders),
+            target_types,
         )
         result = cursor.fetchone()
         return {"id": result[0], "sample_filepath": result[1]} if result else None
@@ -282,8 +294,8 @@ def _get_unlabeled_pick(pick, highest_probability=True):
 
     Unlabeled criterion is task-aware; predictions are label-type.
     """
-    task = (get_config() or {}).get("task", "classification")
-    target_type = "point" if task == "segmentation" else "label"
+    target_types = _unlabeled_annotation_types_for_task()
+    placeholders = ",".join(["?"] * len(target_types))
     order_direction = "DESC" if highest_probability else "ASC"
     with _get_conn() as conn:
         cursor = conn.cursor()
@@ -296,12 +308,12 @@ def _get_unlabeled_pick(pick, highest_probability=True):
               AND p.class = ?
               AND NOT EXISTS (
                 SELECT 1 FROM annotations a
-                WHERE a.sample_id = s.id AND a.type = ?
+                WHERE a.sample_id = s.id AND a.type IN ({placeholders})
               )
             ORDER BY p.probability {order_direction}
             LIMIT 1
             """,
-            (pick, target_type),
+            (pick, *target_types),
         )
         result = cursor.fetchone()
         return {"id": result[0], "sample_filepath": result[1], "probability": result[2]} if result else None
@@ -385,12 +397,15 @@ def get_annotations(sample_id):
         results = cursor.fetchall()
         annotations = []
         for row in results:
+            ann_type = row[4]
+            raw_class = row[3]
+            class_value = None if ann_type == SKIP_ANNOTATION_TYPE or raw_class == SKIP_CLASS_SENTINEL else raw_class
             ann = {
                 "id": row[0],
                 "sample_id": row[1], 
                 "sample_filepath": row[2],
-                "class": row[3],
-                "type": row[4],
+                "class": class_value,
+                "type": ann_type,
                 "timestamp": row[9]
             }
             # Add coordinates based on type
@@ -404,6 +419,8 @@ def get_annotations(sample_id):
                     ann["row01"] = row[6]
                     ann["width01"] = row[7]
                     ann["height01"] = row[8]
+            elif ann_type == SKIP_ANNOTATION_TYPE:
+                ann["skipped"] = True
             # label type has no coordinates
             annotations.append(ann)
         return annotations
@@ -551,9 +568,19 @@ def upsert_annotation(sample_id, class_name, annotation_type="label", **kwargs):
         if not result:
             raise ValueError(f"Sample with ID {sample_id} not found")
         
-        if annotation_type == "label":
-            # For labels, replace existing label annotation for this sample
-            cursor.execute("DELETE FROM annotations WHERE sample_id = ? AND type = 'label'", (sample_id,))
+        if annotation_type in {"label", SKIP_ANNOTATION_TYPE}:
+            # For label/skip, replace existing annotation for this sample and type
+            cursor.execute(
+                "DELETE FROM annotations WHERE sample_id = ? AND type = ?",
+                (sample_id, annotation_type),
+            )
+
+        if annotation_type == SKIP_ANNOTATION_TYPE:
+            stored_class = SKIP_CLASS_SENTINEL
+        else:
+            if class_name is None or str(class_name).strip() == "":
+                raise ValueError("Class name is required for annotation type '{}'".format(annotation_type))
+            stored_class = class_name
         
         # Normalize coordinates to PPM integers if provided.
         # Accept either normalized floats (col,row,width,height) or ppm ints (col01,row01,width01,height01).
@@ -591,7 +618,7 @@ def upsert_annotation(sample_id, class_name, annotation_type="label", **kwargs):
             """,
             (
                 sample_id,
-                class_name,
+                stored_class,
                 annotation_type,
                 col01,
                 row01,
@@ -638,8 +665,7 @@ def clear_point_annotations(sample_id):
         return cursor.rowcount
 
 def delete_annotation_by_sample_id(sample_id):
-    """Delete annotation(s) for a specific sample ID. If annotation_type is given, only delete that type."""
-    """Delete annotation(s) for a sample. If annotation_type is given, only delete that type."""
+    """Delete all annotations for a specific sample ID."""
     with _get_conn() as conn:
         cursor = conn.cursor()
         cursor.execute(
@@ -650,6 +676,20 @@ def delete_annotation_by_sample_id(sample_id):
             (sample_id,)
         )
         return cursor.rowcount > 0
+
+
+def delete_annotations_by_type(sample_id, annotation_type):
+    """Delete annotations for a sample limited to a specific type."""
+    with _get_conn() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            DELETE FROM annotations
+            WHERE sample_id = ? AND type = ?
+            """,
+            (sample_id, annotation_type),
+        )
+        return cursor.rowcount
 
 def get_annotation_stats():
     """Returns current annotation statistics including training stats and live accuracy."""
@@ -668,9 +708,10 @@ def get_annotation_stats():
         cursor.execute("""
             SELECT class, COUNT(*) as count
             FROM annotations
+            WHERE type = 'label' AND class != ?
             GROUP BY class
             ORDER BY count DESC
-        """)
+        """, (SKIP_CLASS_SENTINEL,))
         class_counts = {row[0]: row[1] for row in cursor.fetchall()}
         
         # Get training stats from curves table
@@ -745,11 +786,14 @@ def export_annotations():
         
         annotations = []
         for row in results:
+            ann_type = row[3]
+            raw_class = row[2]
+            class_value = None if ann_type == SKIP_ANNOTATION_TYPE or raw_class == SKIP_CLASS_SENTINEL else raw_class
             ann = {
                 "sample_id": row[0],
                 "sample_filepath": row[1],
-                "class": row[2],
-                "type": row[3],
+                "class": class_value,
+                "type": ann_type,
                 "timestamp": row[8]
             }
             # Add coordinates based on type
@@ -761,6 +805,8 @@ def export_annotations():
                 ann["row01"] = row[5]
                 ann["width01"] = row[6]
                 ann["height01"] = row[7]
+            elif ann_type == SKIP_ANNOTATION_TYPE:
+                ann["skipped"] = True
 
             annotations.append(ann)
 

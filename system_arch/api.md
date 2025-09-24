@@ -33,7 +33,7 @@ Sampling strategies for `/api/samples/next`: `sequential` (default), `random`, `
 | Method | Path | Query Params | Request Body | Response | Notes |
 |---|---|---|---|---|---|
 | GET | `/api/annotations/{id}` | — | — | `{annotations: [...]}` | All annotations for the sample. |
-| PUT | `/api/annotations/{id}` | — | JSON list of annotations. Each item: `type` (`label` default), fields by type: `label` → `class` (string, required) and optional `timestamp`; `point` → `class` (string, required), `col01`,`row01` (integers, ppm of image width/height, 0..1,000,000); `bbox` → `class` (string, required), `col01`,`row01`,`width01`,`height01` (integers, ppm, 0..1,000,000). | `{ok: true, count: <n>}` or updated annotations | Atomic per sample; overwrite-by-type: for each `type` present in the payload, existing annotations of that `type` for the sample are fully replaced by the provided list for that `type`. Releases claim. |
+| PUT | `/api/annotations/{id}` | — | JSON list of annotations. Each item: `type` (`label` default), fields by type: `label` → `class` (string, required) and optional `timestamp`; `point` → `class` (string, required), `col01`,`row01` (integers, ppm of image width/height, 0..1,000,000); `bbox` → `class` (string, required), `col01`,`row01`,`width01`,`height01` (integers, ppm, 0..1,000,000); `skip` → optional `timestamp` (class ignored). | `{ok: true, count: <n>}` or updated annotations | Atomic per sample; overwrite-by-type: for each `type` present in the payload, existing annotations of that `type` for the sample are fully replaced by the provided list for that `type`. Releases claim. |
 | DELETE | `/api/annotations/{id}` | — | — | `{ok: true}` | Delete all annotations for the sample. |
 
  
@@ -66,3 +66,4 @@ Notes
   - Config PUT is merge-only: unspecified keys remain unchanged; new keys are added; no deletions.
   - Annotations PUT is overwrite-by-type: for any `type` present in the request list, the server replaces all existing annotations of that `type` for the sample with exactly those supplied; other `type`s not present remain untouched.
   - Transactionality: A `PUT /api/annotations/{id}` with multiple types is processed atomically per sample. Either all type replacements succeed and are committed, or none are applied.
+- Skip semantics: Classification skip posts `{type:"skip"}` (no class needed). Responses surface skip entries with `class=null` and `skipped=true`. Skipped samples are excluded from future “Next” pulls and not counted as labels for training or stats.

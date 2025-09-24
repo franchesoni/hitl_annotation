@@ -81,6 +81,18 @@ export class API {
         if (!res.ok) throw new Error('Annotation failed');
         return await res.json();
     }
+    async skipSample(sampleId) {
+        const payload = [
+            { type: 'skip', timestamp: new Date().toISOString() }
+        ];
+        const res = await fetch(`/api/annotations/${sampleId}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+        if (!res.ok) throw new Error('Skip failed');
+        return await res.json();
+    }
     async savePointAnnotations(sampleId, points) {
         // points: [{ class: string, x: number, y: number }] with normalized coords [0,1]
         const payload = points.map(p => ({

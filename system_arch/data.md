@@ -45,8 +45,8 @@ Represents a user annotation stored in the `annotations` table.
 | --- | --- | --- | --- | --- |
 | `id` | integer | Unique annotation ID (DB primary key) | - | Yes |
 | `sample_id` | integer | Associated sample ID | `samples.id` | Yes |
-| `class` | string | Annotation class label | - | Yes |
-| `type` | string | One of: `label`, `point`, `bbox` | - | Yes |
+| `class` | string | Annotation class label (`null` in API responses for `skip`) | - | Yes (ignored when `type=skip`) |
+| `type` | string | One of: `label`, `point`, `bbox`, `skip` | - | Yes |
 | `timestamp` | integer|null | Unix seconds when the annotation was created | - | No |
 | `col01` | integer | X coordinate as parts-per-million of image width (0..1,000,000) | - | Yes if type ∈ {`point`,`bbox`} |
 | `row01` | integer | Y coordinate as parts-per-million of image height (0..1,000,000) | - | Yes if type ∈ {`point`,`bbox`} |
@@ -168,6 +168,7 @@ Notes
 - Coordinate semantics: All coordinates for points and bboxes are integers representing parts per million of the image dimension. `col01`/`width01` are ppm of image width; `row01`/`height01` are ppm of image height. Range: 0..1,000,000.
 - Probabilities: For label predictions, `probability` is an integer ppm (0..1,000,000). ML writers MUST round floats to nearest ppm; readers MUST divide by 1,000,000 when float is needed. Range clamp: [0, 1_000_000].
 - Single source of truth: `sample_filepath` exists only in `samples`. Child tables store `sample_id`. APIs expose the image filepath for user convenience via the `X-Image-Filepath` response header on image endpoints.
+- Skip annotations: stored with `type='skip'` and an internal sentinel class; API and export responses surface `class=null` plus `skipped=true` to mark them explicitly.
 - Mask safety and URL mapping:
   - Storage: `predictions.mask_path` stores a filesystem path to the mask artifact on disk, typically under `session/preds/`. Store either a full absolute path (preferred for unambiguous identification) or a path relative to the session root (e.g., `preds/<file>.png`).
   - API exposure (masks): Image responses expose mask predictions via headers as relative URL paths using `X-Predictions-Mask` (see `system_arch/api.md`). The backend maps a stored `mask_path` to a URL under a fixed, sandboxed route (e.g., `/preds/<file>.png`). Absolute filesystem paths for masks MUST NOT be sent to clients.

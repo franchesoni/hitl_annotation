@@ -14,7 +14,7 @@ from src.backend.db import (
     get_sample_by_id, upsert_annotation, delete_annotation_by_sample_id,
     get_annotation_stats, export_annotations, release_claim_by_id,
     get_most_recent_prediction, store_live_accuracy, get_annotations,
-    cleanup_claims_unconditionally,
+    cleanup_claims_unconditionally, delete_annotations_by_type,
     add_point_annotation, delete_point_annotation, clear_point_annotations,
     get_sample_prev_by_id, get_sample_next_by_id, get_predictions,
 )
@@ -366,17 +366,25 @@ def put_annotations_bulk(sample_id: int):
     if not isinstance(items, list):
         return jsonify({"error": "Expected a JSON list of annotation objects"}), 400
     # Group by type
+    allowed_types = {"label", "point", "bbox", "skip"}
     grouped = defaultdict(list)
     for ann in items:
         ann_type = ann.get("type", "label")
+        if ann_type not in allowed_types:
+            return jsonify({"error": f"Unsupported annotation type: {ann_type}"}), 400
         grouped[ann_type].append(ann)
     total = 0
     for ann_type, anns in grouped.items():
-        # Remove existing annotations of this type
-        delete_annotation_by_sample_id(sample_id)
+        # Remove existing annotations of this type first (overwrite-by-type semantics)
+        delete_annotations_by_type(sample_id, ann_type)
         # Insert new ones
         for ann in anns:
             class_ = ann.get("class")
+            timestamp = ann.get("timestamp")
+            if ann_type == "skip":
+                upsert_annotation(sample_id, None, ann_type, timestamp=timestamp)
+                total += 1
+                continue
             if not class_:
                 continue
             # Prepare annotation data (supporting optional fields)

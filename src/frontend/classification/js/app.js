@@ -124,6 +124,27 @@ document.addEventListener('DOMContentLoaded', async () => {
                 classesView.render();
                 aiControlsView.render(state.config);
         }
+        const skipBtn = document.getElementById('skip-btn');
+        async function skipCurrentSample() {
+                if (state.workflowInProgress) return;
+                const sampleId = classesView.currentSampleId;
+                if (!sampleId) return;
+                beginWorkflow();
+                try {
+                        await updateConfigIfNeeded();
+                        await api.skipSample(sampleId);
+                        state.history.push(sampleId);
+                        await loadNextImage();
+                        await getStatsAndConfig();
+                } catch (e) {
+                        console.error('Skip workflow failed:', e);
+                } finally {
+                        endWorkflow();
+                }
+        }
+        if (skipBtn) {
+                skipBtn.addEventListener('click', skipCurrentSample);
+        }
         const undoBtn = document.getElementById('undo-btn');
         async function undo() {
                 if (state.workflowInProgress) return;
@@ -169,6 +190,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                   .bind('meta+z', guard(() => undo()))
                   .bind('backspace', guard(() => undo()))
                   .bind('u', guard(() => undo()))
+                  .bind('s', guard(() => skipCurrentSample()))
                   .attach();
         }
         initKeyboard(api);

@@ -1,4 +1,4 @@
-from src.backend.db import DB_PATH, to_ppm
+from src.backend.db import DB_PATH, to_ppm, SKIP_CLASS_SENTINEL
 from pathlib import Path
 import sqlite3
 import os
@@ -144,7 +144,7 @@ def validate_db_dict(db):
         if not isinstance(a, dict):
             raise ValueError("Each annotation must be a dict.")
         required_ann_keys = {"sample_filepath", "type", "class"}
-        allowed_types = {"label", "bbox", "point"}
+        allowed_types = {"label", "bbox", "point", "skip"}
         if not required_ann_keys.issubset(a.keys()):
             raise ValueError(
                 f"Annotation missing required keys: {required_ann_keys - set(a.keys())}"
@@ -413,7 +413,7 @@ def initialize_database_if_needed(db_path=DB_PATH):
         ann_rows = [
             (
                 a["sample_filepath"],
-                a["class"],
+                SKIP_CLASS_SENTINEL if a["type"] == "skip" else a["class"],
                 a["type"],
                 a.get("col01"),
                 a.get("row01"),
