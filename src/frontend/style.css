@@ -59,7 +59,9 @@ body {
     overflow-y: auto;
     display: flex;
     flex-direction: column;
-    gap: 20px
+    gap: 20px;
+    box-sizing: border-box;
+    overflow-x: hidden;
 }
 
 .class-input-group {
@@ -109,6 +111,12 @@ body {
 .info-display {
     font-size: 14px;
     line-height: 1.4
+}
+
+#stats-display span {
+    display: inline-block;
+    max-width: 100%;
+    overflow-wrap: anywhere;
 }
 
 #stats-display {
