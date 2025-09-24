@@ -169,6 +169,12 @@ body {
     font-size: 14px
 }
 
+.sample-info-line {
+    font-size: 13px;
+    color: #ccd3dc;
+    word-break: break-all;
+}
+
 .ai-control {
     display: flex;
     flex-direction: column;

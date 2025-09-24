@@ -6,6 +6,7 @@ import { AIControlsView } from '/shared/views/aiControlsView.js';
 import { TrainingCurveView } from '/shared/views/trainingCurveView.js';
 import { Hotkeys } from '/shared/js/hotkeys.js';
 import { SampleFilterView } from '/shared/views/sampleFilterView.js';
+import { SampleInfoView } from '/shared/views/sampleInfoView.js';
 
 document.addEventListener('DOMContentLoaded', async () => {
     // -----------------------------------------------------------
@@ -39,6 +40,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     const api = new API();
     const sampleFilterInput = document.getElementById('sample-filter-input');
     const sampleFilterCountEl = document.getElementById('sample-filter-count');
+    const sampleInfoContainer = document.getElementById('sample-info');
     let aiControlsView = null;
     const sampleFilterView = new SampleFilterView({
         inputEl: sampleFilterInput,
@@ -72,6 +74,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     await loadConfigFromServer();
     const imageView = new ImageView(leftPanel, 'loading-overlay', 'c');
+    const sampleInfoView = sampleInfoContainer ? new SampleInfoView({ container: sampleInfoContainer, state }) : null;
 
     // Overlay slider controls prediction/annotation overlay strength (0-100%)
     const overlaySlider = document.getElementById('overlay-slider');
@@ -271,6 +274,9 @@ document.addEventListener('DOMContentLoaded', async () => {
         const { imageUrl, sampleId, filepath, predictions } = sampleData;
         state.currentImageFilepath = filepath;
         state.currentSampleId = parseInt(sampleId);
+        if (sampleInfoView) {
+            sampleInfoView.update({ sampleId: state.currentSampleId, filepath });
+        }
         imageView.loadImage(imageUrl, filepath);
         imageView.clearPoints(); // Clear existing points when loading new image
 

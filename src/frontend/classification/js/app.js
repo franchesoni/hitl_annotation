@@ -6,6 +6,7 @@ import { StrategyView } from '/shared/views/strategyView.js';
 import { AIControlsView } from '/shared/views/aiControlsView.js';
 import { TrainingCurveView } from '/shared/views/trainingCurveView.js';
 import { SampleFilterView } from '/shared/views/sampleFilterView.js';
+import { SampleInfoView } from '/shared/views/sampleInfoView.js';
 import { Hotkeys } from '/shared/js/hotkeys.js';
 
 document.addEventListener('DOMContentLoaded', async () => {
@@ -37,6 +38,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         const classPanel = document.querySelector('#class-manager');
         const sampleFilterInput = document.getElementById('sample-filter-input');
         const sampleFilterCountEl = document.getElementById('sample-filter-count');
+        const sampleInfoContainer = document.getElementById('sample-info');
         const api = new API();
         let aiControlsView = null;
         const sampleFilterView = new SampleFilterView({
@@ -69,6 +71,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         await loadConfigFromServer();
         const imageView = new ImageView(leftPanel, 'loading-overlay', 'c');
+        const sampleInfoView = sampleInfoContainer ? new SampleInfoView({ container: sampleInfoContainer, state }) : null;
         const classesView = new ClassesView(classPanel, annotateWorkflow, state);
         const statsView = new StatsView(api, classesView);
         const trainingCurveView = new TrainingCurveView(api);
@@ -131,6 +134,9 @@ document.addEventListener('DOMContentLoaded', async () => {
                 const { imageUrl, sampleId, filepath, predictions } =
                         await api.loadNextImage(null, strategy, selectedClass);
                 state.currentImageFilepath = filepath; // Store current image filepath in state
+                if (sampleInfoView) {
+                        sampleInfoView.update({ sampleId, filepath });
+                }
                 imageView.loadImage(imageUrl, filepath);
                 await classesView.setCurrentSample(sampleId, filepath);
                 statsView.updatePrediction(predictions);
@@ -199,6 +205,9 @@ document.addEventListener('DOMContentLoaded', async () => {
                         const { imageUrl, sampleId: returnedSampleId, filepath, predictions } = prev;
                         state.currentImageFilepath = filepath;
                         state.lastAnnotatedClass = null;
+                        if (sampleInfoView) {
+                                sampleInfoView.update({ sampleId: returnedSampleId, filepath });
+                        }
                         imageView.loadImage(imageUrl, filepath);
                         await classesView.setCurrentSample(returnedSampleId, filepath);
                         statsView.updatePrediction(predictions);
