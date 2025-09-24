@@ -5,6 +5,7 @@ import { StatsView } from '/shared/views/statsView.js';
 import { StrategyView } from '/shared/views/strategyView.js';
 import { AIControlsView } from '/shared/views/aiControlsView.js';
 import { TrainingCurveView } from '/shared/views/trainingCurveView.js';
+import { SampleFilterView } from '/shared/views/sampleFilterView.js';
 import { Hotkeys } from '/shared/js/hotkeys.js';
 
 document.addEventListener('DOMContentLoaded', async () => {
@@ -12,7 +13,16 @@ document.addEventListener('DOMContentLoaded', async () => {
         // ----------  STATE  ----------------------------------------
         // -----------------------------------------------------------
         const state = {
-                config: { classes: [], aiShouldBeRun: false, architecture: 'resnet18', budget: 1000, resize: 224 },
+                config: {
+                        classes: [],
+                        aiShouldBeRun: false,
+                        architecture: 'resnet18',
+                        budget: 1000,
+                        resize: 224,
+                        available_architectures: [],
+                        samplePathFilter: '',
+                        sampleFilterCount: null
+                },
                 history: [],
                 configUpdated: false,
                 workflowInProgress: false,
@@ -25,14 +35,45 @@ document.addEventListener('DOMContentLoaded', async () => {
         // -----------------------------------------------------------
         const leftPanel = document.querySelector('.left-panel');
         const classPanel = document.querySelector('#class-manager');
+        const sampleFilterInput = document.getElementById('sample-filter-input');
+        const sampleFilterCountEl = document.getElementById('sample-filter-count');
         const api = new API();
+        let aiControlsView = null;
+        const sampleFilterView = new SampleFilterView({
+                inputEl: sampleFilterInput,
+                countEl: sampleFilterCountEl,
+                api,
+                state,
+                onConfigApplied: () => {
+                        if (aiControlsView) {
+                                aiControlsView.render(state.config);
+                        }
+                }
+        });
+
+        function applyConfigFromServer(cfg) {
+                if (!cfg) return;
+                const sortedClasses = Array.isArray(cfg.classes) ? [...cfg.classes].sort() : [];
+                state.config = {
+                        ...state.config,
+                        classes: sortedClasses,
+                        aiShouldBeRun: !!cfg.ai_should_be_run,
+                        architecture: typeof cfg.architecture === 'string' && cfg.architecture ? cfg.architecture : (state.config.architecture || 'resnet18'),
+                        budget: typeof cfg.budget === 'number' ? cfg.budget : (state.config.budget ?? 1000),
+                        resize: typeof cfg.resize === 'number' ? cfg.resize : (state.config.resize ?? 224),
+                        available_architectures: Array.isArray(cfg.available_architectures) ? cfg.available_architectures : []
+                };
+                sampleFilterView.applyServerConfig(cfg);
+                state.configUpdated = false;
+        }
+
         await loadConfigFromServer();
         const imageView = new ImageView(leftPanel, 'loading-overlay', 'c');
         const classesView = new ClassesView(classPanel, annotateWorkflow, state);
         const statsView = new StatsView(api, classesView);
         const trainingCurveView = new TrainingCurveView(api);
         const strategyView = new StrategyView();
-        const aiControlsView = new AIControlsView(api, state);
+        aiControlsView = new AIControlsView(api, state);
         // -----------------------------------------------------------
         // ----------  ACTIONS  --------------------------------------
         // -----------------------------------------------------------
@@ -100,17 +141,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                         // they'd previously be overwritten by the server response here. We now flush them first.
                         await updateConfigIfNeeded();
                         const cfg = await api.getConfig();
-                        if (cfg) {
-                                state.config = {
-                                        classes: (cfg.classes || []).sort(),
-                                        aiShouldBeRun: cfg.ai_should_be_run || false,
-                                        architecture: cfg.architecture || 'resnet18',
-                                        budget: cfg.budget || 1000,
-                                        resize: cfg.resize || 224,
-                                        available_architectures: cfg.available_architectures || []
-                                };
-                        }
-                        state.configUpdated = false; // config synchronized with backend
+                        applyConfigFromServer(cfg);
                 } catch (e) {
                         console.error('Failed to load config from server:', e);
                 }
@@ -123,6 +154,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 await loadConfigFromServer();
                 classesView.render();
                 aiControlsView.render(state.config);
+                sampleFilterView.render();
         }
         const skipBtn = document.getElementById('skip-btn');
         async function skipCurrentSample() {

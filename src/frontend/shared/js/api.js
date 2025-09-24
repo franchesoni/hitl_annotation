@@ -165,6 +165,13 @@ export class API {
             payload.ai_should_be_run = payload.aiShouldBeRun;
             delete payload.aiShouldBeRun;
         }
+        if (Object.prototype.hasOwnProperty.call(payload, 'samplePathFilter')) {
+            payload.sample_path_filter = payload.samplePathFilter ?? null;
+            delete payload.samplePathFilter;
+        }
+        if (Object.prototype.hasOwnProperty.call(payload, 'sampleFilterCount')) {
+            delete payload.sampleFilterCount;
+        }
         const res = await fetch('/api/config', {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },

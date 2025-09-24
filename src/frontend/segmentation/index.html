@@ -23,15 +23,18 @@
                                 <p>4. Use number keys (1-0) to select classes</p>
                                 <p>5. Ctrl+U to undo last point, Ctrl+C to clear all</p>
                         </div>
-                                                <div class="accuracy-filter">
-                                                        <label for="overlay-slider">Overlay:</label>
-                                                        <input type="range" id="overlay-slider" min="0" max="100" value="50">
-                                                        <span id="overlay-slider-value">50%</span>
-                                                        <label style="margin-left:12px;">
-                                                                <input type="checkbox" id="overlay-toggle" checked>
-                                                                Show overlay (M)
-                                                        </label>
-                                                </div>
+                        <div class="accuracy-filter">
+                                <label for="overlay-slider">Overlay:</label>
+                                <input type="range" id="overlay-slider" min="0" max="100" value="50">
+                                <span id="overlay-slider-value">50%</span>
+                                <label style="margin-left:12px;">
+                                        <input type="checkbox" id="overlay-toggle" checked>
+                                        Show overlay (M)
+                                </label>
+                        </div>
+                        <div class="sample-filter"><label for="sample-filter-input">Sample path filter:</label><input
+                                        type="text" id="sample-filter-input" placeholder="e.g. **/front*"
+                                        readonly><span id="sample-filter-count"></span></div>
                         <div id="stats-display" class="info-display"></div>
                         <!-- Strategy controls intentionally omitted for segmentation -->
                         <canvas id="training-curve" width="300" height="150" style="border:1px solid #ccc;"></canvas>

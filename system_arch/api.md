@@ -19,6 +19,17 @@
 | GET | `/api/config` | — | — | Config dict incl. `available_architectures` | `available_architectures` is computed, not stored. |
 | PUT | `/api/config` | — | JSON object | Updated config (merge semantics) | Merge-only for known keys: updates existing keys, adds new known keys; unknown keys are ignored. Response MUST return the full, updated config identical to a subsequent `GET /api/config`. |
 
+Config fields include:
+- `classes` (list[str])
+- `ai_should_be_run` (bool)
+- `architecture` (str)
+- `budget` (int)
+- `resize` (int)
+- `task` (str | null)
+- `sample_path_filter` (str | null): glob-style filepath filter applied client-side; stored as provided.
+- `sample_path_filter_count` (int): number of samples matching the current filter; recomputed on each response (not persisted).
+- `available_architectures` (list[str]): computed, not persisted.
+
 ### Samples
 | Method | Path | Query Params | Request Body | Response | Notes |
 |---|---|---|---|---|---|

@@ -79,11 +79,28 @@ def get_config():
     with _get_conn() as conn:
         cursor = conn.cursor()
         cursor.execute(
-            "SELECT classes, ai_should_be_run, architecture, budget, resize, last_claim_cleanup, task FROM config LIMIT 1"
+            """
+            SELECT classes, ai_should_be_run, architecture, budget, resize,
+                   last_claim_cleanup, task, sample_path_filter
+            FROM config
+            LIMIT 1
+            """
         )
         row = cursor.fetchone()
         if row:
-            classes, ai_should_be_run, architecture, budget, resize, last_claim_cleanup, task = row
+            (
+                classes,
+                ai_should_be_run,
+                architecture,
+                budget,
+                resize,
+                last_claim_cleanup,
+                task,
+                sample_path_filter,
+            ) = row
+            sample_filter_normalized = _normalize_sample_path_filter(sample_path_filter)
+            count_cursor = conn.cursor()
+            sample_filter_count = _count_samples_matching_filter(count_cursor, sample_filter_normalized)
             return {
                 "classes": json.loads(classes) if classes else [],
                 "ai_should_be_run": bool(ai_should_be_run),
@@ -92,6 +109,8 @@ def get_config():
                 "resize": resize,
                 "last_claim_cleanup": last_claim_cleanup,
                 "task": task,
+                "sample_path_filter": sample_filter_normalized,
+                "sample_path_filter_count": sample_filter_count,
             }
         return {}
 
@@ -104,6 +123,9 @@ def update_config(config):
     and coerced where reasonable; out-of-range or invalid types are dropped.
     """
     current = get_config()
+    # Remove computed fields before merging
+    if current:
+        current.pop("sample_path_filter_count", None)
 
     # Helper validators
     def _bool(v):
@@ -166,6 +188,9 @@ def update_config(config):
             pass
         return arch
 
+    def _sample_path_filter(v):
+        return _normalize_sample_path_filter(v, coerce_to_string=True)
+
     # Build a proposed update with validation/coercion
     proposed = {}
     if "classes" in config:
@@ -195,12 +220,19 @@ def update_config(config):
     if "last_claim_cleanup" in config:
         n = _int(config.get("last_claim_cleanup"))
         proposed["last_claim_cleanup"] = n
+    if "sample_path_filter" in config:
+        proposed["sample_path_filter"] = _sample_path_filter(config.get("sample_path_filter"))
+
+    # tolerate camelCase from clients
+    if "samplePathFilter" in config and "sample_path_filter" not in proposed:
+        proposed["sample_path_filter"] = _sample_path_filter(config.get("samplePathFilter"))
 
     # Merge
     current.update(proposed)
 
     # Convert classes list to JSON string for storage
     classes_json = json.dumps(current.get("classes", []))
+    sample_filter_value = current.get("sample_path_filter")
 
     with _get_conn() as conn:
         cursor = conn.cursor()
@@ -209,20 +241,72 @@ def update_config(config):
 
         if count > 0:
             cursor.execute(
-                "UPDATE config SET classes = ?, ai_should_be_run = ?, architecture = ?, budget = ?, resize = ?, last_claim_cleanup = ?, task = ?",
+                """
+                UPDATE config
+                   SET classes = ?,
+                       ai_should_be_run = ?,
+                       architecture = ?,
+                       budget = ?,
+                       resize = ?,
+                       last_claim_cleanup = ?,
+                       task = ?,
+                       sample_path_filter = ?
+                """,
                 (classes_json, int(current.get("ai_should_be_run", False)),
                  current.get("architecture"), current.get("budget"),
                  current.get("resize"), current.get("last_claim_cleanup"),
-                 current.get("task"))
+                 current.get("task"), sample_filter_value)
             )
         else:
             cursor.execute(
-                "INSERT INTO config (classes, ai_should_be_run, architecture, budget, resize, last_claim_cleanup, task) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                """
+                INSERT INTO config (
+                    classes, ai_should_be_run, architecture, budget, resize,
+                    last_claim_cleanup, task, sample_path_filter
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """,
                 (classes_json, int(current.get("ai_should_be_run", False)),
                  current.get("architecture"), current.get("budget"),
                  current.get("resize"), current.get("last_claim_cleanup"),
-                 current.get("task"))
+                 current.get("task"), sample_filter_value)
             )
+
+
+def _normalize_sample_path_filter(value, *, coerce_to_string=False):
+    """Normalize a user-provided sample filepath glob filter.
+
+    Returns None when empty/invalid so the caller can treat it as disabled.
+    """
+    if value is None:
+        return None
+    if isinstance(value, str):
+        stripped = value.strip()
+        return stripped or None
+    if coerce_to_string:
+        stripped = str(value).strip()
+        return stripped or None
+    return None
+
+
+def _count_samples_matching_filter(cursor, pattern):
+    """Return the number of samples matching the provided SQLite GLOB pattern."""
+    if not pattern:
+        cursor.execute("SELECT COUNT(*) FROM samples")
+    else:
+        cursor.execute(
+            "SELECT COUNT(*) FROM samples WHERE sample_filepath GLOB ?",
+            (pattern,),
+        )
+    row = cursor.fetchone()
+    return row[0] if row else 0
+
+
+def count_samples_matching_filter(pattern):
+    """Public helper to count samples matching a filepath glob pattern."""
+    normalized = _normalize_sample_path_filter(pattern, coerce_to_string=True)
+    with _get_conn() as conn:
+        cursor = conn.cursor()
+        return _count_samples_matching_filter(cursor, normalized)
 
 def get_all_samples():
     """Return all samples. (Not implemented here; see src.backend.db_ml.get_all_samples)"""

@@ -365,7 +365,8 @@ def initialize_database_if_needed(db_path=DB_PATH):
                 budget INTEGER,
                 resize INTEGER,
                 last_claim_cleanup INTEGER,
-                task TEXT
+                task TEXT,
+                sample_path_filter TEXT
             );
         """
         )
@@ -376,6 +377,8 @@ def initialize_database_if_needed(db_path=DB_PATH):
         cols = {row[1] for row in cur.fetchall()}
         if "task" not in cols:
             cur.execute("ALTER TABLE config ADD COLUMN task TEXT;")
+        if "sample_path_filter" not in cols:
+            cur.execute("ALTER TABLE config ADD COLUMN sample_path_filter TEXT;")
         conn.execute(
             """
             CREATE TABLE IF NOT EXISTS curves (
@@ -487,10 +490,17 @@ def initialize_database_if_needed(db_path=DB_PATH):
                 "resize": 224,
                 "last_claim_cleanup": None,
                 "task": None,
+                "sample_path_filter": None,
             }
             cursor.execute(
-                "INSERT INTO config (classes, ai_should_be_run, architecture, budget, resize, last_claim_cleanup, task) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                """
+                INSERT INTO config (
+                    classes, ai_should_be_run, architecture, budget, resize,
+                    last_claim_cleanup, task, sample_path_filter
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """,
                 (json.dumps(default_config["classes"]), int(default_config["ai_should_be_run"]), 
                  default_config["architecture"], default_config["budget"], 
-                 default_config["resize"], default_config["last_claim_cleanup"], default_config["task"])
+                 default_config["resize"], default_config["last_claim_cleanup"],
+                 default_config["task"], default_config["sample_path_filter"])
             )

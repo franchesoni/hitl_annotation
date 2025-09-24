@@ -38,6 +38,7 @@ The frontend keeps a local config mirror that syncs with the backend on specific
   1) `PUT /api/annotations/{id}` with `[ { type: "label", class, timestamp } ]`.
   2) Follow the Next workflow sequence above (config push if needed → `GET /api/samples/next` → headers/annotations as applicable → refresh config/stats).
 - Skip: The Skip button (and `S` hotkey) sends `PUT /api/annotations/{id}` with `[ { type: "skip", timestamp } ]`, then runs the same Next workflow. Skip entries clear any existing label for that sample, mark it completed without training impact, and are undoable via the standard Undo flow.
+- Sample path filter: In both classification and segmentation views, a read-only input becomes editable on focus; on Enter the frontend posts `PUT /api/config` with `{sample_path_filter}`. The backend responds with the updated config (including `sample_path_filter_count`), which the UI renders as "N matches" and then re-locks the input until it's focused again.
  - Strategy parameters:
    - `sequential`, `random`, `minority_frontier`: no additional params.
    - `specific_class`: include the selected class parameter from the UI.
@@ -79,4 +80,3 @@ The frontend keeps a local config mirror that syncs with the backend on specific
 - No spaces, slashes, backslashes, quotes, or other special characters; reject and prompt the user to edit the name.
 - Recommended max length: 64 characters; trim surrounding whitespace before validating.
 - Rationale: class names may be appended to image filenames before the extension for derived artifacts; unsafe characters can break paths.
-

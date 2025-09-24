@@ -5,13 +5,23 @@ import { StatsView } from '/shared/views/statsView.js';
 import { AIControlsView } from '/shared/views/aiControlsView.js';
 import { TrainingCurveView } from '/shared/views/trainingCurveView.js';
 import { Hotkeys } from '/shared/js/hotkeys.js';
+import { SampleFilterView } from '/shared/views/sampleFilterView.js';
 
 document.addEventListener('DOMContentLoaded', async () => {
     // -----------------------------------------------------------
     // ----------  STATE  ----------------------------------------
     // -----------------------------------------------------------
     const state = {
-        config: { classes: [], aiShouldBeRun: false, architecture: 'small', budget: 1000, resize: 224 },
+        config: {
+            classes: [],
+            aiShouldBeRun: false,
+            architecture: 'small',
+            budget: 1000,
+            resize: 224,
+            available_architectures: [],
+            samplePathFilter: '',
+            sampleFilterCount: null
+        },
         configUpdated: false,
         workflowInProgress: false,
         currentImageFilepath: null,
@@ -27,6 +37,39 @@ document.addEventListener('DOMContentLoaded', async () => {
     const leftPanel = document.querySelector('.left-panel');
     const classPanel = document.querySelector('#class-manager');
     const api = new API();
+    const sampleFilterInput = document.getElementById('sample-filter-input');
+    const sampleFilterCountEl = document.getElementById('sample-filter-count');
+    let aiControlsView = null;
+    const sampleFilterView = new SampleFilterView({
+        inputEl: sampleFilterInput,
+        countEl: sampleFilterCountEl,
+        api,
+        state,
+        onConfigApplied: () => {
+            if (aiControlsView) {
+                aiControlsView.render(state.config);
+            }
+        }
+    });
+
+    function applyConfigFromServer(cfg) {
+        if (!cfg) return;
+        state.config = {
+            ...state.config,
+            classes: (cfg.classes || []).sort(),
+            aiShouldBeRun: cfg.ai_should_be_run || false,
+            architecture: cfg.architecture || 'small', // Default to 'small' for segmentation
+            budget: cfg.budget || 1000,
+            resize: cfg.resize || 224,
+            available_architectures: cfg.available_architectures || []
+        };
+        sampleFilterView.applyServerConfig(cfg);
+        if (state.classColors instanceof Map) {
+            state.classColors.clear();
+        }
+        state.configUpdated = false;
+    }
+
     await loadConfigFromServer();
     const imageView = new ImageView(leftPanel, 'loading-overlay', 'c');
 
@@ -56,7 +99,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     const trainingCurveView = new TrainingCurveView(api);
     // Use segmentation-specific architectures for points annotation
     const segmentationArchitectures = ['small', 'small+', 'base', 'large'];
-    const aiControlsView = new AIControlsView(api, state, segmentationArchitectures);
+    aiControlsView = new AIControlsView(api, state, segmentationArchitectures);
     // No strategy selection in segmentation frontend
 
     // Utility to retrieve the color for a class from the view so that
@@ -136,20 +179,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             // they'd previously be overwritten by the server response here. We now flush them first.
             await updateConfigIfNeeded();
             const cfg = await api.getConfig();
-            if (cfg) {
-                state.config = {
-                    classes: (cfg.classes || []).sort(),
-                    aiShouldBeRun: cfg.ai_should_be_run || false,
-                    architecture: cfg.architecture || 'small', // Default to 'small' for segmentation
-                    budget: cfg.budget || 1000,
-                    resize: cfg.resize || 224,
-                    available_architectures: cfg.available_architectures || []
-                };
-                if (state.classColors instanceof Map) {
-                    state.classColors.clear();
-                }
-            }
-            state.configUpdated = false; // config synchronized with backend
+            applyConfigFromServer(cfg);
         } catch (e) {
             console.error('Failed to load config from server:', e);
         }
@@ -167,7 +197,10 @@ document.addEventListener('DOMContentLoaded', async () => {
         });
 
         classesView.render();
-        aiControlsView.render(state.config);
+        if (aiControlsView) {
+            aiControlsView.render(state.config);
+        }
+        sampleFilterView.render();
     }
     const prevBtn = document.getElementById('prev-btn');
     const nextBtn = document.getElementById('next-btn');
