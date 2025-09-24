@@ -6,6 +6,23 @@ export class StatsView {
     this.predictionDiv = document.getElementById('prediction-display');
     this.statsRequestId = 0;
     this.currentStats = null; // cache of latest stats provided by the app
+
+    // Live accuracy controls are optional (classification frontend only)
+    this.liveAccuracySlider = document.getElementById('accuracy-slider');
+    this.liveAccuracyValueEl = document.getElementById('accuracy-slider-value');
+    this.liveAccuracyDisplayEl = document.getElementById('live-accuracy-display');
+    this.liveAccuracyWindowPct = this._readSliderPct();
+
+    if (this.liveAccuracySlider) {
+      this.liveAccuracySlider.addEventListener('input', () => {
+        this.liveAccuracyWindowPct = this._readSliderPct();
+        this._renderSliderValue();
+        this.renderLiveAccuracy();
+      });
+      this._renderSliderValue();
+    }
+
+    this.renderLiveAccuracy();
   }
   updatePrediction(predictionsOrLabelClass, labelProbability = null, labelSource = null) {
     if (!this.predictionDiv) return;
@@ -71,7 +88,55 @@ export class StatsView {
       }
       this.statsDiv.innerHTML = html;
     }
+
+    this.renderLiveAccuracy();
   }
   
-  // Removed live accuracy calculation for segmentation frontend
+  _readSliderPct() {
+    if (!this.liveAccuracySlider) return 100;
+    const raw = Number(this.liveAccuracySlider.value);
+    if (!Number.isFinite(raw)) return 100;
+    return Math.max(0, Math.min(100, Math.round(raw)));
+  }
+
+  _renderSliderValue() {
+    if (this.liveAccuracyValueEl) {
+      this.liveAccuracyValueEl.textContent = `${this.liveAccuracyWindowPct}%`;
+    }
+  }
+
+  renderLiveAccuracy() {
+    if (!this.liveAccuracyDisplayEl) return;
+
+    const stats = this.currentStats;
+    const points = Array.isArray(stats?.live_accuracy_points)
+      ? stats.live_accuracy_points
+      : [];
+
+    if (!points.length) {
+      this.liveAccuracyDisplayEl.textContent = 'Live accuracy: no data yet';
+      return;
+    }
+
+    const pct = this.liveAccuracyWindowPct ?? this._readSliderPct();
+    let windowCount = Math.ceil(points.length * pct / 100);
+    if (pct === 0) {
+      windowCount = 0;
+    }
+    const windowPoints = windowCount > 0 ? points.slice(-windowCount) : [];
+
+    if (!windowPoints.length) {
+      this.liveAccuracyDisplayEl.textContent = 'Live accuracy: no data in selected window';
+      return;
+    }
+
+    const tries = windowPoints.length;
+    const correct = windowPoints.reduce((sum, p) => {
+      const v = Number(p?.value);
+      return sum + (Number.isFinite(v) && v >= 0.5 ? 1 : 0);
+    }, 0);
+    const accuracyPct = tries ? (correct / tries) * 100 : 0;
+
+    this.liveAccuracyDisplayEl.textContent = `Live accuracy (last ${tries}): ${accuracyPct.toFixed(1)}% (${correct}/${tries})`;
+  }
 }
