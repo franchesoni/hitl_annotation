@@ -230,6 +230,9 @@ def _run_forever(flip: bool, max_rotate: float) -> None:
 
         try:
             samples = backend_db.get_all_samples()
+            allowed_ids = backend_db.get_sample_ids_for_path_filter(
+                config.get("sample_path_filter")
+            )
             train_items = _gather_training_items(samples)
             if not train_items:
                 print("[WARN] No label annotations available — pausing…")
@@ -264,7 +267,12 @@ def _run_forever(flip: bool, max_rotate: float) -> None:
                 print(f"[WARN] Failed to export learner: {e}")
 
             labeled_set = set(paths)
-            unlabeled = [s for s in samples if s["sample_filepath"] not in labeled_set]
+            unlabeled = [
+                s
+                for s in samples
+                if s["sample_filepath"] not in labeled_set
+                and (allowed_ids is None or s["id"] in allowed_ids)
+            ]
             predicted_n = _predict_subset(learner, unlabeled, budget)
 
             print(

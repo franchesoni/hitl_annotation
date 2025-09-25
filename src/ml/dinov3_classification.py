@@ -302,6 +302,9 @@ def main() -> None:
 
         print("[DB] Fetching samples…")
         samples = backend_db.get_all_samples()
+        allowed_ids = backend_db.get_sample_ids_for_path_filter(
+            config.get("sample_path_filter")
+        )
         labeled = _gather_latest_labels(samples)
         if not labeled:
             print("[WARN] No label annotations found — pausing 2s…")
@@ -357,7 +360,12 @@ def main() -> None:
 
         # Predict unlabeled using cache too
         labeled_paths = set(fp for _, fp, _ in labeled)
-        unlabeled = [s for s in samples if s["sample_filepath"] not in labeled_paths]
+        unlabeled = [
+            s
+            for s in samples
+            if s["sample_filepath"] not in labeled_paths
+            and (allowed_ids is None or s["id"] in allowed_ids)
+        ]
         if unlabeled:
             subset = unlabeled[: max(0, budget)]
             print(f"[PRED] Predicting {len(subset)}/{len(unlabeled)} unlabeled images…")

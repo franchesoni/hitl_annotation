@@ -318,6 +318,9 @@ def main() -> None:
 
         print("[DB] Fetching all samples…")
         samples = backend_db.get_all_samples()
+        allowed_ids = backend_db.get_sample_ids_for_path_filter(
+            config.get("sample_path_filter")
+        )
         print(f"[DB] Found {len(samples)} samples.")
         print("[DB] Gathering annotated items…")
         annotated = gather_annotated_items(samples)
@@ -454,8 +457,21 @@ def main() -> None:
         backend_db.store_training_stats(cycle, None, None, acc)
 
         labeled_set = set(fp for _, fp, _ in annotated)
-        unlabeled = [s for s in samples if s["sample_filepath"] not in labeled_set]
-        to_predict = ([dict(id=s_id, sample_filepath=fp) for s_id, fp, _ in annotated] + [s for s in unlabeled])[:budget]
+        unlabeled = [
+            s
+            for s in samples
+            if s["sample_filepath"] not in labeled_set
+            and (allowed_ids is None or s["id"] in allowed_ids)
+        ]
+        filtered_annotated = [
+            (s_id, fp, pts)
+            for s_id, fp, pts in annotated
+            if allowed_ids is None or s_id in allowed_ids
+        ]
+        to_predict = (
+            [dict(id=s_id, sample_filepath=fp) for s_id, fp, _ in filtered_annotated]
+            + [s for s in unlabeled]
+        )[:budget]
         print(f"[PRED] Will predict on {len(to_predict)} images (labeled + unlabeled, up to budget)")
 
         if classifier is None:

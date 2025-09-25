@@ -9,7 +9,7 @@ It reuses the same SQLite database and connection helper from db.py.
 from __future__ import annotations
 
 import time
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional, Set
 
 from .db import DB_PATH, _get_conn, get_annotations, get_config, to_ppm  # re-exported
 from pathlib import Path
@@ -73,6 +73,25 @@ def get_all_samples() -> List[Dict[str, Any]]:
             {"id": row[0], "sample_filepath": row[1]}
             for row in cursor.fetchall()
         ]
+
+
+def get_sample_ids_for_path_filter(pattern: Optional[str]) -> Optional[Set[int]]:
+    """Return the set of sample IDs matching the provided glob pattern.
+
+    When *pattern* is falsy, ``None`` is returned so callers can skip
+    filtering without having to compute a set of all IDs.
+    """
+
+    if not pattern:
+        return None
+
+    with _get_conn() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT id FROM samples WHERE sample_filepath GLOB ?",
+            (pattern,),
+        )
+        return {int(row[0]) for row in cursor.fetchall()}
 
 
 def set_predictions_batch(predictions_batch):
