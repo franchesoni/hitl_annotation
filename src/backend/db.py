@@ -328,11 +328,16 @@ def _get_next_unlabeled_sequential():
       - segmentation   → no point annotations
     """
     target_types = _unlabeled_annotation_types_for_task()
+    sample_filter = (get_config() or {}).get("sample_path_filter")
     placeholders = ",".join(["?"] * len(target_types))
     with _get_conn() as conn:
         cursor = conn.cursor()
+        filter_clause = "\n              AND s.sample_filepath GLOB ?" if sample_filter else ""
+        params = list(target_types)
+        if sample_filter:
+            params.append(sample_filter)
         cursor.execute(
-            """
+            f"""
             SELECT s.id, s.sample_filepath
             FROM samples s
             WHERE s.claimed = 0
@@ -340,10 +345,11 @@ def _get_next_unlabeled_sequential():
                 SELECT 1 FROM annotations a
                 WHERE a.sample_id = s.id AND a.type IN ({placeholders})
               )
+            {filter_clause}
             ORDER BY s.id
             LIMIT 1
-            """.format(placeholders=placeholders),
-            target_types,
+            """,
+            params,
         )
         result = cursor.fetchone()
         return {"id": result[0], "sample_filepath": result[1]} if result else None
@@ -352,11 +358,16 @@ def _get_next_unlabeled_sequential():
 def _get_next_unlabeled_random():
     """Returns a random unlabeled sample info without claiming it (task-aware)."""
     target_types = _unlabeled_annotation_types_for_task()
+    sample_filter = (get_config() or {}).get("sample_path_filter")
     placeholders = ",".join(["?"] * len(target_types))
     with _get_conn() as conn:
         cursor = conn.cursor()
+        filter_clause = "\n              AND s.sample_filepath GLOB ?" if sample_filter else ""
+        params = list(target_types)
+        if sample_filter:
+            params.append(sample_filter)
         cursor.execute(
-            """
+            f"""
             SELECT s.id, s.sample_filepath
             FROM samples s
             WHERE s.claimed = 0
@@ -364,10 +375,11 @@ def _get_next_unlabeled_random():
                 SELECT 1 FROM annotations a
                 WHERE a.sample_id = s.id AND a.type IN ({placeholders})
               )
+            {filter_clause}
             ORDER BY RANDOM()
             LIMIT 1
-            """.format(placeholders=placeholders),
-            target_types,
+            """,
+            params,
         )
         result = cursor.fetchone()
         return {"id": result[0], "sample_filepath": result[1]} if result else None
@@ -379,10 +391,15 @@ def _get_unlabeled_pick(pick, highest_probability=True):
     Unlabeled criterion is task-aware; predictions are label-type.
     """
     target_types = _unlabeled_annotation_types_for_task()
+    sample_filter = (get_config() or {}).get("sample_path_filter")
     placeholders = ",".join(["?"] * len(target_types))
     order_direction = "DESC" if highest_probability else "ASC"
     with _get_conn() as conn:
         cursor = conn.cursor()
+        filter_clause = "\n              AND s.sample_filepath GLOB ?" if sample_filter else ""
+        params = [pick, *target_types]
+        if sample_filter:
+            params.append(sample_filter)
         cursor.execute(
             f"""
             SELECT s.id, s.sample_filepath, p.probability
@@ -394,10 +411,11 @@ def _get_unlabeled_pick(pick, highest_probability=True):
                 SELECT 1 FROM annotations a
                 WHERE a.sample_id = s.id AND a.type IN ({placeholders})
               )
+            {filter_clause}
             ORDER BY p.probability {order_direction}
             LIMIT 1
             """,
-            (pick, *target_types),
+            params,
         )
         result = cursor.fetchone()
         return {"id": result[0], "sample_filepath": result[1], "probability": result[2]} if result else None
@@ -604,30 +622,48 @@ def get_sample_by_id(sample_id):
 
 def get_sample_prev_by_id(sample_id):
     """Get the previous sample by ID (highest ID that is less than the given ID)."""
+    sample_filter = (get_config() or {}).get("sample_path_filter")
     with _get_conn() as conn:
         cursor = conn.cursor()
-        cursor.execute("""
+        filter_clause = "\n              AND sample_filepath GLOB ?" if sample_filter else ""
+        params = [sample_id]
+        if sample_filter:
+            params.append(sample_filter)
+        cursor.execute(
+            f"""
             SELECT id, sample_filepath
             FROM samples
             WHERE id < ?
+            {filter_clause}
             ORDER BY id DESC
             LIMIT 1
-        """, (sample_id,))
+        """,
+            params,
+        )
         result = cursor.fetchone()
         return {"id": result[0], "sample_filepath": result[1]} if result else None
 
 
 def get_sample_next_by_id(sample_id):
     """Get the next sample by ID (lowest ID that is greater than the given ID)."""
+    sample_filter = (get_config() or {}).get("sample_path_filter")
     with _get_conn() as conn:
         cursor = conn.cursor()
-        cursor.execute("""
+        filter_clause = "\n              AND sample_filepath GLOB ?" if sample_filter else ""
+        params = [sample_id]
+        if sample_filter:
+            params.append(sample_filter)
+        cursor.execute(
+            f"""
             SELECT id, sample_filepath
             FROM samples
             WHERE id > ?
+            {filter_clause}
             ORDER BY id ASC
             LIMIT 1
-        """, (sample_id,))
+        """,
+            params,
+        )
         result = cursor.fetchone()
         return {"id": result[0], "sample_filepath": result[1]} if result else None
 
