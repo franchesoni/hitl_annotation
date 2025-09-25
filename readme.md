@@ -42,17 +42,13 @@ and the AI, which is one of the following:
 
 ## WIP
 - update live acc thing in classif frontend
-    - checking if code is right
-    - update if wrong
-    - test if right
 - add skip button for classif
-    - test
-- try classif app in qc
 - filter images via name
-    - need to wire stored filter into sample selection for inference and navigation
+- try classif app in qc
 - show image id in frontend
 
 ## to-do
+- check if claimed is removed by time
 - add mask training
     - add frontend checkbox
     - make it save the prediction
