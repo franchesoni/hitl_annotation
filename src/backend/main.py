@@ -7,7 +7,10 @@ import json
 import timm
 import time
 import mimetypes
+import re
+import shutil
 from collections import defaultdict
+from typing import List
 
 from src.backend.db import (
     get_config, update_config, get_next_sample_by_strategy,
@@ -36,6 +39,7 @@ FRONTEND_DIR = BASE_DIR / "frontend"
 REPO_ROOT = BASE_DIR.parent
 SESSION_DIR = REPO_ROOT / "session"
 PREDS_DIR = SESSION_DIR / "preds"
+MASKS_DIR = SESSION_DIR / "masks"
 
 app = Flask(__name__, static_folder=FRONTEND_DIR, static_url_path="")
 # Fail loudly: enable development-style debugging and exception propagation
@@ -90,6 +94,7 @@ def create_image_response(sample_info):
     anns = get_annotations(sample_id)
     preds = get_predictions(sample_id)
     label_ann = next((a for a in anns if a.get("type") == "label"), None)
+    mask_annotations = [a for a in anns if a.get("type") == "mask" and a.get("mask_path")]
 
     headers = {
         "X-Image-Id": str(sample_id),
@@ -110,44 +115,23 @@ def create_image_response(sample_info):
 
     # If mask predictions exist, expose them as a JSON list of {class, url} objects
     mask_preds = [p for p in preds if p.get("type") == "mask" and p.get("mask_path")]
-    mask_map = {}
-    for pred in mask_preds:
-        mask_path_raw = str(pred.get("mask_path"))
-        mask_url = None
-        try:
-            p = Path(mask_path_raw)
-            # If absolute, ensure it's under PREDS_DIR and relativize
-            if p.is_absolute():
-                p_res = p.resolve()
-                preds_root = PREDS_DIR.resolve()
-                try:
-                    rel = p_res.relative_to(preds_root)
-                    mask_url = f"/preds/{rel.as_posix()}"
-                except Exception:
-                    mask_url = None
-            else:
-                parts = p.parts
-                if len(parts) >= 2 and parts[0] == "session" and parts[1] == "preds":
-                    rel = Path(*parts[2:])
-                    mask_url = f"/preds/{rel.as_posix()}"
-                elif len(parts) >= 1 and parts[0] == "preds":
-                    rel = Path(*parts[1:])
-                    mask_url = f"/preds/{rel.as_posix()}"
-                else:
-                    candidate = (PREDS_DIR / p).resolve()
-                    try:
-                        rel = candidate.relative_to(PREDS_DIR.resolve())
-                        mask_url = f"/preds/{rel.as_posix()}"
-                    except Exception:
-                        mask_url = None
-        except Exception:
-            mask_url = None
-        if mask_url:
+    mask_entries = []
+    if not mask_annotations:
+        for pred in mask_preds:
             cls = str(pred.get("class", ""))
-            if cls:
-                mask_map[cls] = mask_url
-    if mask_map:
-        headers["X-Predictions-Mask"] = json.dumps(mask_map)
+            if not cls:
+                continue
+            mask_url = _mask_public_url(str(pred.get("mask_path")), PREDS_DIR, "preds")
+            if not mask_url:
+                continue
+            mask_entries.append({
+                "class": cls,
+                "url": mask_url,
+                "id": pred.get("id"),
+                "timestamp": pred.get("timestamp"),
+            })
+    if mask_entries:
+        headers["X-Predictions-Mask"] = json.dumps(mask_entries)
 
     response = send_file(sample_filepath, mimetype=mime_type)
     for key, value in headers.items():
@@ -169,6 +153,80 @@ def _safe_pred_path(relpath: str) -> Path | None:
     try:
         # Ensure the resolved path is under PREDS_DIR
         candidate.relative_to(PREDS_DIR)
+    except Exception:
+        return None
+
+    if candidate.is_file():
+        return candidate
+    return None
+
+
+def _resolve_under_dir(path_str: str, storage_dir: Path) -> Path | None:
+    """Resolve *path_str* to a file located under *storage_dir* if possible."""
+    if not path_str:
+        return None
+    try:
+        raw_path = Path(path_str)
+    except Exception:
+        return None
+
+    candidates: List[Path] = []
+    if raw_path.is_absolute():
+        candidates.append(raw_path)
+    else:
+        try:
+            candidates.append((SESSION_DIR / raw_path).resolve())
+        except Exception:
+            pass
+        if raw_path.parts and raw_path.parts[0] == "session":
+            try:
+                candidates.append((REPO_ROOT / raw_path).resolve())
+            except Exception:
+                pass
+        if raw_path.parts and raw_path.parts[0] == storage_dir.name:
+            suffix_parts = raw_path.parts[1:]
+            try:
+                candidates.append((storage_dir / Path(*suffix_parts)).resolve())
+            except Exception:
+                pass
+        else:
+            try:
+                candidates.append((storage_dir / raw_path).resolve())
+            except Exception:
+                pass
+
+    storage_root = storage_dir.resolve()
+    for candidate in candidates:
+        try:
+            resolved = candidate.resolve()
+        except Exception:
+            continue
+        try:
+            resolved.relative_to(storage_root)
+        except Exception:
+            continue
+        if resolved.is_file():
+            return resolved
+    return None
+
+
+def _mask_public_url(path_str: str, storage_dir: Path, mount_prefix: str) -> str | None:
+    resolved = _resolve_under_dir(path_str, storage_dir)
+    if resolved is None:
+        return None
+    rel = resolved.relative_to(storage_dir.resolve())
+    return f"/{mount_prefix}/{rel.as_posix()}"
+
+
+def _safe_mask_path(relpath: str) -> Path | None:
+    """Resolve a relative path under MASKS_DIR safely."""
+    try:
+        candidate = (MASKS_DIR / relpath).resolve()
+    except Exception:
+        return None
+
+    try:
+        candidate.relative_to(MASKS_DIR)
     except Exception:
         return None
 
@@ -225,6 +283,19 @@ def get_pred_mask(relpath: str):
     safe_path = _safe_pred_path(relpath)
     if safe_path is None:
         return jsonify({"error": "Prediction file not found"}), 404
+
+    mime_type, _ = mimetypes.guess_type(str(safe_path))
+    if mime_type is None:
+        mime_type = "application/octet-stream"
+    return send_file(safe_path, mimetype=mime_type)
+
+
+@app.get("/masks/<path:relpath>")
+def get_annotation_mask(relpath: str):
+    """Serve accepted annotation mask files from session/masks safely."""
+    safe_path = _safe_mask_path(relpath)
+    if safe_path is None:
+        return jsonify({"error": "Mask file not found"}), 404
 
     mime_type, _ = mimetypes.guess_type(str(safe_path))
     if mime_type is None:
@@ -351,6 +422,11 @@ def delete_annotations_endpoint(sample_id: int):
 def get_annotations_endpoint(sample_id: int):
     """Get all annotations for a specific sample ID."""
     annotations = get_annotations(sample_id)
+    for ann in annotations:
+        if ann.get("type") == "mask" and ann.get("mask_path"):
+            mask_url = _mask_public_url(str(ann.get("mask_path")), MASKS_DIR, "masks")
+            if mask_url:
+                ann["mask_url"] = mask_url
     return jsonify({"annotations": annotations})
 
 @app.put("/api/annotations/<int:sample_id>")
@@ -366,7 +442,7 @@ def put_annotations_bulk(sample_id: int):
     if not isinstance(items, list):
         return jsonify({"error": "Expected a JSON list of annotation objects"}), 400
     # Group by type
-    allowed_types = {"label", "point", "bbox", "skip"}
+    allowed_types = {"label", "point", "bbox", "skip", "mask"}
     grouped = defaultdict(list)
     for ann in items:
         ann_type = ann.get("type", "label")
@@ -401,7 +477,104 @@ def put_annotations_bulk(sample_id: int):
     return jsonify({"ok": True, "count": total})
 
 
+@app.post("/api/annotations/<int:sample_id>/accept_mask")
+def accept_mask_annotation(sample_id: int):
+    """Promote an ML mask prediction to a persisted mask annotation."""
+    payload = request.get_json(silent=True) or {}
+    class_name = payload.get("class")
+    if not isinstance(class_name, str) or not class_name.strip():
+        return jsonify({"error": "class is required"}), 400
+    class_name = class_name.strip()
 
+    if "prediction_id" not in payload:
+        return jsonify({"error": "prediction_id is required"}), 400
+    try:
+        prediction_id = int(payload.get("prediction_id"))
+    except (TypeError, ValueError):
+        return jsonify({"error": "prediction_id must be an integer"}), 400
+
+    if "prediction_timestamp" not in payload:
+        return jsonify({"error": "prediction_timestamp is required"}), 400
+    try:
+        prediction_timestamp = int(payload.get("prediction_timestamp"))
+    except (TypeError, ValueError):
+        return jsonify({"error": "prediction_timestamp must be an integer"}), 400
+
+    mask_predictions = [
+        p for p in get_predictions(sample_id)
+        if p.get("type") == "mask" and p.get("class") == class_name and p.get("mask_path")
+    ]
+    if not mask_predictions:
+        return jsonify({"error": "Mask prediction not found"}), 404
+
+    mask_predictions.sort(
+        key=lambda p: ((p.get("timestamp") or 0), (p.get("id") or 0)),
+        reverse=True,
+    )
+    latest = mask_predictions[0]
+    latest_timestamp = latest.get("timestamp") or 0
+    if latest.get("id") != prediction_id or latest_timestamp != prediction_timestamp:
+        return jsonify({
+            "error": "Mask prediction has changed",
+            "latest": {
+                "id": latest.get("id"),
+                "timestamp": latest_timestamp,
+            },
+        }), 409
+
+    source_path = _resolve_under_dir(str(latest.get("mask_path")), PREDS_DIR)
+    if source_path is None:
+        return jsonify({"error": "Mask file is no longer available"}), 400
+
+    MASKS_DIR.mkdir(parents=True, exist_ok=True)
+    sanitized_class = re.sub(r"[^A-Za-z0-9_.-]", "_", class_name)
+    suffix = source_path.suffix or ".png"
+    dest_filename = (
+        f"sample{sample_id}_{sanitized_class}_pred{prediction_id}_{int(time.time())}{suffix}"
+    )
+    dest_path = (MASKS_DIR / dest_filename).resolve()
+    try:
+        shutil.copy2(source_path, dest_path)
+    except Exception as exc:
+        return jsonify({"error": f"Failed to store mask: {exc}"}), 500
+
+    relative_path = dest_path.relative_to(SESSION_DIR).as_posix()
+    timestamp = int(time.time())
+
+    previous_annotations = [
+        ann for ann in get_annotations(sample_id)
+        if ann.get("type") == "mask" and ann.get("class") == class_name and ann.get("mask_path")
+    ]
+
+    upsert_annotation(
+        sample_id,
+        class_name,
+        "mask",
+        mask_path=relative_path,
+        timestamp=timestamp,
+    )
+    release_claim_by_id(sample_id)
+
+    for prev in previous_annotations:
+        prev_path = _resolve_under_dir(str(prev.get("mask_path")), MASKS_DIR)
+        if prev_path and prev_path.exists() and prev_path != dest_path:
+            try:
+                prev_path.unlink()
+            except Exception:
+                pass
+
+    mask_url = _mask_public_url(relative_path, MASKS_DIR, "masks")
+    response_annotation = {
+        "sample_id": sample_id,
+        "class": class_name,
+        "type": "mask",
+        "mask_path": relative_path,
+        "timestamp": timestamp,
+    }
+    if mask_url:
+        response_annotation["mask_url"] = mask_url
+
+    return jsonify({"ok": True, "annotation": response_annotation})
 
 
 @app.get("/api/stats")

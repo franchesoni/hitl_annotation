@@ -32,12 +32,30 @@ export class API {
                 for (const item of parsed) {
                     const cls = item && item.class;
                     const url = item && item.url;
-                    if (typeof cls === 'string' && typeof url === 'string') mask_map[cls] = url;
+                    if (typeof cls === 'string' && typeof url === 'string') {
+                        const entry = { url };
+                        const idVal = Object.prototype.hasOwnProperty.call(item, 'prediction_id') ? item.prediction_id : item?.id;
+                        const tsVal = Object.prototype.hasOwnProperty.call(item, 'prediction_timestamp') ? item.prediction_timestamp : item?.timestamp;
+                        if (idVal != null && !Number.isNaN(Number(idVal))) entry.prediction_id = Number(idVal);
+                        if (tsVal != null && !Number.isNaN(Number(tsVal))) entry.prediction_timestamp = Number(tsVal);
+                        mask_map[cls] = entry;
+                    }
                 }
                 if (Object.keys(mask_map).length === 0) mask_map = null;
             } else if (parsed && typeof parsed === 'object') {
                 mask_map = {};
-                for (const [k, v] of Object.entries(parsed)) { if (typeof v === 'string') mask_map[k] = v; }
+                for (const [k, v] of Object.entries(parsed)) {
+                    if (typeof v === 'string') {
+                        mask_map[k] = { url: v };
+                    } else if (v && typeof v === 'object' && typeof v.url === 'string') {
+                        const entry = { url: v.url };
+                        const idVal = Object.prototype.hasOwnProperty.call(v, 'prediction_id') ? v.prediction_id : v.id;
+                        const tsVal = Object.prototype.hasOwnProperty.call(v, 'prediction_timestamp') ? v.prediction_timestamp : v.timestamp;
+                        if (idVal != null && !Number.isNaN(Number(idVal))) entry.prediction_id = Number(idVal);
+                        if (tsVal != null && !Number.isNaN(Number(tsVal))) entry.prediction_timestamp = Number(tsVal);
+                        mask_map[k] = entry;
+                    }
+                }
                 if (Object.keys(mask_map).length === 0) mask_map = null;
             }
             return { type: 'mask', mask_map };
@@ -118,7 +136,33 @@ export class API {
         if (!res.ok) throw new Error('Clear points failed');
         return await res.json();
     }
-    
+
+    async acceptMaskPrediction(sampleId, { className, predictionId, predictionTimestamp }) {
+        const payload = {
+            class: className,
+            prediction_id: predictionId,
+            prediction_timestamp: predictionTimestamp,
+        };
+        const res = await fetch(`/api/annotations/${sampleId}/accept_mask`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+        let data = null;
+        try {
+            data = await res.json();
+        } catch (_) {
+            data = null;
+        }
+        if (!res.ok) {
+            const err = new Error((data && data.error) ? data.error : 'Failed to accept mask prediction');
+            err.status = res.status;
+            err.payload = data;
+            throw err;
+        }
+        return data;
+    }
+
     async getAnnotations(sampleId) {
         const res = await fetch(`/api/annotations/${sampleId}`);
         if (!res.ok) throw new Error('Failed to get annotations');

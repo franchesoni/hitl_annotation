@@ -30,6 +30,9 @@ document.addEventListener('DOMContentLoaded', async () => {
         currentStats: null,  // Store current stats for optimization
         selectedClass: null,
         classColors: new Map(), // Map class names to colors
+        currentMaskPredictions: null,
+        currentMaskAnnotations: null,
+        isAcceptingMask: false,
     };
 
     // -----------------------------------------------------------
@@ -41,6 +44,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     const sampleFilterInput = document.getElementById('sample-filter-input');
     const sampleFilterCountEl = document.getElementById('sample-filter-count');
     const sampleInfoContainer = document.getElementById('sample-info');
+    const acceptMaskBtn = document.getElementById('accept-mask-btn');
     let aiControlsView = null;
     const sampleFilterView = new SampleFilterView({
         inputEl: sampleFilterInput,
@@ -127,13 +131,56 @@ document.addEventListener('DOMContentLoaded', async () => {
             }
         });
     }
+
+    function updateAcceptMaskButton() {
+        if (!acceptMaskBtn) return;
+        const hasAnnotationMask = Array.isArray(state.currentMaskAnnotations) && state.currentMaskAnnotations.length > 0;
+        const predictionMap = state.currentMaskPredictions && typeof state.currentMaskPredictions === 'object'
+            ? state.currentMaskPredictions
+            : {};
+        const predictionClasses = Object.keys(predictionMap);
+        const selected = state.selectedClass;
+        const selectedHasPrediction = !!(selected && predictionMap[selected]);
+        let reason = '';
+        let canAccept = true;
+        if (state.workflowInProgress || state.isAcceptingMask) {
+            canAccept = false;
+        } else if (!state.currentSampleId) {
+            canAccept = false;
+            reason = 'No sample loaded.';
+        } else if (hasAnnotationMask) {
+            canAccept = false;
+            reason = 'Mask annotation already saved.';
+        } else if (predictionClasses.length === 0) {
+            canAccept = false;
+            reason = 'No mask prediction available.';
+        } else if (!selectedHasPrediction && !(selected == null && predictionClasses.length === 1)) {
+            canAccept = false;
+            reason = 'Select a class with a mask prediction first.';
+        }
+
+        acceptMaskBtn.disabled = !canAccept;
+        if (state.isAcceptingMask) {
+            acceptMaskBtn.textContent = 'Saving mask...';
+        } else if (hasAnnotationMask) {
+            acceptMaskBtn.textContent = 'Mask accepted';
+        } else {
+            acceptMaskBtn.textContent = 'Accept Mask Prediction';
+        }
+        acceptMaskBtn.title = reason || '';
+    }
+
+    updateAcceptMaskButton();
+
     function beginWorkflow() {
         state.workflowInProgress = true;
         setInteractiveEnabled(false);
+        updateAcceptMaskButton();
     }
     function endWorkflow() {
         state.workflowInProgress = false;
         setInteractiveEnabled(true);
+        updateAcceptMaskButton();
     }
 
     // Simple workflow that just selects a class without annotating
@@ -146,6 +193,8 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         // Update the image view with the selected class and color
         imageView.setSelectedClass(className, color);
+
+        updateAcceptMaskButton();
 
         // You can also trigger visual updates here if needed
         // For example, update cursor style or selected point color preview
@@ -274,16 +323,23 @@ document.addEventListener('DOMContentLoaded', async () => {
         const { imageUrl, sampleId, filepath, predictions } = sampleData;
         state.currentImageFilepath = filepath;
         state.currentSampleId = parseInt(sampleId);
+        state.isAcceptingMask = false;
         if (sampleInfoView) {
             sampleInfoView.update({ sampleId: state.currentSampleId, filepath });
         }
         imageView.loadImage(imageUrl, filepath);
         imageView.clearPoints(); // Clear existing points when loading new image
 
-        // Load existing point annotations from backend
+        state.currentMaskPredictions = null;
+        state.currentMaskAnnotations = null;
+
+        // Load existing point and mask annotations from backend
+        let maskAnnotations = [];
         try {
             const annotationsData = await api.getAnnotations(sampleId);
-            const pointAnnotations = annotationsData.annotations.filter(ann => ann.type === 'point');
+            const annotationsList = Array.isArray(annotationsData.annotations) ? annotationsData.annotations : [];
+            const pointAnnotations = annotationsList.filter(ann => ann.type === 'point');
+            maskAnnotations = annotationsList.filter(ann => ann.type === 'mask' && ann.mask_url);
 
             // Add existing points to the image view
             pointAnnotations.forEach(ann => {
@@ -297,12 +353,31 @@ document.addEventListener('DOMContentLoaded', async () => {
             console.error('Failed to load existing annotations:', error);
         }
 
-        // If mask predictions are advertised, fetch mask assets
-        if (predictions && predictions.type === 'mask' && predictions.mask_map) {
-            await loadMaskAssets(predictions.mask_map);
+        if (maskAnnotations.length > 0) {
+            const annotationMaskMap = {};
+            maskAnnotations.forEach(ann => {
+                if (ann && ann.class && ann.mask_url) {
+                    annotationMaskMap[ann.class] = { url: ann.mask_url, source: 'annotation' };
+                }
+            });
+            if (Object.keys(annotationMaskMap).length > 0) {
+                await loadMaskAssets(annotationMaskMap, { source: 'annotation' });
+            } else if (imageView) {
+                imageView.setMaskOverlays({ overlays: null, colors: null });
+            }
+            state.currentMaskAnnotations = maskAnnotations;
+            state.currentMaskPredictions = null;
+        } else if (predictions && predictions.type === 'mask' && predictions.mask_map) {
+            const meta = await loadMaskAssets(predictions.mask_map, { source: 'prediction' });
+            state.currentMaskPredictions = meta;
+            state.currentMaskAnnotations = null;
         } else if (imageView) {
-            imageView.maskOverlays = null;
+            imageView.setMaskOverlays({ overlays: null, colors: null });
+            state.currentMaskPredictions = null;
+            state.currentMaskAnnotations = null;
         }
+
+        updateAcceptMaskButton();
 
         await classesView.setCurrentSample(sampleId, filepath);
     }
@@ -351,28 +426,48 @@ document.addEventListener('DOMContentLoaded', async () => {
         return outImg;
     }
 
-    async function loadMaskAssets(maskMap) {
+    async function loadMaskAssets(maskMap, { source = null } = {}) {
         const overlays = {};
         const overlayColors = {};
+        const metadata = {};
         const entries = Object.entries(maskMap || {});
-        let maskImgs = [];
-        await Promise.all(entries.map(([cls, url], idx) => new Promise((resolve) => {
+        await Promise.all(entries.map(([cls, rawValue]) => new Promise((resolve) => {
+            const info = (typeof rawValue === 'string') ? { url: rawValue } : (rawValue && typeof rawValue === 'object' ? { ...rawValue } : null);
+            if (!info || !info.url) {
+                resolve();
+                return;
+            }
             const img = new window.Image();
             img.onload = () => {
-                // Convert to alpha mask immediately
                 const alphaImg = toAlphaMask(img, img.width, img.height);
                 overlays[cls] = alphaImg;
-                maskImgs.push(alphaImg);
+                const meta = { url: info.url };
+                const idVal = info.prediction_id ?? info.id;
+                const tsVal = info.prediction_timestamp ?? info.timestamp;
+                if (idVal != null && !Number.isNaN(Number(idVal))) {
+                    meta.prediction_id = Number(idVal);
+                }
+                if (tsVal != null && !Number.isNaN(Number(tsVal))) {
+                    meta.prediction_timestamp = Number(tsVal);
+                }
+                if (source) meta.source = source;
+                if (info.source && !meta.source) meta.source = info.source;
+                metadata[cls] = meta;
                 resolve();
             };
-            img.onerror = () => { console.warn('Failed to load mask asset', url); resolve(); };
-            img.src = url;
+            img.onerror = () => { console.warn('Failed to load mask asset', info.url); resolve(); };
+            img.src = info.url;
         })));
-        // Assign class colors for tinting
-        for (const cls of Object.keys(overlays)) {
-            overlayColors[cls] = getClassColor(cls);
+        const overlayKeys = Object.keys(overlays);
+        if (overlayKeys.length > 0) {
+            for (const cls of overlayKeys) {
+                overlayColors[cls] = getClassColor(cls);
+            }
+            imageView.setMaskOverlays({ overlays, colors: overlayColors });
+        } else {
+            imageView.setMaskOverlays({ overlays: null, colors: null });
         }
-        imageView.setMaskOverlays({ overlays, colors: overlayColors });
+        return metadata;
     }
 
     function updateNavigationButtons() {
@@ -392,6 +487,69 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
     if (nextBtn) {
         nextBtn.addEventListener('click', navigateNext);
+    }
+    if (acceptMaskBtn) {
+        acceptMaskBtn.addEventListener('click', async () => {
+            if (!state.currentSampleId || state.workflowInProgress || state.isAcceptingMask) return;
+            const predictionMap = state.currentMaskPredictions && typeof state.currentMaskPredictions === 'object'
+                ? state.currentMaskPredictions
+                : {};
+            const classes = Object.keys(predictionMap);
+            if (classes.length === 0) return;
+
+            let targetClass = state.selectedClass;
+            if (!targetClass || !predictionMap[targetClass]) {
+                if (classes.length === 1) {
+                    targetClass = classes[0];
+                } else {
+                    alert('Select a class with a mask prediction to accept.');
+                    return;
+                }
+            }
+
+            const meta = predictionMap[targetClass] || {};
+            const predictionId = meta.prediction_id ?? meta.id ?? null;
+            const predictionTimestamp = meta.prediction_timestamp ?? meta.timestamp ?? null;
+            if (predictionId == null || predictionTimestamp == null) {
+                alert('Cannot save mask: missing prediction metadata.');
+                return;
+            }
+
+            state.selectedClass = targetClass;
+            if (classesView && typeof classesView.setSelectedClass === 'function') {
+                classesView.setSelectedClass(targetClass);
+            }
+            state.isAcceptingMask = true;
+            updateAcceptMaskButton();
+            beginWorkflow();
+            try {
+                await api.acceptMaskPrediction(state.currentSampleId, {
+                    className: targetClass,
+                    predictionId,
+                    predictionTimestamp,
+                });
+                const refreshed = await api.loadSample(state.currentSampleId);
+                await loadSampleAndContext(refreshed, null);
+            } catch (err) {
+                if (err && err.status === 409) {
+                    alert('Mask prediction changed while saving. Reloading latest version.');
+                    try {
+                        const refreshed = await api.loadSample(state.currentSampleId);
+                        await loadSampleAndContext(refreshed, null);
+                    } catch (reloadErr) {
+                        console.error('Failed to reload sample after prediction change:', reloadErr);
+                    }
+                } else {
+                    console.error('Failed to accept mask prediction:', err);
+                    const message = err && err.message ? err.message : 'Unknown error';
+                    alert(`Failed to save mask: ${message}`);
+                }
+            } finally {
+                state.isAcceptingMask = false;
+                endWorkflow();
+                updateAcceptMaskButton();
+            }
+        });
     }
     function initKeyboard(api) {
         const hk = new Hotkeys();
