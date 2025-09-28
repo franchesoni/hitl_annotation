@@ -490,8 +490,8 @@ def get_annotations(sample_id):
     with _get_conn() as conn:
         cursor = conn.cursor()
         cursor.execute("""
-            SELECT a.id, a.sample_id, s.sample_filepath, a.class, a.type, 
-                   a.col01, a.row01, a.width01, a.height01, a.timestamp
+            SELECT a.id, a.sample_id, s.sample_filepath, a.class, a.type,
+                   a.col01, a.row01, a.width01, a.height01, a.mask_path, a.timestamp
             FROM annotations a
             JOIN samples s ON s.id = a.sample_id
             WHERE a.sample_id = ?
@@ -504,11 +504,11 @@ def get_annotations(sample_id):
             class_value = None if ann_type == SKIP_ANNOTATION_TYPE or raw_class == SKIP_CLASS_SENTINEL else raw_class
             ann = {
                 "id": row[0],
-                "sample_id": row[1], 
+                "sample_id": row[1],
                 "sample_filepath": row[2],
                 "class": class_value,
                 "type": ann_type,
-                "timestamp": row[9]
+                "timestamp": row[10]
             }
             # Add coordinates based on type
             if row[4] == "point":  # point type
@@ -521,6 +521,10 @@ def get_annotations(sample_id):
                     ann["row01"] = row[6]
                     ann["width01"] = row[7]
                     ann["height01"] = row[8]
+            elif ann_type == "mask":
+                mask_path = row[9]
+                if mask_path:
+                    ann["mask_path"] = mask_path
             elif ann_type == SKIP_ANNOTATION_TYPE:
                 ann["skipped"] = True
             # label type has no coordinates
@@ -694,6 +698,11 @@ def upsert_annotation(sample_id, class_name, annotation_type="label", **kwargs):
                 "DELETE FROM annotations WHERE sample_id = ? AND type = ?",
                 (sample_id, annotation_type),
             )
+        elif annotation_type == "mask" and class_name is not None:
+            cursor.execute(
+                "DELETE FROM annotations WHERE sample_id = ? AND type = ? AND class = ?",
+                (sample_id, annotation_type, class_name),
+            )
 
         if annotation_type == SKIP_ANNOTATION_TYPE:
             stored_class = SKIP_CLASS_SENTINEL
@@ -727,14 +736,25 @@ def upsert_annotation(sample_id, class_name, annotation_type="label", **kwargs):
             width01 = to_ppm(kwargs.get("width")) if kwargs.get("width") is not None else None
             height01 = to_ppm(kwargs.get("height")) if kwargs.get("height") is not None else None
 
-        # Insert new annotation 
+        mask_path = kwargs.get("mask_path")
+        if annotation_type == "mask":
+            if not mask_path or not isinstance(mask_path, str):
+                raise ValueError("mask annotations require a non-empty 'mask_path'")
+            col01 = None
+            row01 = None
+            width01 = None
+            height01 = None
+        else:
+            mask_path = None
+
+        # Insert new annotation
         cursor.execute(
             """
             INSERT INTO annotations (
                 sample_id, class, type,
-                col01, row01, width01, height01, timestamp
+                col01, row01, width01, height01, mask_path, timestamp
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 sample_id,
@@ -744,6 +764,7 @@ def upsert_annotation(sample_id, class_name, annotation_type="label", **kwargs):
                 row01,
                 width01,
                 height01,
+                mask_path,
                 kwargs.get("timestamp"),
             ),
         )
@@ -896,8 +917,8 @@ def export_annotations():
     with _get_conn() as conn:
         cursor = conn.cursor()
         cursor.execute("""
-            SELECT a.sample_id, s.sample_filepath, a.class, a.type, 
-                   a.col01, a.row01, a.width01, a.height01, a.timestamp
+            SELECT a.sample_id, s.sample_filepath, a.class, a.type,
+                   a.col01, a.row01, a.width01, a.height01, a.mask_path, a.timestamp
             FROM annotations a
             JOIN samples s ON s.id = a.sample_id
             ORDER BY a.sample_id
@@ -914,7 +935,7 @@ def export_annotations():
                 "sample_filepath": row[1],
                 "class": class_value,
                 "type": ann_type,
-                "timestamp": row[8]
+                "timestamp": row[9]
             }
             # Add coordinates based on type
             if row[3] == "point" and row[4] is not None and row[5] is not None:
@@ -925,6 +946,8 @@ def export_annotations():
                 ann["row01"] = row[5]
                 ann["width01"] = row[6]
                 ann["height01"] = row[7]
+            elif ann_type == "mask" and row[8]:
+                ann["mask_path"] = row[8]
             elif ann_type == SKIP_ANNOTATION_TYPE:
                 ann["skipped"] = True
 

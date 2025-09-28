@@ -74,6 +74,13 @@ except ModuleNotFoundError:  # script run from repo root
     from backend import db_ml as backend_db  # type: ignore
 
 
+# Placeholder for upcoming mask-annotation integration into the training loop.
+def iter_mask_annotations_for_training() -> List[Tuple[int, str]]:
+    """Return mask annotations once mask-based training support is implemented."""
+    # TODO: integrate accepted mask annotations into the DINOv3 segmentation training pipeline.
+    return []
+
+
 # ---------------------------------------------------------------------------
 # image and feature helpers
 # ---------------------------------------------------------------------------

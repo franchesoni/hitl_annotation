@@ -54,10 +54,11 @@ def build_initial_db_dict() -> dict:
         "annotations": [
             {
                 "sample_filepath": str,  # must match a filepath in samples
-                "type": "label" | "bbox" | "point",
+                "type": "label" | "bbox" | "point" | "mask",
                 "class": str,
                 # For "point": "row", "col" (int, non-negative)
                 # For "bbox": "row", "col", "width", "height" (int, non-negative)
+                # For "mask": "mask_path" (string)
                 # For "label": no coordinates
                 # Optional: "timestamp": int
             },
@@ -144,7 +145,7 @@ def validate_db_dict(db):
         if not isinstance(a, dict):
             raise ValueError("Each annotation must be a dict.")
         required_ann_keys = {"sample_filepath", "type", "class"}
-        allowed_types = {"label", "bbox", "point", "skip"}
+        allowed_types = {"label", "bbox", "point", "skip", "mask"}
         if not required_ann_keys.issubset(a.keys()):
             raise ValueError(
                 f"Annotation missing required keys: {required_ann_keys - set(a.keys())}"
@@ -209,6 +210,18 @@ def validate_db_dict(db):
                     raise ValueError(f"'{k}' must be integer for bbox annotation.")
                 if a[k] < 0:
                     raise ValueError(f"'{k}' must be non-negative for bbox annotation.")
+        elif a["type"] == "mask":
+            allowed_keys = {
+                "sample_filepath",
+                "type",
+                "class",
+                "mask_path",
+                "timestamp",
+            }
+            if "mask_path" not in a:
+                raise ValueError("Mask annotation must have 'mask_path'.")
+            if not isinstance(a["mask_path"], str) or not a["mask_path"].strip():
+                raise ValueError("'mask_path' must be a non-empty string for mask annotation.")
         if not set(a.keys()).issubset(allowed_keys):
             raise ValueError(
                 f"Annotation keys for type {a['type']} must be subset of {allowed_keys}, got {set(a.keys())}"
@@ -333,6 +346,7 @@ def initialize_database_if_needed(db_path=DB_PATH):
                 row01 INTEGER,
                 width01 INTEGER,
                 height01 INTEGER,
+                mask_path TEXT,
                 timestamp INTEGER,
                 FOREIGN KEY (sample_id) REFERENCES samples (id)
             );
@@ -379,6 +393,10 @@ def initialize_database_if_needed(db_path=DB_PATH):
             cur.execute("ALTER TABLE config ADD COLUMN task TEXT;")
         if "sample_path_filter" not in cols:
             cur.execute("ALTER TABLE config ADD COLUMN sample_path_filter TEXT;")
+        cur.execute("PRAGMA table_info(annotations);")
+        ann_cols = {row[1] for row in cur.fetchall()}
+        if "mask_path" not in ann_cols:
+            cur.execute("ALTER TABLE annotations ADD COLUMN mask_path TEXT;")
         conn.execute(
             """
             CREATE TABLE IF NOT EXISTS curves (
@@ -423,6 +441,7 @@ def initialize_database_if_needed(db_path=DB_PATH):
                 a.get("width01"),
                 a.get("height01"),
                 a.get("timestamp"),
+                a.get("mask_path"),
             )
             for a in initial_content["annotations"]
         ]
@@ -431,11 +450,11 @@ def initialize_database_if_needed(db_path=DB_PATH):
                 """
                 INSERT INTO annotations (
                     sample_id, class, type,
-                    col01, row01, width01, height01, timestamp
+                    col01, row01, width01, height01, timestamp, mask_path
                 )
                 VALUES (
                     (SELECT id FROM samples WHERE sample_filepath = ?),
-                    ?, ?, ?, ?, ?, ?, ?
+                    ?, ?, ?, ?, ?, ?, ?, ?
                 );
                 """,
                 ann_rows,
