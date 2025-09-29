@@ -139,28 +139,6 @@ def create_image_response(sample_info):
     return response
 
 
-def _safe_pred_path(relpath: str) -> Path | None:
-    """Resolve a relative path under PREDS_DIR safely.
-
-    Returns the resolved Path if it is a file strictly under PREDS_DIR.
-    Otherwise returns None.
-    """
-    try:
-        candidate = (PREDS_DIR / relpath).resolve()
-    except Exception:
-        return None
-
-    try:
-        # Ensure the resolved path is under PREDS_DIR
-        candidate.relative_to(PREDS_DIR)
-    except Exception:
-        return None
-
-    if candidate.is_file():
-        return candidate
-    return None
-
-
 def _resolve_under_dir(path_str: str, storage_dir: Path) -> Path | None:
     """Resolve *path_str* to a file located under *storage_dir* if possible."""
     if not path_str:
@@ -218,21 +196,15 @@ def _mask_public_url(path_str: str, storage_dir: Path, mount_prefix: str) -> str
     return f"/{mount_prefix}/{rel.as_posix()}"
 
 
-def _safe_mask_path(relpath: str) -> Path | None:
-    """Resolve a relative path under MASKS_DIR safely."""
-    try:
-        candidate = (MASKS_DIR / relpath).resolve()
-    except Exception:
-        return None
+def _serve_session_file(relpath: str, storage_dir: Path, not_found_error: str):
+    safe_path = _resolve_under_dir(relpath, storage_dir)
+    if safe_path is None:
+        return jsonify({"error": not_found_error}), 404
 
-    try:
-        candidate.relative_to(MASKS_DIR)
-    except Exception:
-        return None
-
-    if candidate.is_file():
-        return candidate
-    return None
+    mime_type, _ = mimetypes.guess_type(str(safe_path))
+    if mime_type is None:
+        mime_type = "application/octet-stream"
+    return send_file(safe_path, mimetype=mime_type)
 
 
 @app.route("/")
@@ -280,27 +252,13 @@ def favicon():
 @app.get("/preds/<path:relpath>")
 def get_pred_mask(relpath: str):
     """Serve prediction mask files from session/preds safely (read-only)."""
-    safe_path = _safe_pred_path(relpath)
-    if safe_path is None:
-        return jsonify({"error": "Prediction file not found"}), 404
-
-    mime_type, _ = mimetypes.guess_type(str(safe_path))
-    if mime_type is None:
-        mime_type = "application/octet-stream"
-    return send_file(safe_path, mimetype=mime_type)
+    return _serve_session_file(relpath, PREDS_DIR, "Prediction file not found")
 
 
 @app.get("/masks/<path:relpath>")
 def get_annotation_mask(relpath: str):
     """Serve accepted annotation mask files from session/masks safely."""
-    safe_path = _safe_mask_path(relpath)
-    if safe_path is None:
-        return jsonify({"error": "Mask file not found"}), 404
-
-    mime_type, _ = mimetypes.guess_type(str(safe_path))
-    if mime_type is None:
-        mime_type = "application/octet-stream"
-    return send_file(safe_path, mimetype=mime_type)
+    return _serve_session_file(relpath, MASKS_DIR, "Mask file not found")
 
 
 @app.route("/api/health", methods=["GET"])
