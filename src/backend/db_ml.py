@@ -146,7 +146,9 @@ def set_predictions_batch(predictions_batch):
         filepath_map = {row[0]: row[1] for row in cursor.fetchall()}
 
         # Build deletion specs: for 'label' delete by (sample_id, type),
-        # for others (e.g., 'mask', 'bbox') delete by (sample_id, type, class)
+        # for masks delete the full (sample_id, type) set so absent classes
+        # are cleared, and for others (e.g., 'bbox') delete by
+        # (sample_id, type, class)
         delete_specs = set()
         for p in normalized_preds:
             sid = p["sample_id"]
@@ -154,7 +156,9 @@ def set_predictions_batch(predictions_batch):
             pclass = p.get("class")
             if ptype is None:
                 continue
-            if ptype == "label" or pclass is None:
+            if ptype == "mask":
+                delete_specs.add((sid, ptype, None))
+            elif ptype == "label" or pclass is None:
                 delete_specs.add((sid, ptype, None))
             else:
                 delete_specs.add((sid, ptype, pclass))
