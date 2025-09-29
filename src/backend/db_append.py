@@ -21,8 +21,8 @@ from pathlib import Path
 import sqlite3
 from typing import Any, Dict, Iterable, Tuple
 
-from src.backend.db import DB_PATH, SKIP_CLASS_SENTINEL, to_ppm
-from src.backend.db_init import validate_db_dict, _normalize_mask_path
+from src.backend.db import DB_PATH, SKIP_CLASS_SENTINEL, normalize_mask_path, to_ppm
+from src.backend.db_init import validate_db_dict
 
 
 def build_append_db_dict() -> Dict[str, Any]:
@@ -230,7 +230,7 @@ def _insert_predictions(
         row01 = _ppm_value("row")
         width01 = _ppm_value("width")
         height01 = _ppm_value("height")
-        mask_path = _normalize_mask_path(pred.get("mask_path"))
+        mask_path = normalize_mask_path(pred.get("mask_path"))
 
         identity = _prediction_identity(
             (
