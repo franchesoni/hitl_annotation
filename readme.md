@@ -58,3 +58,5 @@ and the AI, which is one of the following:
 - make it possible to start from trained model (maybe self-train?)
     - train model over horizontal dips
     - try model over horizontal dips
+- also allow to load previous annotations (on top)
+- show both saved mask and prediction

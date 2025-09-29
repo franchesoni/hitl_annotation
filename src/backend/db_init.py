@@ -52,12 +52,14 @@ def build_initial_db_dict() -> dict:
     """
     # TODO: User should edit this function to load or build their data.
     # imagedir = "/home/franchesoni/Downloads/berkeley/images/test"
-    imagedir = "/home/franchesoni/repos/hitl_annotation/data/catsvsdogs"
+    # imagedir = "/nfs/noyse/HomeToo/data/curated/Geology/NOC/data_refactor/png"
+    imagedir = "/nfs/noyse/HomeToo/data/curated/Geology/Segmentation_BO_IF/TERRASPHERE/"
+    # imagedir = "/home/franchesoni/repos/hitl_annotation/data/catsvsdogs"
 
     return {
         "samples": [
             {"sample_filepath": str(ppath)}
-            for ppath in sorted(Path(imagedir).glob("**/*.jpg"))
+            for ppath in sorted(Path(imagedir).glob("**/*.png"))
         ],
         "annotations": [],
         "predictions": [],
