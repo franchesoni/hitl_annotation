@@ -33,6 +33,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         currentMaskPredictions: null,
         currentMaskAnnotations: null,
         isAcceptingMask: false,
+        isRemovingMask: false,
     };
 
     // -----------------------------------------------------------
@@ -44,7 +45,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     const sampleFilterInput = document.getElementById('sample-filter-input');
     const sampleFilterCountEl = document.getElementById('sample-filter-count');
     const sampleInfoContainer = document.getElementById('sample-info');
-    const acceptMaskBtn = document.getElementById('accept-mask-btn');
+    const maskAnnotationToggle = document.getElementById('mask-annotation-toggle');
     let aiControlsView = null;
     const sampleFilterView = new SampleFilterView({
         inputEl: sampleFilterInput,
@@ -132,55 +133,47 @@ document.addEventListener('DOMContentLoaded', async () => {
         });
     }
 
-    function updateAcceptMaskButton() {
-        if (!acceptMaskBtn) return;
+    function updateMaskAnnotationToggle() {
+        if (!maskAnnotationToggle) return;
         const hasAnnotationMask = Array.isArray(state.currentMaskAnnotations) && state.currentMaskAnnotations.length > 0;
         const predictionMap = state.currentMaskPredictions && typeof state.currentMaskPredictions === 'object'
             ? state.currentMaskPredictions
             : {};
         const predictionClasses = Object.keys(predictionMap);
+        const hasPrediction = predictionClasses.length > 0;
         const selected = state.selectedClass;
         const selectedHasPrediction = !!(selected && predictionMap[selected]);
+        const isBusy = state.workflowInProgress || state.isAcceptingMask || state.isRemovingMask;
+
+        maskAnnotationToggle.checked = hasAnnotationMask;
+        maskAnnotationToggle.indeterminate = isBusy;
+
         let reason = '';
-        let canAccept = true;
-        if (state.workflowInProgress || state.isAcceptingMask) {
-            canAccept = false;
+        if (isBusy) {
+            reason = 'Mask operation in progress.';
         } else if (!state.currentSampleId) {
-            canAccept = false;
             reason = 'No sample loaded.';
-        } else if (hasAnnotationMask) {
-            canAccept = false;
-            reason = 'Mask annotation already saved.';
-        } else if (predictionClasses.length === 0) {
-            canAccept = false;
+        } else if (!hasAnnotationMask && !hasPrediction) {
             reason = 'No mask prediction available.';
-        } else if (!selectedHasPrediction && !(selected == null && predictionClasses.length === 1)) {
-            canAccept = false;
+        } else if (!hasAnnotationMask && hasPrediction && predictionClasses.length > 1 && !selectedHasPrediction) {
             reason = 'Select a class with a mask prediction first.';
         }
 
-        acceptMaskBtn.disabled = !canAccept;
-        if (state.isAcceptingMask) {
-            acceptMaskBtn.textContent = 'Saving mask...';
-        } else if (hasAnnotationMask) {
-            acceptMaskBtn.textContent = 'Mask accepted';
-        } else {
-            acceptMaskBtn.textContent = 'Accept Mask Prediction';
-        }
-        acceptMaskBtn.title = reason || '';
+        maskAnnotationToggle.disabled = Boolean(reason);
+        maskAnnotationToggle.title = reason;
     }
 
-    updateAcceptMaskButton();
+    updateMaskAnnotationToggle();
 
     function beginWorkflow() {
         state.workflowInProgress = true;
         setInteractiveEnabled(false);
-        updateAcceptMaskButton();
+        updateMaskAnnotationToggle();
     }
     function endWorkflow() {
         state.workflowInProgress = false;
         setInteractiveEnabled(true);
-        updateAcceptMaskButton();
+        updateMaskAnnotationToggle();
     }
 
     // Simple workflow that just selects a class without annotating
@@ -194,7 +187,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         // Update the image view with the selected class and color
         imageView.setSelectedClass(className, color);
 
-        updateAcceptMaskButton();
+        updateMaskAnnotationToggle();
 
         // You can also trigger visual updates here if needed
         // For example, update cursor style or selected point color preview
@@ -324,6 +317,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         state.currentImageFilepath = filepath;
         state.currentSampleId = parseInt(sampleId);
         state.isAcceptingMask = false;
+        state.isRemovingMask = false;
         if (sampleInfoView) {
             sampleInfoView.update({ sampleId: state.currentSampleId, filepath });
         }
@@ -377,7 +371,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             state.currentMaskAnnotations = null;
         }
 
-        updateAcceptMaskButton();
+        updateMaskAnnotationToggle();
 
         await classesView.setCurrentSample(sampleId, filepath);
     }
@@ -488,66 +482,149 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (nextBtn) {
         nextBtn.addEventListener('click', navigateNext);
     }
-    if (acceptMaskBtn) {
-        acceptMaskBtn.addEventListener('click', async () => {
-            if (!state.currentSampleId || state.workflowInProgress || state.isAcceptingMask) return;
-            const predictionMap = state.currentMaskPredictions && typeof state.currentMaskPredictions === 'object'
-                ? state.currentMaskPredictions
-                : {};
-            const classes = Object.keys(predictionMap);
-            if (classes.length === 0) return;
+    async function handleAcceptMaskPrediction() {
+        if (!state.currentSampleId || state.workflowInProgress || state.isAcceptingMask || state.isRemovingMask) {
+            return false;
+        }
+        const predictionMap = state.currentMaskPredictions && typeof state.currentMaskPredictions === 'object'
+            ? state.currentMaskPredictions
+            : {};
+        const classes = Object.keys(predictionMap);
+        if (classes.length === 0) {
+            alert('No mask prediction available to save.');
+            return false;
+        }
 
-            let targetClass = state.selectedClass;
-            if (!targetClass || !predictionMap[targetClass]) {
-                if (classes.length === 1) {
-                    targetClass = classes[0];
-                } else {
-                    alert('Select a class with a mask prediction to accept.');
-                    return;
-                }
+        let targetClass = state.selectedClass;
+        if (!targetClass || !predictionMap[targetClass]) {
+            if (classes.length === 1) {
+                targetClass = classes[0];
+            } else {
+                alert('Select a class with a mask prediction to accept.');
+                return false;
             }
+        }
 
-            const meta = predictionMap[targetClass] || {};
-            const predictionId = meta.prediction_id ?? meta.id ?? null;
-            const predictionTimestamp = meta.prediction_timestamp ?? meta.timestamp ?? null;
-            if (predictionId == null || predictionTimestamp == null) {
-                alert('Cannot save mask: missing prediction metadata.');
+        const meta = predictionMap[targetClass] || {};
+        const predictionId = meta.prediction_id ?? meta.id ?? null;
+        const predictionTimestamp = meta.prediction_timestamp ?? meta.timestamp ?? null;
+        if (predictionId == null || predictionTimestamp == null) {
+            alert('Cannot save mask: missing prediction metadata.');
+            return false;
+        }
+
+        state.selectedClass = targetClass;
+        if (classesView && typeof classesView.setSelectedClass === 'function') {
+            classesView.setSelectedClass(targetClass);
+        }
+
+        state.isAcceptingMask = true;
+        updateMaskAnnotationToggle();
+        beginWorkflow();
+        try {
+            await api.acceptMaskPrediction(state.currentSampleId, {
+                className: targetClass,
+                predictionId,
+                predictionTimestamp,
+            });
+            const refreshed = await api.loadSample(state.currentSampleId);
+            await loadSampleAndContext(refreshed, null);
+            return true;
+        } catch (err) {
+            if (err && err.status === 409) {
+                alert('Mask prediction changed while saving. Reloading latest version.');
+                try {
+                    const refreshed = await api.loadSample(state.currentSampleId);
+                    await loadSampleAndContext(refreshed, null);
+                } catch (reloadErr) {
+                    console.error('Failed to reload sample after prediction change:', reloadErr);
+                }
+            } else {
+                console.error('Failed to accept mask prediction:', err);
+                const message = err && err.message ? err.message : 'Unknown error';
+                alert(`Failed to save mask: ${message}`);
+            }
+            return false;
+        } finally {
+            state.isAcceptingMask = false;
+            endWorkflow();
+            updateMaskAnnotationToggle();
+        }
+    }
+
+    async function handleRemoveMaskAnnotation() {
+        if (!state.currentSampleId || state.workflowInProgress || state.isAcceptingMask || state.isRemovingMask) {
+            return false;
+        }
+        const annotations = Array.isArray(state.currentMaskAnnotations)
+            ? state.currentMaskAnnotations.filter(ann => ann && ann.type === 'mask' && ann.class)
+            : [];
+        if (annotations.length === 0) {
+            return true;
+        }
+        const annotatedClasses = new Set(annotations.map(ann => ann.class));
+        let targetClass = state.selectedClass;
+        if (!targetClass || !annotatedClasses.has(targetClass)) {
+            if (annotatedClasses.size === 1) {
+                targetClass = Array.from(annotatedClasses)[0];
+            } else {
+                alert('Select a class with a saved mask annotation to remove.');
+                return false;
+            }
+        }
+
+        state.selectedClass = targetClass;
+        if (classesView && typeof classesView.setSelectedClass === 'function') {
+            classesView.setSelectedClass(targetClass);
+        }
+
+        state.isRemovingMask = true;
+        updateMaskAnnotationToggle();
+        beginWorkflow();
+        try {
+            await api.deleteMaskAnnotation(state.currentSampleId, targetClass);
+            const refreshed = await api.loadSample(state.currentSampleId);
+            await loadSampleAndContext(refreshed, null);
+            return true;
+        } catch (err) {
+            console.error('Failed to delete mask annotation:', err);
+            const message = err && err.message ? err.message : 'Unknown error';
+            alert(`Failed to remove mask annotation: ${message}`);
+            return false;
+        } finally {
+            state.isRemovingMask = false;
+            endWorkflow();
+            updateMaskAnnotationToggle();
+        }
+    }
+
+    if (maskAnnotationToggle) {
+        maskAnnotationToggle.addEventListener('change', async () => {
+            if (maskAnnotationToggle.disabled) return;
+            const hadAnnotation = Array.isArray(state.currentMaskAnnotations) && state.currentMaskAnnotations.length > 0;
+            const wantsAnnotation = maskAnnotationToggle.checked;
+            if (wantsAnnotation === hadAnnotation) {
+                updateMaskAnnotationToggle();
                 return;
             }
 
-            state.selectedClass = targetClass;
-            if (classesView && typeof classesView.setSelectedClass === 'function') {
-                classesView.setSelectedClass(targetClass);
-            }
-            state.isAcceptingMask = true;
-            updateAcceptMaskButton();
-            beginWorkflow();
+            maskAnnotationToggle.disabled = true;
+            maskAnnotationToggle.title = 'Mask operation in progress.';
+
             try {
-                await api.acceptMaskPrediction(state.currentSampleId, {
-                    className: targetClass,
-                    predictionId,
-                    predictionTimestamp,
-                });
-                const refreshed = await api.loadSample(state.currentSampleId);
-                await loadSampleAndContext(refreshed, null);
-            } catch (err) {
-                if (err && err.status === 409) {
-                    alert('Mask prediction changed while saving. Reloading latest version.');
-                    try {
-                        const refreshed = await api.loadSample(state.currentSampleId);
-                        await loadSampleAndContext(refreshed, null);
-                    } catch (reloadErr) {
-                        console.error('Failed to reload sample after prediction change:', reloadErr);
+                if (wantsAnnotation && !hadAnnotation) {
+                    const success = await handleAcceptMaskPrediction();
+                    if (!success) {
+                        maskAnnotationToggle.checked = false;
                     }
-                } else {
-                    console.error('Failed to accept mask prediction:', err);
-                    const message = err && err.message ? err.message : 'Unknown error';
-                    alert(`Failed to save mask: ${message}`);
+                } else if (!wantsAnnotation && hadAnnotation) {
+                    const success = await handleRemoveMaskAnnotation();
+                    if (!success) {
+                        maskAnnotationToggle.checked = true;
+                    }
                 }
             } finally {
-                state.isAcceptingMask = false;
-                endWorkflow();
-                updateAcceptMaskButton();
+                updateMaskAnnotationToggle();
             }
         });
     }
