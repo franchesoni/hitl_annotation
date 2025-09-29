@@ -30,41 +30,29 @@ def normalize_mask_path(mask_path: str | None) -> str | None:
     if not mask_path:
         return None
 
-    try:
-        PREDS_DIR.mkdir(parents=True, exist_ok=True)
-    except Exception:
-        # Directory creation failures are non-fatal for normalization
-        pass
+    PREDS_DIR.mkdir(parents=True, exist_ok=True)
 
-    try:
-        path = Path(mask_path)
-    except Exception:
-        return None
+    path = Path(mask_path)
 
-    try:
-        if path.is_absolute():
-            resolved = path.resolve()
+    if path.is_absolute():
+        resolved = path.resolve()
+    else:
+        parts = path.parts
+        if parts and parts[0] == "preds":
+            resolved = (SESSION_DIR / path).resolve()
         else:
-            parts = path.parts
-            if parts and parts[0] == "preds":
-                resolved = (SESSION_DIR / path).resolve()
-            else:
-                resolved = (PREDS_DIR / path).resolve()
+            resolved = (PREDS_DIR / path).resolve()
 
-        # Ensure the mask lives under the predictions directory
-        resolved.relative_to(PREDS_DIR.resolve())
-    except Exception:
-        return None
+    preds_root = PREDS_DIR.resolve()
+    resolved_rooted = resolved.resolve()
+    if preds_root != resolved_rooted and preds_root not in resolved_rooted.parents:
+        raise ValueError(f"Mask path {resolved_rooted} must live under {preds_root}")
 
-    try:
-        rel = resolved.relative_to(SESSION_DIR.resolve())
-        return rel.as_posix()
-    except Exception:
-        try:
-            rel = resolved.relative_to(PREDS_DIR.resolve())
-            return f"preds/{rel.as_posix()}"
-        except Exception:
-            return None
+    session_root = SESSION_DIR.resolve()
+    if session_root == resolved_rooted or session_root in resolved_rooted.parents:
+        return resolved_rooted.relative_to(session_root).as_posix()
+
+    return f"preds/{resolved_rooted.relative_to(preds_root).as_posix()}"
 
 def _get_conn():
     """Open a SQLite connection to the app database.
@@ -235,12 +223,12 @@ def update_config(config):
         # Optional allowlist using timm if available
         try:
             import timm  # type: ignore
-            allowed = {"resnet18", "resnet34", "small", "small+", "base", "large"} | set(timm.list_models())
-            if arch not in allowed:
-                return None
-        except Exception:
-            # If timm not available here, accept any non-empty string
-            pass
+        except ImportError:
+            # If timm is not available, accept any non-empty string.
+            return arch
+        allowed = {"resnet18", "resnet34", "small", "small+", "base", "large"} | set(timm.list_models())
+        if arch not in allowed:
+            return None
         return arch
 
     def _sample_path_filter(v):

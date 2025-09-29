@@ -139,66 +139,57 @@ def create_image_response(sample_info):
     return response
 
 
-def _resolve_under_dir(path_str: str, storage_dir: Path) -> Path | None:
-    """Resolve *path_str* to a file located under *storage_dir* if possible."""
+def _resolve_under_dir(path_str: str, storage_dir: Path) -> Path:
+    """Resolve *path_str* to a file located under *storage_dir*.
+
+    Raises ``ValueError`` when the provided path is invalid or escapes the
+    storage directory and ``FileNotFoundError`` if the resolved path does not
+    exist as a file.
+    """
+
     if not path_str:
-        return None
-    try:
-        raw_path = Path(path_str)
-    except Exception:
-        return None
+        raise ValueError("Empty path provided for resolution")
+
+    raw_path = Path(path_str)
 
     candidates: List[Path] = []
     if raw_path.is_absolute():
         candidates.append(raw_path)
     else:
-        try:
-            candidates.append((SESSION_DIR / raw_path).resolve())
-        except Exception:
-            pass
+        candidates.append((SESSION_DIR / raw_path).resolve())
         if raw_path.parts and raw_path.parts[0] == "session":
-            try:
-                candidates.append((REPO_ROOT / raw_path).resolve())
-            except Exception:
-                pass
+            candidates.append((REPO_ROOT / raw_path).resolve())
         if raw_path.parts and raw_path.parts[0] == storage_dir.name:
             suffix_parts = raw_path.parts[1:]
-            try:
-                candidates.append((storage_dir / Path(*suffix_parts)).resolve())
-            except Exception:
-                pass
+            suffix = Path(*suffix_parts) if suffix_parts else Path()
+            candidates.append((storage_dir / suffix).resolve())
         else:
-            try:
-                candidates.append((storage_dir / raw_path).resolve())
-            except Exception:
-                pass
+            candidates.append((storage_dir / raw_path).resolve())
 
     storage_root = storage_dir.resolve()
     for candidate in candidates:
-        try:
-            resolved = candidate.resolve()
-        except Exception:
-            continue
-        try:
-            resolved.relative_to(storage_root)
-        except Exception:
-            continue
-        if resolved.is_file():
-            return resolved
-    return None
+        resolved = candidate.resolve()
+        if storage_root == resolved or storage_root in resolved.parents:
+            if resolved.is_file():
+                return resolved
+            raise FileNotFoundError(f"Resolved path {resolved} is not a file")
+
+    raise ValueError(f"Path {path_str} is outside of storage root {storage_root}")
 
 
 def _mask_public_url(path_str: str, storage_dir: Path, mount_prefix: str) -> str | None:
-    resolved = _resolve_under_dir(path_str, storage_dir)
-    if resolved is None:
+    try:
+        resolved = _resolve_under_dir(path_str, storage_dir)
+    except (FileNotFoundError, ValueError):
         return None
     rel = resolved.relative_to(storage_dir.resolve())
     return f"/{mount_prefix}/{rel.as_posix()}"
 
 
 def _serve_session_file(relpath: str, storage_dir: Path, not_found_error: str):
-    safe_path = _resolve_under_dir(relpath, storage_dir)
-    if safe_path is None:
+    try:
+        safe_path = _resolve_under_dir(relpath, storage_dir)
+    except (FileNotFoundError, ValueError):
         return jsonify({"error": not_found_error}), 404
 
     mime_type, _ = mimetypes.guess_type(str(safe_path))
@@ -483,9 +474,10 @@ def accept_mask_annotation(sample_id: int):
             },
         }), 409
 
-    source_path = _resolve_under_dir(str(latest.get("mask_path")), PREDS_DIR)
-    if source_path is None:
-        return jsonify({"error": "Mask file is no longer available"}), 400
+    try:
+        source_path = _resolve_under_dir(str(latest.get("mask_path")), PREDS_DIR)
+    except (FileNotFoundError, ValueError) as exc:
+        return jsonify({"error": f"Mask file is no longer available: {exc}"}), 400
 
     MASKS_DIR.mkdir(parents=True, exist_ok=True)
     sanitized_class = re.sub(r"[^A-Za-z0-9_.-]", "_", class_name)
@@ -518,11 +510,8 @@ def accept_mask_annotation(sample_id: int):
 
     for prev in previous_annotations:
         prev_path = _resolve_under_dir(str(prev.get("mask_path")), MASKS_DIR)
-        if prev_path and prev_path.exists() and prev_path != dest_path:
-            try:
-                prev_path.unlink()
-            except Exception:
-                pass
+        if prev_path != dest_path:
+            prev_path.unlink()
 
     mask_url = _mask_public_url(relative_path, MASKS_DIR, "masks")
     response_annotation = {
@@ -558,12 +547,8 @@ def delete_mask_annotation_endpoint(sample_id: int, class_name: str):
     deleted_files = 0
     for ann in existing:
         prev_path = _resolve_under_dir(str(ann.get("mask_path")), MASKS_DIR)
-        if prev_path and prev_path.exists():
-            try:
-                prev_path.unlink()
-                deleted_files += 1
-            except Exception:
-                pass
+        prev_path.unlink()
+        deleted_files += 1
 
     deleted_rows = delete_mask_annotation(sample_id, class_name)
     release_claim_by_id(sample_id)

@@ -152,8 +152,8 @@ def _init_or_update_learner(dls, model_arch, model_path: Path, existing_learner)
                 learner = load_learner(model_path)
                 learner.dls = dls
             except Exception as e:
-                print(f"[WARN] Failed to load exported learner: {e}")
-                learner = vision_learner(dls, model_arch, metrics=accuracy)
+                print(f"[ERR] Failed to load exported learner: {e}", file=sys.stderr)
+                raise
         else:
             learner = vision_learner(dls, model_arch, metrics=accuracy)
     else:
@@ -189,23 +189,15 @@ def _run_forever(flip: bool, max_rotate: float) -> None:
     cycle = 0
 
     while True:
-        try:
-            config = backend_db.get_config()
-        except Exception as e:
-            print(f"[ERR] failed to load config: {e}", file=sys.stderr)
-            time.sleep(5)
-            continue
+        config = backend_db.get_config()
 
         if prev_config != config:
             if prev_config is not None:
                 print("[INFO] Config changed; resetting learner")
             learner = None
             cycle = 0
-            try:
-                if model_path.exists():
-                    model_path.unlink()
-            except Exception:
-                pass
+            if model_path.exists():
+                model_path.unlink()
             prev_config = config
 
         pause_s = 5  # default pause between cycles (seconds)
@@ -247,24 +239,18 @@ def _run_forever(flip: bool, max_rotate: float) -> None:
             learner.fit(1)
             epoch_time = time.time() - t0
 
-            try:
-                valid_res = learner.validate()
-                valid_loss = float(valid_res[0]) if len(valid_res) > 0 else None
-                accuracy_val = float(valid_res[1]) if len(valid_res) > 1 else None
-                train_loss = (
-                    float(learner.recorder.losses[-1])
-                    if learner.recorder.losses
-                    else None
-                )
-            except Exception:
-                train_loss = valid_loss = accuracy_val = None
+            valid_res = learner.validate()
+            valid_loss = float(valid_res[0]) if len(valid_res) > 0 else None
+            accuracy_val = float(valid_res[1]) if len(valid_res) > 1 else None
+            train_loss = (
+                float(learner.recorder.losses[-1])
+                if learner.recorder.losses
+                else None
+            )
 
             backend_db.store_training_stats(cycle, train_loss, valid_loss, accuracy_val)
 
-            try:
-                learner.export(model_path)
-            except Exception as e:
-                print(f"[WARN] Failed to export learner: {e}")
+            learner.export(model_path)
 
             labeled_set = set(paths)
             unlabeled = [
@@ -281,6 +267,7 @@ def _run_forever(flip: bool, max_rotate: float) -> None:
             cycle += 1
         except Exception as e:
             print(f"[ERR][cycle {cycle}] {e}", file=sys.stderr)
+            raise
         finally:
             torch.cuda.empty_cache()
             time.sleep(max(1, pause_s))
