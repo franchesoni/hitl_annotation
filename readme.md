@@ -49,9 +49,7 @@ and the AI, which is one of the following:
 
 ## to-do
 - check if claimed is removed by time
-- add mask training
-    - add frontend checkbox
-    - make it save the prediction
+- integrate mask training (done)
 - expose way to add more images if needed
 - when removing a class show warning, remove the annotations for that class, and reset the model
 - make using the keyboard easier (should work everywhere in the app)

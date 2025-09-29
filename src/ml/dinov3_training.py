@@ -54,16 +54,20 @@ import time
 import pickle
 from pathlib import Path
 from typing import Dict, List, Optional, Sequence, Tuple
+from dataclasses import dataclass
 import os
+import math
+import random
 FEAT_CACHE: dict[str, torch.Tensor] = {}
 FEAT_CACHE_MAX = 2000  # tune; each ~7 MB in fp16 for 1536→96x96x384
+IGNORE_INDEX = 255
 
 import tqdm
 import numpy as np
 import torch
+import torch.nn as nn
+import torch.nn.functional as F
 from PIL import Image
-from sklearn.linear_model import LogisticRegression
-from sklearn.metrics import accuracy_score
 
 # ––– local imports –––
 try:
@@ -74,11 +78,37 @@ except ModuleNotFoundError:  # script run from repo root
     from backend import db_ml as backend_db  # type: ignore
 
 
+SESSION_DIR = Path(backend_db.DB_PATH).parent
+MASKS_DIR = SESSION_DIR / "masks"
+
+
 # Placeholder for upcoming mask-annotation integration into the training loop.
 def iter_mask_annotations_for_training() -> List[Tuple[int, str]]:
     """Return mask annotations once mask-based training support is implemented."""
     # TODO: integrate accepted mask annotations into the DINOv3 segmentation training pipeline.
     return []
+
+
+# ---------------------------------------------------------------------------
+# dataclasses
+# ---------------------------------------------------------------------------
+
+
+@dataclass
+class AnnotatedItem:
+    sample_id: int
+    filepath: str
+    points_by_class: Dict[str, List[dict]]
+    masks_by_class: Dict[str, List[dict]]
+
+
+@dataclass
+class ImageTrainingSample:
+    sample_id: int
+    features: torch.Tensor
+    mask_target: torch.Tensor
+    point_targets: List[Tuple[int, int, int]]
+    mask_pixel_count: int
 
 
 # ---------------------------------------------------------------------------
@@ -143,35 +173,141 @@ def _from_ppm(ppm_val) -> Optional[float]:
     return i / 1_000_000.0
 
 
-def gather_annotated_items(samples: Sequence[dict]) -> List[Tuple[int, str, Dict[str, List[dict]]]]:
-    """Get images with point annotations as ``(sample_id, filepath, annotations_by_class)`` list.
+def gather_annotated_items(samples: Sequence[dict]) -> List[AnnotatedItem]:
+    """Collect images that have point and/or mask annotations."""
 
-    Compliance: read coordinates from ``col01``/``row01`` (PPM ints) and convert to [0,1].
-    """
-    items: List[Tuple[int, str, Dict[str, List[dict]]]] = []
+    items: List[AnnotatedItem] = []
     for s in samples:
         anns = backend_db.get_annotations(s["id"])
-        points = [
-            a
-            for a in anns
-            if a.get("type") == "point" and a.get("col01") is not None and a.get("row01") is not None
-        ]
-        if points:
-            grouped: Dict[str, List[dict]] = {}
-            for point in points:
-                cls = point.get("class", "unknown")
-                x = _from_ppm(point.get("col01"))
-                y = _from_ppm(point.get("row01"))
+        points: Dict[str, List[dict]] = {}
+        masks: Dict[str, List[dict]] = {}
+        for ann in anns:
+            ann_type = ann.get("type")
+            if ann_type == "point" and ann.get("col01") is not None and ann.get("row01") is not None:
+                cls = ann.get("class", "unknown")
+                x = _from_ppm(ann.get("col01"))
+                y = _from_ppm(ann.get("row01"))
                 if x is None or y is None:
                     continue
-                grouped.setdefault(cls, []).append({
+                points.setdefault(cls, []).append({
                     "x": x,
                     "y": y,
-                    "timestamp": point.get("timestamp", 0),
+                    "timestamp": ann.get("timestamp", 0),
                 })
-            if grouped:
-                items.append((s["id"], s["sample_filepath"], grouped))
+            elif ann_type == "mask" and ann.get("mask_path"):
+                cls = ann.get("class", "unknown")
+                masks.setdefault(cls, []).append({
+                    "mask_path": ann.get("mask_path"),
+                    "timestamp": ann.get("timestamp", 0),
+                })
+        if points or masks:
+            items.append(
+                AnnotatedItem(
+                    sample_id=s["id"],
+                    filepath=s["sample_filepath"],
+                    points_by_class=points,
+                    masks_by_class=masks,
+                )
+            )
     return items
+
+
+def _resolve_mask_path(mask_path: str) -> Optional[Path]:
+    if not mask_path:
+        return None
+    try:
+        candidate = Path(mask_path)
+    except Exception:
+        return None
+
+    candidates = []
+    if candidate.is_absolute():
+        candidates.append(candidate)
+    else:
+        candidates.append(SESSION_DIR / candidate)
+        candidates.append(MASKS_DIR / candidate)
+
+    for cand in candidates:
+        try:
+            if cand.exists():
+                return cand.resolve()
+        except Exception:
+            continue
+    return None
+
+
+def build_mask_target(
+    masks_by_class: Dict[str, List[dict]],
+    class_to_idx: Dict[str, int],
+    canvas_shape: Tuple[int, int],
+) -> Tuple[torch.Tensor, int]:
+    """Create a dense target map from binary mask files."""
+
+    target = torch.full(canvas_shape, IGNORE_INDEX, dtype=torch.long)
+    labeled_pixels = 0
+
+    for cls, entries in masks_by_class.items():
+        cls_idx = class_to_idx.get(cls)
+        if cls_idx is None or not entries:
+            continue
+        entries_sorted = sorted(entries, key=lambda e: e.get("timestamp") or 0, reverse=True)
+        mask_path = entries_sorted[0].get("mask_path")
+        resolved = _resolve_mask_path(str(mask_path))
+        if resolved is None:
+            print(f"[WARN] Mask file not found for class '{cls}': {mask_path}")
+            continue
+        try:
+            with Image.open(resolved) as mask_im:
+                mask_arr = np.array(mask_im)
+        except Exception as exc:
+            print(f"[WARN] Failed to load mask {resolved}: {exc}")
+            continue
+        if mask_arr.ndim >= 3:
+            mask_arr = mask_arr[..., 0]
+        mask_bool = mask_arr.astype(bool)
+        H, W = canvas_shape
+        h_eff = min(mask_bool.shape[0], H)
+        w_eff = min(mask_bool.shape[1], W)
+        if h_eff == 0 or w_eff == 0:
+            continue
+        region = mask_bool[:h_eff, :w_eff]
+        region_sum = int(region.sum())
+        if region_sum == 0:
+            continue
+        labeled_pixels += region_sum
+        mask_tensor = torch.from_numpy(region.astype(np.bool_))
+        target_slice = target[:h_eff, :w_eff]
+        target_slice[mask_tensor] = cls_idx
+
+    return target, labeled_pixels
+
+
+class SegmentationHead(nn.Module):
+    """1×1 convolutional head used for segmentation logits."""
+
+    def __init__(self, in_channels: int, out_channels: int):
+        super().__init__()
+        self.classifier = nn.Conv2d(in_channels, out_channels, kernel_size=1)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        return self.classifier(x)
+
+    def expand_out_channels(self, new_out: int) -> None:
+        if new_out == self.classifier.out_channels:
+            return
+        old_layer = self.classifier
+        new_layer = nn.Conv2d(old_layer.in_channels, new_out, kernel_size=1, bias=True)
+        nn.init.kaiming_uniform_(new_layer.weight, a=math.sqrt(5))
+        if new_layer.bias is not None:
+            fan_in, _ = nn.init._calculate_fan_in_and_fan_out(new_layer.weight)
+            bound = 1 / math.sqrt(fan_in)
+            nn.init.uniform_(new_layer.bias, -bound, bound)
+        with torch.no_grad():
+            keep = min(old_layer.out_channels, new_layer.out_channels)
+            new_layer.weight[:keep].copy_(old_layer.weight[:keep])
+            if old_layer.bias is not None and new_layer.bias is not None:
+                new_layer.bias[:keep].copy_(old_layer.bias[:keep])
+        self.classifier = new_layer
 
 
 def load_dinov3_model(size: str = "small") -> torch.nn.Module:
@@ -244,22 +380,111 @@ def extract_features(model: torch.nn.Module, image_tensor: torch.Tensor) -> torc
 # ---------------------------------------------------------------------------
 
 
-def load_classifier(path: Path) -> Optional[LogisticRegression]:
+def load_checkpoint(path: Path) -> Optional[dict]:
     if path.exists():
         try:
             with path.open("rb") as f:
-                return pickle.load(f)
-        except Exception as e:
-            print(f"[WARN] Could not load classifier: {e}")
+                data = pickle.load(f)
+            if isinstance(data, dict):
+                return data
+        except Exception as exc:
+            print(f"[WARN] Could not load checkpoint: {exc}")
     return None
 
 
-def save_classifier(clf: LogisticRegression, path: Path) -> None:
+def save_checkpoint(state: dict, path: Path) -> None:
     try:
         with path.open("wb") as f:
-            pickle.dump(clf, f)
-    except Exception as e:
-        print(f"[WARN] Failed to save classifier: {e}")
+            pickle.dump(state, f)
+    except Exception as exc:
+        print(f"[WARN] Failed to save checkpoint: {exc}")
+
+
+def prepare_training_samples(
+    annotated: Sequence[AnnotatedItem],
+    class_to_idx: Dict[str, int],
+    model: torch.nn.Module,
+    current_resize: int,
+    model_size: str,
+) -> Tuple[List[ImageTrainingSample], int, int]:
+    samples_out: List[ImageTrainingSample] = []
+    total_points = 0
+    total_mask_pixels = 0
+    for item in annotated:
+        image_path = Path(item.filepath)
+        if not image_path.exists():
+            print(f"[WARN] Image file not found: {item.filepath}")
+            continue
+        try:
+            with Image.open(image_path) as image:
+                image_padded, new_w, new_h = resize_pad(image, target_size=current_resize)
+        except Exception as exc:
+            print(f"[WARN] Failed to load image {item.filepath}: {exc}")
+            continue
+        feats = extract_features_cached(model, image_padded, item.filepath, current_resize, model_size)
+        feats = feats.to(torch.float32)
+        _, H, W = feats.shape
+        mask_target, mask_pixels = build_mask_target(item.masks_by_class, class_to_idx, (H, W))
+        point_targets: List[Tuple[int, int, int]] = []
+        for cls, pts in item.points_by_class.items():
+            cls_idx = class_to_idx.get(cls)
+            if cls_idx is None:
+                continue
+            for pt in pts:
+                col = pt.get("x")
+                row = pt.get("y")
+                if col is None or row is None:
+                    continue
+                x_padded = float(col) * (new_w - 1)
+                y_padded = float(row) * (new_h - 1)
+                fx = int(np.floor(x_padded / 16.0))
+                fy = int(np.floor(y_padded / 16.0))
+                fx = min(max(fx, 0), W - 1)
+                fy = min(max(fy, 0), H - 1)
+                point_targets.append((fy, fx, cls_idx))
+        if not point_targets and mask_pixels == 0:
+            continue
+        samples_out.append(
+            ImageTrainingSample(
+                sample_id=item.sample_id,
+                features=feats,
+                mask_target=mask_target,
+                point_targets=point_targets,
+                mask_pixel_count=mask_pixels,
+            )
+        )
+        total_points += len(point_targets)
+        total_mask_pixels += mask_pixels
+    return samples_out, total_points, total_mask_pixels
+
+
+def evaluate_accuracy(
+    head: SegmentationHead,
+    samples: Sequence[ImageTrainingSample],
+    device: torch.device,
+) -> Optional[float]:
+    if not samples:
+        return None
+    total_correct = 0
+    total = 0
+    head.eval()
+    with torch.no_grad():
+        for sample in samples:
+            logits = head(sample.features.unsqueeze(0).to(device))
+            preds = logits.argmax(dim=1).squeeze(0).cpu()
+            for fy, fx, cls_idx in sample.point_targets:
+                total += 1
+                if int(preds[fy, fx]) == cls_idx:
+                    total_correct += 1
+            mask = sample.mask_target
+            valid = mask != IGNORE_INDEX
+            if valid.any():
+                total += int(valid.sum().item())
+                total_correct += int((preds[valid] == mask[valid]).sum().item())
+    head.train()
+    return total_correct / total if total else None
+
+
 
 
 # ---------------------------------------------------------------------------
@@ -271,15 +496,16 @@ def main() -> None:
     clf_path = Path("session/dinov3_linear_classifier_seg.pkl")
     print("[INIT] Loading classifier from", clf_path)
 
-    LOGREG_KW = dict(class_weight="balanced")
-    classifier = load_classifier(clf_path)
+    checkpoint = load_checkpoint(clf_path)
+    class_names: List[str] = list(checkpoint.get("class_names", [])) if checkpoint else []
     prev_config: Optional[dict] = None
     cycle = 0
-    model = None
-    model_size = None
+    model: Optional[torch.nn.Module] = None
+    model_size: Optional[str] = None
+    head: Optional[SegmentationHead] = None
     current_resize = 1536
-    # In-memory; lost on process kill (per spec).
     split_map: dict[int, str] = {}
+    mask_loss_weight = float(checkpoint.get("mask_loss_weight", 1.0)) if checkpoint else 1.0
 
     while True:
         print(f"\n[LOOP] Starting cycle {cycle}")
@@ -292,7 +518,6 @@ def main() -> None:
 
         if prev_config != config:
             print("[CONFIG] Detected config change or first load.")
-            # Reload backbone only if architecture changed; keep classifier persistent
             arch = config.get("architecture", "small") or "small"
             if arch not in {"small", "large"}:
                 print(f"[WARN] Unknown architecture '{arch}', defaulting to 'small'")
@@ -303,13 +528,17 @@ def main() -> None:
                 model_size = arch
             backend_db.reset_training_stats()
             print("[METRICS] Cleared train/val curves due to config change.")
-            # Update preprocessing resize but do not reset classifier/checkpoint
             current_resize = config.get("resize", 1536) or 1536
-            print(f"[CONFIG] Set resize to {current_resize}")
             prev_config = config
 
+        try:
+            mask_loss_weight = float(config.get("mask_loss_weight", mask_loss_weight))
+        except (TypeError, ValueError):
+            mask_loss_weight = 1.0
+        if mask_loss_weight < 0.0:
+            mask_loss_weight = 0.0
+
         current_resize = config.get("resize", current_resize) or current_resize
-        # Run only for segmentation task
         task = (config.get("task") or "classification").lower()
         if task != "segmentation":
             print("[INFO] Task is not 'segmentation' — pausing 1s…")
@@ -325,169 +554,189 @@ def main() -> None:
 
         print("[DB] Fetching all samples…")
         samples = backend_db.get_all_samples()
-        allowed_ids = backend_db.get_sample_ids_for_path_filter(
-            config.get("sample_path_filter")
-        )
+        allowed_ids = backend_db.get_sample_ids_for_path_filter(config.get("sample_path_filter"))
         print(f"[DB] Found {len(samples)} samples.")
         print("[DB] Gathering annotated items…")
         annotated = gather_annotated_items(samples)
         print(f"[DB] Found {len(annotated)} annotated items.")
         if not annotated:
-            print("[WARN] No point annotations available — pausing 1s…")
+            print("[WARN] No annotations available — pausing 1s…")
             time.sleep(1)
             continue
 
-        print("[FEAT] Extracting features for annotated points…")
-        X, y, img_ids = [], [], []
-        for s_id, fp, pts_by_class in tqdm.tqdm(annotated):
-            image_path = Path(fp)
-            if not image_path.exists():
-                print(f"[WARN] Image file not found: {fp}")
-                continue
-            with Image.open(image_path) as image:
-                image_padded, new_w, new_h = resize_pad(image, target_size=current_resize)
-            feats = extract_features_cached(model, image_padded, fp, current_resize, model_size)
-            for cls, pts in pts_by_class.items():
-                for pt in pts:
-                    col = pt.get("x")
-                    row = pt.get("y")
-                    if col is None or row is None:
-                        continue
-                    # Map normalized [0,1] to resized image content (top-left aligned)
-                    x_padded = float(col) * (new_w - 1)
-                    y_padded = float(row) * (new_h - 1)
-                    # Map to feature map coordinates using floor to select the patch cell
-                    fx = int(np.floor(x_padded / 16.0))
-                    fy = int(np.floor(y_padded / 16.0))
-                    _, H, W = feats.shape
-                    fx = min(max(fx, 0), W - 1)
-                    fy = min(max(fy, 0), H - 1)
-                    vec = feats[:, fy, fx].cpu().numpy()
-                    X.append(vec)
-                    y.append(cls)
-                    img_ids.append(s_id)
+        classes_in_data = set()
+        for item in annotated:
+            classes_in_data.update(item.points_by_class.keys())
+            classes_in_data.update(item.masks_by_class.keys())
+        for cls in sorted(classes_in_data):
+            if cls not in class_names:
+                class_names.append(cls)
+        if not class_names:
+            print("[WARN] No classes found in annotations — pausing 1s…")
+            time.sleep(1)
+            continue
+        class_to_idx = {cls: idx for idx, cls in enumerate(class_names)}
 
-        print(f"[FEAT] Extracted {len(X)} feature/label pairs.")
-        if not X:
-            print("[WARN] No valid feature/label pairs found — pausing 1s…")
+        if model is None or model_size is None:
+            print("[ERR] Backbone model not loaded — pausing 1s…")
             time.sleep(1)
             continue
 
-        X = np.stack(X)
-        y = np.array(y)
-        # In-memory per-process split of labeled images into {train, val}
-        labeled_ids = sorted({int(i) for i in img_ids})
-        # Compute current counts only over currently labeled ids
+        image_samples, total_points, total_mask_pixels = prepare_training_samples(
+            annotated, class_to_idx, model, current_resize, model_size
+        )
+        print(
+            f"[DATA] Prepared {len(image_samples)} samples | {total_points} points | {total_mask_pixels} mask pixels"
+        )
+        if not image_samples:
+            print("[WARN] No usable training samples — pausing 1s…")
+            time.sleep(1)
+            continue
+
+        labeled_ids = sorted({sample.sample_id for sample in image_samples})
         train_count = sum(1 for i in labeled_ids if split_map.get(i) == "train")
         val_count = sum(1 for i in labeled_ids if split_map.get(i) == "val")
+
         def _assign_side() -> str:
-            # Keep ~80/20 ratio while appending
             total = train_count + val_count
             if total == 0:
                 return "train"
             return "train" if (train_count / max(1, total)) < 0.8 else "val"
 
-        # Append new items without reshuffling existing ones
-        for i in labeled_ids:
-            if i not in split_map:
+        for sample_id in labeled_ids:
+            if sample_id not in split_map:
                 side = _assign_side()
-                split_map[i] = side
+                split_map[sample_id] = side
                 if side == "train":
                     train_count += 1
                 else:
                     val_count += 1
 
         print(f"[SPLIT] {train_count} train, {val_count} val images.")
-        train_imgs = {i for i, side in split_map.items() if side == "train"}
-        train_mask = np.array([int(i) in train_imgs for i in img_ids])
-        X_train, y_train = X[train_mask], y[train_mask]
-        X_val, y_val = X[~train_mask], y[~train_mask]
+        train_samples = [s for s in image_samples if split_map.get(s.sample_id) == "train"]
+        val_samples = [s for s in image_samples if split_map.get(s.sample_id) == "val"]
 
-        # Train/val split already computed above -> X_train, y_train, X_val, y_val
+        feature_dim = train_samples[0].features.shape[0] if train_samples else image_samples[0].features.shape[0]
+        need_new_head = head is None or head.classifier.in_channels != feature_dim
+        if need_new_head:
+            initial_out = len(class_names)
+            if checkpoint and checkpoint.get("feature_dim") == feature_dim:
+                saved_classes = checkpoint.get("class_names", [])
+                saved_state = checkpoint.get("state_dict")
+                head = SegmentationHead(feature_dim, max(len(saved_classes), 1))
+                if saved_state and len(saved_classes) == head.classifier.out_channels:
+                    state_dict = {}
+                    for key, value in saved_state.items():
+                        tensor = value
+                        if not isinstance(tensor, torch.Tensor):
+                            tensor = torch.tensor(tensor)
+                        state_dict[key] = tensor
+                    head.load_state_dict(state_dict, strict=True)
+                checkpoint = None
+            else:
+                head = SegmentationHead(feature_dim, max(initial_out, 1))
+        if head is None:
+            print("[ERR] Failed to initialize segmentation head — pausing 1s…")
+            time.sleep(1)
+            continue
+        if len(class_names) > head.classifier.out_channels:
+            head.expand_out_channels(len(class_names))
 
-        # 1) Bail if you don’t have at least 2 classes
-        labels_present = np.unique(y_train)
-        if labels_present.size < 2:
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        head = head.to(device)
+        optimizer = torch.optim.Adam(head.parameters(), lr=1e-3, weight_decay=1e-4)
+
+        train_class_indices = set()
+        for sample in train_samples:
+            for _, _, idx in sample.point_targets:
+                train_class_indices.add(idx)
+            for value in sample.mask_target.unique():
+                val_idx = int(value.item())
+                if val_idx != IGNORE_INDEX:
+                    train_class_indices.add(val_idx)
+
+        if len(train_class_indices) < 2:
             print("[INFO] Not enough classes in train split — skipping training this cycle")
-            acc = None
+            train_loss_avg = None
         else:
-            # 2) Reinit if first time or feature dim changed
-            need_new = False
-            if classifier is None:
-                need_new = True
-            else:
-                try:
-                    prev_dim = classifier.coef_.shape[1]
-                except Exception:
-                    prev_dim = -1
-                if prev_dim != X_train.shape[1]:
-                    print("[TRAIN] Feature dimension changed; reinitializing LogisticRegression.")
-                    need_new = True
+            epochs = 25
+            batch_size = 4
+            train_loss_total = 0.0
+            train_steps = 0
+            for _ in range(epochs):
+                random.shuffle(train_samples)
+                for start in range(0, len(train_samples), batch_size):
+                    batch = train_samples[start : start + batch_size]
+                    features = torch.stack([s.features for s in batch]).to(device)
+                    logits = head(features)
+                    mask_targets = torch.stack([s.mask_target for s in batch]).to(device)
+                    mask_loss = None
+                    if mask_loss_weight > 0.0 and (mask_targets != IGNORE_INDEX).any():
+                        mask_loss = F.cross_entropy(logits, mask_targets, ignore_index=IGNORE_INDEX)
+                    point_logits = []
+                    point_targets = []
+                    for bi, sample in enumerate(batch):
+                        for fy, fx, cls_idx in sample.point_targets:
+                            point_logits.append(logits[bi, :, fy, fx])
+                            point_targets.append(cls_idx)
+                    point_loss = None
+                    if point_logits:
+                        point_logits_tensor = torch.stack(point_logits)
+                        point_targets_tensor = torch.tensor(point_targets, device=device)
+                        point_loss = F.cross_entropy(point_logits_tensor, point_targets_tensor)
+                    losses = []
+                    if point_loss is not None:
+                        losses.append(point_loss)
+                    if mask_loss is not None:
+                        losses.append(mask_loss_weight * mask_loss)
+                    if not losses:
+                        continue
+                    total_loss = sum(losses)
+                    optimizer.zero_grad()
+                    total_loss.backward()
+                    optimizer.step()
+                    train_loss_total += total_loss.item()
+                    train_steps += 1
+            train_loss_avg = train_loss_total / train_steps if train_steps else None
 
-            if need_new:
-                backend_db.reset_training_stats()
-                classifier = LogisticRegression(**LOGREG_KW)
+        val_accuracy = evaluate_accuracy(head, val_samples, device)
+        backend_db.store_training_stats(cycle, train_loss_avg, None, val_accuracy)
 
-            # 3) Fit fresh each cycle for stability/determinism
-            classifier.set_params(**LOGREG_KW)  # keep config stable if something touched it
-            classifier.fit(X_train, y_train)
-            print(f"[TRAIN] Trained multinomial LR on {X_train.shape[0]} samples, {len(classifier.classes_)} classes.")
+        checkpoint_state = {
+            "state_dict": {k: v.detach().cpu() for k, v in head.state_dict().items()},
+            "class_names": class_names,
+            "feature_dim": head.classifier.in_channels,
+            "architecture": model_size,
+            "resize": current_resize,
+            "mask_loss_weight": mask_loss_weight,
+        }
+        save_checkpoint(checkpoint_state, clf_path)
 
-            # 4) Validation
-            if y_val.size:
-                y_pred = classifier.predict(X_val)
-                acc = accuracy_score(y_val, y_pred)
-                print(f"[VAL] Accuracy: {acc:.3f} | n_val: {len(y_val)}")
-            else:
-                acc = None
-
-            # 5) Save checkpoint
-            print("[TRAIN] Saving classifier checkpoint…")
-            save_classifier(classifier, clf_path)
-
-        # Store training stats (acc may be None above)
-        print("[DB] Storing training stats…")
-        backend_db.store_training_stats(cycle, None, None, acc)
-
-        if classifier is not None:
-            print("[TRAIN] Saving classifier checkpoint…")
-            save_classifier(classifier, clf_path)
-
-        if len(y_val) > 0 and classifier is not None:
-            y_pred = classifier.predict(X_val)
-            acc = accuracy_score(y_val, y_pred)
-            print(f"[VAL] Accuracy: {acc:.3f} | n_val: {len(y_val)}")
-        else:
-            acc = None
-
-        print("[DB] Storing training stats…")
-        backend_db.store_training_stats(cycle, None, None, acc)
-
-        labeled_set = set(fp for _, fp, _ in annotated)
+        labeled_set = {Path(item.filepath) for item in annotated}
         unlabeled = [
             s
             for s in samples
-            if s["sample_filepath"] not in labeled_set
+            if Path(s["sample_filepath"]) not in labeled_set
             and (allowed_ids is None or s["id"] in allowed_ids)
         ]
         filtered_annotated = [
-            (s_id, fp, pts)
-            for s_id, fp, pts in annotated
-            if allowed_ids is None or s_id in allowed_ids
+            (item.sample_id, item.filepath)
+            for item in annotated
+            if allowed_ids is None or item.sample_id in allowed_ids
         ]
         to_predict = (
-            [dict(id=s_id, sample_filepath=fp) for s_id, fp, _ in filtered_annotated]
+            [dict(id=s_id, sample_filepath=fp) for s_id, fp in filtered_annotated]
             + [s for s in unlabeled]
         )[:budget]
         print(f"[PRED] Will predict on {len(to_predict)} images (labeled + unlabeled, up to budget)")
 
-        if classifier is None:
-            print("[INFO] No trained classifier available — skipping prediction this cycle; pausing 1s…")
+        if head is None:
+            print("[INFO] No trained head available — skipping prediction this cycle; pausing 1s…")
             time.sleep(1)
             continue
 
         Path("session/preds").mkdir(parents=True, exist_ok=True)
-        # Don't print inside the prediction for loop to avoid console bloat
+        head.eval()
         for dtp in tqdm.tqdm(to_predict):
             fp = dtp["sample_filepath"]
             s_id = dtp["id"]
@@ -498,26 +747,28 @@ def main() -> None:
             with Image.open(image_path) as image:
                 image_padded, new_w, new_h = resize_pad(image, target_size=current_resize)
             feats = extract_features_cached(model, image_padded, fp, current_resize, model_size)
-            F, H, W = feats.shape
-            feats_np = feats.permute(1, 2, 0).reshape(-1, F).cpu().numpy()
-            classes_map = classifier.predict(feats_np).reshape(H, W)
-            # crop the map to the image 
+            feats = feats.to(torch.float32)
+            logits = head(feats.unsqueeze(0).to(device)).squeeze(0).cpu()
+            classes_map = logits.argmax(dim=0).numpy()
+            Fh, Fw = logits.shape[1:]
             image_rows_01 = new_h / max(new_w, new_h)
             image_cols_01 = new_w / max(new_w, new_h)
-            assert image_rows_01 == 1.0 or image_cols_01 == 1.0, "Only one side should be padded"
             if image_rows_01 < 1.0:
-                # Zero-padded columns on right
-                classes_map = classes_map[:int(H * image_rows_01)]
+                classes_map = classes_map[: int(Fh * image_rows_01)]
             elif image_cols_01 < 1.0:
-                # Zero-padded rows on bottom
-                classes_map = classes_map[:, :int(W * image_cols_01)]
-            # One PNG per class under session/preds named <sample_id>_<class>.png
+                classes_map = classes_map[:, : int(Fw * image_cols_01)]
             preds_batch = []
-            for class_name in np.unique(classes_map):
-                mask_bool = (classes_map == class_name).astype(bool)  # this should be squared with image at the top left
+            for class_idx in np.unique(classes_map):
+                class_idx_int = int(class_idx)
+                if class_idx_int < 0 or class_idx_int >= len(class_names):
+                    continue
+                class_name = class_names[class_idx_int]
+                mask_bool = (classes_map == class_idx_int)
+                if not mask_bool.any():
+                    continue
                 safe_cls = _sanitize_for_filename(class_name)
                 outpath = (Path("session") / "preds" / f"{s_id}_{safe_cls}.png").resolve()
-                Image.fromarray(mask_bool).save(outpath)
+                Image.fromarray(mask_bool.astype(np.uint8) * 255).save(outpath)
                 preds_batch.append({
                     "sample_id": s_id,
                     "class": str(class_name),
@@ -526,17 +777,13 @@ def main() -> None:
                 })
             if preds_batch:
                 backend_db.set_predictions_batch(preds_batch)
+        head.train()
         print(
-            f"[cycle {cycle}] trained on {len(X_train)} pts, val {len(y_val)} pts, predicted {len(to_predict)} images"
+            f"[cycle {cycle}] trained on {len(train_samples)} imgs, val {len(val_samples)} imgs, predicted {len(to_predict)} images"
         )
         cycle += 1
         torch.cuda.empty_cache()
-        # Normal cycles do not pause per spec
 
-
-# ---------------------------------------------------------------------------
-# CLI
-# ---------------------------------------------------------------------------
 
 if __name__ == "__main__":
     main()
