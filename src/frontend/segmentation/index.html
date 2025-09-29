@@ -33,7 +33,10 @@
                                         Show overlay (M)
                                 </label>
                         </div>
-                        <button id="accept-mask-btn" class="btn" style="margin-bottom: 12px;">Accept Mask Prediction</button>
+                        <label class="mask-annotation-toggle" style="display:flex;align-items:center;gap:6px;margin-bottom:12px;font-size:0.95rem;">
+                                <input type="checkbox" id="mask-annotation-toggle">
+                                Add prediction as annotation
+                        </label>
                         <div class="sample-filter"><label for="sample-filter-input">Sample path filter:</label><input
                                         type="text" id="sample-filter-input" placeholder="e.g. **/front*"
                                         readonly><span id="sample-filter-count"></span></div>

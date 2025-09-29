@@ -17,7 +17,7 @@ from src.backend.db import (
     get_sample_by_id, upsert_annotation, delete_annotation_by_sample_id,
     get_annotation_stats, export_annotations, release_claim_by_id,
     get_most_recent_prediction, store_live_accuracy, get_annotations,
-    cleanup_claims_unconditionally, delete_annotations_by_type,
+    cleanup_claims_unconditionally, delete_annotations_by_type, delete_mask_annotation,
     add_point_annotation, delete_point_annotation, clear_point_annotations,
     get_sample_prev_by_id, get_sample_next_by_id, get_predictions,
 )
@@ -575,6 +575,39 @@ def accept_mask_annotation(sample_id: int):
         response_annotation["mask_url"] = mask_url
 
     return jsonify({"ok": True, "annotation": response_annotation})
+
+
+@app.delete("/api/annotations/<int:sample_id>/mask/<class_name>")
+def delete_mask_annotation_endpoint(sample_id: int, class_name: str):
+    """Remove a stored mask annotation for a given class on a sample."""
+    if class_name is None:
+        return jsonify({"error": "class name is required"}), 400
+    class_name = class_name.strip()
+    if not class_name:
+        return jsonify({"error": "class name is required"}), 400
+
+    existing = [
+        ann for ann in get_annotations(sample_id)
+        if ann.get("type") == "mask" and ann.get("class") == class_name and ann.get("mask_path")
+    ]
+    if not existing:
+        # Nothing to delete; return ok to keep frontend logic simple
+        return jsonify({"ok": True, "deleted": 0})
+
+    deleted_files = 0
+    for ann in existing:
+        prev_path = _resolve_under_dir(str(ann.get("mask_path")), MASKS_DIR)
+        if prev_path and prev_path.exists():
+            try:
+                prev_path.unlink()
+                deleted_files += 1
+            except Exception:
+                pass
+
+    deleted_rows = delete_mask_annotation(sample_id, class_name)
+    release_claim_by_id(sample_id)
+
+    return jsonify({"ok": True, "deleted": deleted_rows, "deleted_files": deleted_files})
 
 
 @app.get("/api/stats")
