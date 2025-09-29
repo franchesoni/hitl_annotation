@@ -240,28 +240,31 @@ def index():
     return app.send_static_file("router.html")
 
 
-@app.route("/classification")
-def classification():
+def _serve_task_page(task_name: str, template: str):
+    """Return the static page for *task_name*, enforcing task consistency."""
+
     config = get_config() or {}
     current_task = config.get("task")
+
     if current_task is None:
-        update_config({"task": "classification"})
-        return app.send_static_file("classification/index.html")
-    if current_task == "classification":
-        return app.send_static_file("classification/index.html")
-    return _task_conflict_response(current_task, "classification")
+        update_config({"task": task_name})
+        return app.send_static_file(template)
+
+    if current_task == task_name:
+        return app.send_static_file(template)
+
+    return _task_conflict_response(current_task, task_name)
+
+
+@app.route("/classification")
+def classification():
+    return _serve_task_page("classification", "classification/index.html")
+
 
 # Add segmentation route
 @app.route("/segmentation")
 def segmentation():
-    config = get_config() or {}
-    current_task = config.get("task")
-    if current_task is None:
-        update_config({"task": "segmentation"})
-        return app.send_static_file("segmentation/index.html")
-    if current_task == "segmentation":
-        return app.send_static_file("segmentation/index.html")
-    return _task_conflict_response(current_task, "segmentation")
+    return _serve_task_page("segmentation", "segmentation/index.html")
 
 
 # Static files are served by Flask from FRONTEND_DIR via static_url_path=""
