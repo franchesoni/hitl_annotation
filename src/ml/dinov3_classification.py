@@ -237,20 +237,14 @@ def _train_val_split_by_image(items: List[Tuple[int, str, str]], valid_pct: floa
 # ---------------------------------------------------------------------------
 
 def _load_clf(path: Path):
-    if path.exists():
-        try:
-            with path.open("rb") as f:
-                return pickle.load(f)
-        except Exception as e:
-            print(f"[WARN] Could not load classifier: {e}")
-    return None
+    if not path.exists():
+        return None
+    with path.open("rb") as f:
+        return pickle.load(f)
 
 def _save_clf(clf, path: Path):
-    try:
-        with path.open("wb") as f:
-            pickle.dump(clf, f)
-    except Exception as e:
-        print(f"[WARN] Failed to save classifier: {e}")
+    with path.open("wb") as f:
+        pickle.dump(clf, f)
 
 
 # ---------------------------------------------------------------------------
@@ -266,12 +260,7 @@ def main() -> None:
     model_size = None
 
     while True:
-        try:
-            config = backend_db.get_config()
-        except Exception as e:
-            print(f"[ERR] failed to load config: {e}")
-            time.sleep(5)
-            continue
+        config = backend_db.get_config()
 
         if (config.get("task") or "classification").lower() != "classification":
             print("[INFO] Task is not 'classification' — pausing 1s…")
@@ -318,16 +307,11 @@ def main() -> None:
         def _encode_items(items, X_out, y_out):
             for _, fp, cls in items:
                 if not Path(fp).exists():
-                    print(f"[WARN] Missing image: {fp}")
-                    continue
-                try:
-                    vec = extract_global_feature_cached(
-                        model, fp, target_size=resize, pooling=pooling,
-                        debug_forward=debug_forward, arch=arch
-                    )
-                except Exception as e:
-                    print(f"[WARN] Feature extraction failed for {fp}: {e}")
-                    continue
+                    raise FileNotFoundError(f"Missing image: {fp}")
+                vec = extract_global_feature_cached(
+                    model, fp, target_size=resize, pooling=pooling,
+                    debug_forward=debug_forward, arch=arch
+                )
                 X_out.append(vec)
                 y_out.append(cls)
 
@@ -374,16 +358,11 @@ def main() -> None:
             for s in subset:
                 fp = s["sample_filepath"]
                 if not Path(fp).exists():
-                    print(f"[WARN] Missing image: {fp}")
-                    continue
-                try:
-                    vec = extract_global_feature_cached(
-                        model, fp, target_size=resize, pooling=pooling,
-                        debug_forward=False, arch=arch
-                    )
-                except Exception as e:
-                    print(f"[WARN] Feature extraction failed for {fp}: {e}")
-                    continue
+                    raise FileNotFoundError(f"Missing image: {fp}")
+                vec = extract_global_feature_cached(
+                    model, fp, target_size=resize, pooling=pooling,
+                    debug_forward=False, arch=arch
+                )
 
                 probs = clf.predict_proba([vec])[0]
                 top_idx = int(np.argmax(probs))

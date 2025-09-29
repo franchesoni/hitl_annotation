@@ -215,10 +215,8 @@ def gather_annotated_items(samples: Sequence[dict]) -> List[AnnotatedItem]:
 def _resolve_mask_path(mask_path: str) -> Optional[Path]:
     if not mask_path:
         return None
-    try:
-        candidate = Path(mask_path)
-    except Exception:
-        return None
+
+    candidate = Path(mask_path)
 
     candidates = []
     if candidate.is_absolute():
@@ -228,12 +226,10 @@ def _resolve_mask_path(mask_path: str) -> Optional[Path]:
         candidates.append(MASKS_DIR / candidate)
 
     for cand in candidates:
-        try:
-            if cand.exists():
-                return cand.resolve()
-        except Exception:
-            continue
-    return None
+        if cand.exists():
+            return cand.resolve()
+
+    raise FileNotFoundError(f"Mask path {mask_path} could not be resolved")
 
 
 def build_mask_target(
@@ -253,15 +249,8 @@ def build_mask_target(
         entries_sorted = sorted(entries, key=lambda e: e.get("timestamp") or 0, reverse=True)
         mask_path = entries_sorted[0].get("mask_path")
         resolved = _resolve_mask_path(str(mask_path))
-        if resolved is None:
-            print(f"[WARN] Mask file not found for class '{cls}': {mask_path}")
-            continue
-        try:
-            with Image.open(resolved) as mask_im:
-                mask_arr = np.array(mask_im)
-        except Exception as exc:
-            print(f"[WARN] Failed to load mask {resolved}: {exc}")
-            continue
+        with Image.open(resolved) as mask_im:
+            mask_arr = np.array(mask_im)
         if mask_arr.ndim >= 3:
             mask_arr = mask_arr[..., 0]
         mask_bool = mask_arr.astype(bool)
@@ -381,23 +370,19 @@ def extract_features(model: torch.nn.Module, image_tensor: torch.Tensor) -> torc
 
 
 def load_checkpoint(path: Path) -> Optional[dict]:
-    if path.exists():
-        try:
-            with path.open("rb") as f:
-                data = pickle.load(f)
-            if isinstance(data, dict):
-                return data
-        except Exception as exc:
-            print(f"[WARN] Could not load checkpoint: {exc}")
-    return None
+    if not path.exists():
+        return None
+
+    with path.open("rb") as f:
+        data = pickle.load(f)
+    if isinstance(data, dict):
+        return data
+    raise ValueError(f"Unexpected checkpoint format in {path}")
 
 
 def save_checkpoint(state: dict, path: Path) -> None:
-    try:
-        with path.open("wb") as f:
-            pickle.dump(state, f)
-    except Exception as exc:
-        print(f"[WARN] Failed to save checkpoint: {exc}")
+    with path.open("wb") as f:
+        pickle.dump(state, f)
 
 
 def prepare_training_samples(
@@ -413,14 +398,9 @@ def prepare_training_samples(
     for item in annotated:
         image_path = Path(item.filepath)
         if not image_path.exists():
-            print(f"[WARN] Image file not found: {item.filepath}")
-            continue
-        try:
-            with Image.open(image_path) as image:
-                image_padded, new_w, new_h = resize_pad(image, target_size=current_resize)
-        except Exception as exc:
-            print(f"[WARN] Failed to load image {item.filepath}: {exc}")
-            continue
+            raise FileNotFoundError(f"Image file not found: {item.filepath}")
+        with Image.open(image_path) as image:
+            image_padded, new_w, new_h = resize_pad(image, target_size=current_resize)
         feats = extract_features_cached(model, image_padded, item.filepath, current_resize, model_size)
         feats = feats.to(torch.float32)
         _, H, W = feats.shape
@@ -509,12 +489,7 @@ def main() -> None:
 
     while True:
         print(f"\n[LOOP] Starting cycle {cycle}")
-        try:
-            config = backend_db.get_config()
-        except Exception as e:
-            print(f"[ERR] failed to load config: {e}", file=sys.stderr)
-            time.sleep(5)
-            continue
+        config = backend_db.get_config()
 
         if prev_config != config:
             print("[CONFIG] Detected config change or first load.")
@@ -531,10 +506,8 @@ def main() -> None:
             current_resize = config.get("resize", 1536) or 1536
             prev_config = config
 
-        try:
-            mask_loss_weight = float(config.get("mask_loss_weight", mask_loss_weight))
-        except (TypeError, ValueError):
-            mask_loss_weight = 1.0
+        cfg_mask_weight = config.get("mask_loss_weight", mask_loss_weight)
+        mask_loss_weight = 1.0 if cfg_mask_weight is None else float(cfg_mask_weight)
         if mask_loss_weight < 0.0:
             mask_loss_weight = 0.0
 
