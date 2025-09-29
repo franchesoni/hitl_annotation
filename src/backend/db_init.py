@@ -380,7 +380,8 @@ def initialize_database_if_needed(db_path=DB_PATH):
                 resize INTEGER,
                 last_claim_cleanup INTEGER,
                 task TEXT,
-                sample_path_filter TEXT
+                sample_path_filter TEXT,
+                mask_loss_weight REAL
             );
         """
         )
@@ -393,6 +394,8 @@ def initialize_database_if_needed(db_path=DB_PATH):
             cur.execute("ALTER TABLE config ADD COLUMN task TEXT;")
         if "sample_path_filter" not in cols:
             cur.execute("ALTER TABLE config ADD COLUMN sample_path_filter TEXT;")
+        if "mask_loss_weight" not in cols:
+            cur.execute("ALTER TABLE config ADD COLUMN mask_loss_weight REAL;")
         cur.execute("PRAGMA table_info(annotations);")
         ann_cols = {row[1] for row in cur.fetchall()}
         if "mask_path" not in ann_cols:
@@ -510,16 +513,18 @@ def initialize_database_if_needed(db_path=DB_PATH):
                 "last_claim_cleanup": None,
                 "task": None,
                 "sample_path_filter": None,
+                "mask_loss_weight": 1.0,
             }
             cursor.execute(
                 """
                 INSERT INTO config (
                     classes, ai_should_be_run, architecture, budget, resize,
-                    last_claim_cleanup, task, sample_path_filter
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    last_claim_cleanup, task, sample_path_filter, mask_loss_weight
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
-                (json.dumps(default_config["classes"]), int(default_config["ai_should_be_run"]), 
-                 default_config["architecture"], default_config["budget"], 
+                (json.dumps(default_config["classes"]), int(default_config["ai_should_be_run"]),
+                 default_config["architecture"], default_config["budget"],
                  default_config["resize"], default_config["last_claim_cleanup"],
-                 default_config["task"], default_config["sample_path_filter"])
+                 default_config["task"], default_config["sample_path_filter"],
+                 default_config["mask_loss_weight"])
             )

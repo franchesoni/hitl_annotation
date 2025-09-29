@@ -8,9 +8,9 @@
   - Uses fastai ResNet18/34; cycles training and prediction on unlabeled samples
   - Stores label predictions via `set_predictions_batch()`
   - Logs training curves via `store_training_stats()` and saves checkpoint `session/checkpoint.pkl`
-- `src/ml/dinov3_training.py`: point-based segmentation with DINOv3 features
+- `src/ml/dinov3_training.py`: segmentation with DINOv3 features + linear head
   - Loads local DINOv3 hub models; extracts 16×16 patch features
-  - Trains `SGDClassifier` on annotated points, saves `session/dinov3_linear_classifier_seg.pkl`
+  - Trains a 1×1 Conv head on point and mask annotations, saves `session/dinov3_linear_classifier_seg.pkl`
   - Produces per-class masks per image → PNGs in `session/preds/` and DB `predictions(type='mask')`
 
 ### Configuration Fields
@@ -18,6 +18,7 @@
 - `architecture` (str): `resnet18`/`resnet34` for fastai; `small`/`large` for DINOv3
 - `budget` (int): max items to predict per cycle
 - `resize` (int): image resize (fastai: shorter side; DINOv3: padded canvas size)
+- `mask_loss_weight` (float): balance between mask loss and point loss during segmentation training
 
 ### Data Exchange
 - Reads: `get_all_samples()`, `get_annotations(sample_id)`, `get_config()`
@@ -57,7 +58,7 @@
 ### Checkpoints
 - Save as fastai export or pickle under `session/`:
   - Classification: `checkpoint.pkl` (fastai Learner export)
-  - Segmentation: `dinov3_linear_classifier_seg.pkl` (pickle of `SGDClassifier`)
+  - Segmentation: `dinov3_linear_classifier_seg.pkl` (pickle with linear Conv head state)
 
 ### Segmentation Masks
 - Filename scheme: write one PNG per binary mask to `session/preds/` named `<sample_id>_<class>.png`.

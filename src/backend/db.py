@@ -81,7 +81,7 @@ def get_config():
         cursor.execute(
             """
             SELECT classes, ai_should_be_run, architecture, budget, resize,
-                   last_claim_cleanup, task, sample_path_filter
+                   last_claim_cleanup, task, sample_path_filter, mask_loss_weight
             FROM config
             LIMIT 1
             """
@@ -97,6 +97,7 @@ def get_config():
                 last_claim_cleanup,
                 task,
                 sample_path_filter,
+                mask_loss_weight,
             ) = row
             sample_filter_normalized = _normalize_sample_path_filter(sample_path_filter)
             count_cursor = conn.cursor()
@@ -111,6 +112,7 @@ def get_config():
                 "task": task,
                 "sample_path_filter": sample_filter_normalized,
                 "sample_path_filter_count": sample_filter_count,
+                "mask_loss_weight": mask_loss_weight if mask_loss_weight is not None else 1.0,
             }
         return {}
 
@@ -122,10 +124,11 @@ def update_config(config):
     last_claim_cleanup (int|None). Unknown keys are ignored. Values are validated
     and coerced where reasonable; out-of-range or invalid types are dropped.
     """
-    current = get_config()
+    current = get_config() or {}
     # Remove computed fields before merging
-    if current:
-        current.pop("sample_path_filter_count", None)
+    current.pop("sample_path_filter_count", None)
+    if current.get("mask_loss_weight") is None:
+        current["mask_loss_weight"] = 1.0
 
     # Helper validators
     def _bool(v):
@@ -140,6 +143,12 @@ def update_config(config):
     def _int(v):
         try:
             return int(v)
+        except (TypeError, ValueError):
+            return None
+
+    def _float(v):
+        try:
+            return float(v)
         except (TypeError, ValueError):
             return None
 
@@ -223,6 +232,11 @@ def update_config(config):
     if "sample_path_filter" in config:
         proposed["sample_path_filter"] = _sample_path_filter(config.get("sample_path_filter"))
 
+    if "mask_loss_weight" in config:
+        f = _float(config.get("mask_loss_weight"))
+        if f is not None and f >= 0.0:
+            proposed["mask_loss_weight"] = f
+
     # tolerate camelCase from clients
     if "samplePathFilter" in config and "sample_path_filter" not in proposed:
         proposed["sample_path_filter"] = _sample_path_filter(config.get("samplePathFilter"))
@@ -250,25 +264,28 @@ def update_config(config):
                        resize = ?,
                        last_claim_cleanup = ?,
                        task = ?,
-                       sample_path_filter = ?
+                       sample_path_filter = ?,
+                       mask_loss_weight = ?
                 """,
                 (classes_json, int(current.get("ai_should_be_run", False)),
                  current.get("architecture"), current.get("budget"),
                  current.get("resize"), current.get("last_claim_cleanup"),
-                 current.get("task"), sample_filter_value)
+                 current.get("task"), sample_filter_value,
+                 current.get("mask_loss_weight"))
             )
         else:
             cursor.execute(
                 """
                 INSERT INTO config (
                     classes, ai_should_be_run, architecture, budget, resize,
-                    last_claim_cleanup, task, sample_path_filter
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    last_claim_cleanup, task, sample_path_filter, mask_loss_weight
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (classes_json, int(current.get("ai_should_be_run", False)),
                  current.get("architecture"), current.get("budget"),
                  current.get("resize"), current.get("last_claim_cleanup"),
-                 current.get("task"), sample_filter_value)
+                 current.get("task"), sample_filter_value,
+                 current.get("mask_loss_weight"))
             )
 
 
