@@ -1,42 +1,12 @@
-from src.backend.db import DB_PATH, to_ppm, SKIP_CLASS_SENTINEL
+from src.backend.db import (
+    DB_PATH,
+    SKIP_CLASS_SENTINEL,
+    normalize_mask_path,
+    to_ppm,
+)
 from pathlib import Path
 import sqlite3
 import os
-from pathlib import Path as _Path
-
-# Session/preds dirs for mask path normalization
-_SESSION_DIR = _Path(DB_PATH).parent
-_PREDS_DIR = _SESSION_DIR / "preds"
-
-def _normalize_mask_path(mask_path: str | None) -> str | None:
-    if not mask_path:
-        return None
-    try:
-        _PREDS_DIR.mkdir(parents=True, exist_ok=True)
-    except Exception:
-        pass
-    try:
-        p = _Path(mask_path)
-        if p.is_absolute():
-            resolved = p.resolve()
-        else:
-            parts = p.parts
-            if len(parts) > 0 and parts[0] == "preds":
-                resolved = (_SESSION_DIR / p).resolve()
-            else:
-                resolved = (_PREDS_DIR / p).resolve()
-        resolved.relative_to(_PREDS_DIR.resolve())
-    except Exception:
-        return None
-    try:
-        rel = resolved.relative_to(_SESSION_DIR.resolve())
-        return rel.as_posix()
-    except Exception:
-        try:
-            rel = resolved.relative_to(_PREDS_DIR.resolve())
-            return f"preds/{rel.as_posix()}"
-        except Exception:
-            return None
 
 
 def build_initial_db_dict() -> dict:
@@ -479,7 +449,7 @@ def initialize_database_if_needed(db_path=DB_PATH):
                     p.get("row01"),
                     p.get("width01"),
                     p.get("height01"),
-                    _normalize_mask_path(p.get("mask_path")),
+                    normalize_mask_path(p.get("mask_path")),
                     p.get("timestamp"),
                 )
             )

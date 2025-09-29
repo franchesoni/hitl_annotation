@@ -11,58 +11,14 @@ from __future__ import annotations
 import time
 from typing import Any, Dict, List, Optional, Set
 
-from .db import DB_PATH, _get_conn, get_annotations, get_config, to_ppm  # re-exported
-from pathlib import Path
-
-# Derive session and preds directories from DB_PATH
-SESSION_DIR = Path(DB_PATH).parent
-PREDS_DIR = SESSION_DIR / "preds"
-
-def _normalize_mask_path(mask_path: str | None) -> str | None:
-    """Normalize a mask path to live under session/preds.
-
-    Returns a session-relative path like "preds/<rel>" if the input resolves
-    inside PREDS_DIR. Otherwise returns None.
-    """
-    if not mask_path:
-        return None
-    try:
-        PREDS_DIR.mkdir(parents=True, exist_ok=True)
-    except Exception:
-        pass
-
-    try:
-        p = Path(mask_path)
-    except Exception:
-        return None
-
-    try:
-        if p.is_absolute():
-            resolved = p.resolve()
-        else:
-            # If the path is already like "preds/...", make it relative to session
-            parts = p.parts
-            if len(parts) > 0 and parts[0] == "preds":
-                resolved = (SESSION_DIR / p).resolve()
-            else:
-                resolved = (PREDS_DIR / p).resolve()
-        # Ensure the resolved path is under PREDS_DIR
-        resolved.relative_to(PREDS_DIR.resolve())
-    except Exception:
-        return None
-
-    # Store session-relative path
-    try:
-        rel = resolved.relative_to(SESSION_DIR.resolve())
-        return rel.as_posix()
-    except Exception:
-        # Fallback to preds-relative
-        try:
-            rel = resolved.relative_to(PREDS_DIR.resolve())
-            return f"preds/{rel.as_posix()}"
-        except Exception:
-            return None
-
+from .db import (  # re-exported
+    DB_PATH,
+    _get_conn,
+    get_annotations,
+    get_config,
+    normalize_mask_path,
+    to_ppm,
+)
 
 def get_all_samples() -> List[Dict[str, Any]]:
     """Return list of all samples with their IDs."""
@@ -194,7 +150,7 @@ def set_predictions_batch(predictions_batch):
                 row01,
                 width01,
                 height01,
-                _normalize_mask_path(pred.get("mask_path")),
+                normalize_mask_path(pred.get("mask_path")),
             ]
             base.append(timestamp)
             insert_data.append(tuple(base))

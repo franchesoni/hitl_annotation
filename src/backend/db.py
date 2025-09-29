@@ -13,12 +13,58 @@ import sqlite3
 import os
 import json
 import time
+from pathlib import Path
 
 
 SKIP_ANNOTATION_TYPE = "skip"
 SKIP_CLASS_SENTINEL = "__SKIP__"
 
 DB_PATH = "session/app.db"
+SESSION_DIR = Path(DB_PATH).parent
+PREDS_DIR = SESSION_DIR / "preds"
+
+
+def normalize_mask_path(mask_path: str | None) -> str | None:
+    """Normalize a mask path so it lives under the session ``preds`` directory."""
+
+    if not mask_path:
+        return None
+
+    try:
+        PREDS_DIR.mkdir(parents=True, exist_ok=True)
+    except Exception:
+        # Directory creation failures are non-fatal for normalization
+        pass
+
+    try:
+        path = Path(mask_path)
+    except Exception:
+        return None
+
+    try:
+        if path.is_absolute():
+            resolved = path.resolve()
+        else:
+            parts = path.parts
+            if parts and parts[0] == "preds":
+                resolved = (SESSION_DIR / path).resolve()
+            else:
+                resolved = (PREDS_DIR / path).resolve()
+
+        # Ensure the mask lives under the predictions directory
+        resolved.relative_to(PREDS_DIR.resolve())
+    except Exception:
+        return None
+
+    try:
+        rel = resolved.relative_to(SESSION_DIR.resolve())
+        return rel.as_posix()
+    except Exception:
+        try:
+            rel = resolved.relative_to(PREDS_DIR.resolve())
+            return f"preds/{rel.as_posix()}"
+        except Exception:
+            return None
 
 def _get_conn():
     """Open a SQLite connection to the app database.
