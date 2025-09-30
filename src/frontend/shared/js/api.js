@@ -172,8 +172,8 @@ export class API {
         return data;
     }
 
-    async deleteMaskAnnotation(sampleId, className) {
-        const res = await fetch(`/api/annotations/${sampleId}/mask/${encodeURIComponent(className)}`, {
+    async deleteMaskAnnotations(sampleId) {
+        const res = await fetch(`/api/annotations/${sampleId}/mask`, {
             method: 'DELETE'
         });
         let data = null;
@@ -183,7 +183,7 @@ export class API {
             data = null;
         }
         if (!res.ok) {
-            const err = new Error((data && data.error) ? data.error : 'Failed to delete mask annotation');
+            const err = new Error((data && data.error) ? data.error : 'Failed to delete mask annotations');
             err.status = res.status;
             err.payload = data;
             throw err;

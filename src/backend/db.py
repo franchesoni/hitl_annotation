@@ -884,19 +884,30 @@ def delete_annotations_by_type(sample_id, annotation_type):
         return cursor.rowcount
 
 
-def delete_mask_annotation(sample_id, class_name):
-    """Delete mask annotations for a specific class on a sample."""
-    if not class_name:
-        return 0
+def delete_mask_annotation(sample_id, class_name=None):
+    """Delete mask annotations for a sample.
+
+    When ``class_name`` is provided, only annotations for that class are removed.
+    Otherwise all mask annotations for the sample are deleted.
+    """
     with _get_conn() as conn:
         cursor = conn.cursor()
-        cursor.execute(
-            """
-            DELETE FROM annotations
-            WHERE sample_id = ? AND type = 'mask' AND class = ?
-            """,
-            (sample_id, class_name),
-        )
+        if class_name:
+            cursor.execute(
+                """
+                DELETE FROM annotations
+                WHERE sample_id = ? AND type = 'mask' AND class = ?
+                """,
+                (sample_id, class_name),
+            )
+        else:
+            cursor.execute(
+                """
+                DELETE FROM annotations
+                WHERE sample_id = ? AND type = 'mask'
+                """,
+                (sample_id,),
+            )
         return cursor.rowcount
 
 def get_annotation_stats():

@@ -52,6 +52,10 @@ The frontend keeps a local config mirror that syncs with the backend on specific
 - Overwrite-by-type reminder: The server replaces all existing annotations of any `type` included in the payload for that sample with exactly those provided. To preserve other types, omit them from the payload. Batch and send the complete list for each included `type`; avoid per-edit writes that could unintentionally overwrite concurrent edits.
 - Delete: Use `DELETE /api/annotations/{id}` to delete all annotations for the current image.
 - Rendering note: Apply class colors and composite overlays; resize masks to match the displayed image dimensions before blending.
+- "Set prediction as mask" checkbox (UI copy: "Add prediction as annotation"):
+  - Availability: Disabled whenever no sample is loaded, a mask prediction map is absent, or a mask save/delete workflow is already running. When a mask annotation already exists, the checkbox is auto-checked; when none exists it is unchecked.
+  - Enabling it requests the backend to persist the currently displayed prediction masks. The frontend gathers every predicted class that includes both `prediction_id` and `prediction_timestamp`, POSTs them to `POST /api/annotations/{sample_id}/accept_mask`, and reloads the sample. If metadata is missing for any class, the checkbox reverts and a warning is shown. A `409 Conflict` triggers an automatic reload of the latest prediction before retrying manually.
+  - Disabling it removes all stored mask annotations for the sample in a single operation. The frontend issues `DELETE /api/annotations/{sample_id}/mask`, regardless of which classes are currently selected, and reloads the sample after a successful response. If the deletion fails, the checkbox returns to the checked state.
 
 ## Status & Feedback
 
