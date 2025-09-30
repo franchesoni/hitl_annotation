@@ -6,6 +6,34 @@
 //   hk.attach();
 // Supports: ctrl/meta/shift/alt modifiers and single keys.
 
+const TEXT_INPUT_TYPES = new Set([
+  'text',
+  'search',
+  'password',
+  'email',
+  'tel',
+  'url',
+  'number'
+]);
+
+export function isTextEntryTarget(target) {
+  if (!target) return false;
+  if (target.isContentEditable) return true;
+  const tagName = (target.tagName || '').toUpperCase();
+  if (tagName === 'TEXTAREA') {
+    return !target.disabled && !target.readOnly;
+  }
+  if (tagName === 'INPUT') {
+    if (target.disabled || target.readOnly) return false;
+    const type = (target.getAttribute('type') || target.type || 'text').toLowerCase();
+    return TEXT_INPUT_TYPES.has(type);
+  }
+  if (tagName === 'SELECT') {
+    return !target.disabled;
+  }
+  return false;
+}
+
 export class Hotkeys {
   constructor(target = document) {
     this.target = target;
@@ -40,7 +68,7 @@ export class Hotkeys {
     return this;
   }
   _onKeydown(e) {
-    if (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.isContentEditable)) return;
+    if (isTextEntryTarget(e.target)) return;
     const parts = [];
     if (e.ctrlKey) parts.push('ctrl');
     if (e.metaKey) parts.push('meta');
