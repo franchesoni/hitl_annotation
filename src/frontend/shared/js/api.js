@@ -129,20 +129,29 @@ export class API {
     }
 
     async clearPoints(sampleId) {
-        // API spec: DELETE /api/annotations/<sampleId> deletes all annotations for the sample
-        const res = await fetch(`/api/annotations/${sampleId}`, {
+        // Delete only point annotations, preserving other annotation types (e.g., masks)
+        const res = await fetch(`/api/annotations/${sampleId}/points`, {
             method: 'DELETE'
         });
         if (!res.ok) throw new Error('Clear points failed');
         return await res.json();
     }
 
-    async acceptMaskPrediction(sampleId, { className, predictionId, predictionTimestamp }) {
+    async acceptMaskPrediction(sampleId, predictions) {
+        const normalized = Array.isArray(predictions) ? predictions : [predictions];
+        if (!normalized.length) {
+            throw new Error('No mask predictions provided');
+        }
         const payload = {
-            class: className,
-            prediction_id: predictionId,
-            prediction_timestamp: predictionTimestamp,
+            predictions: normalized.map(({ className, predictionId, predictionTimestamp }) => ({
+                class: className,
+                prediction_id: predictionId,
+                prediction_timestamp: predictionTimestamp,
+            })),
         };
+        if (payload.predictions.some(item => !item.class || item.prediction_id == null || item.prediction_timestamp == null)) {
+            throw new Error('Mask prediction payload is invalid');
+        }
         const res = await fetch(`/api/annotations/${sampleId}/accept_mask`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },

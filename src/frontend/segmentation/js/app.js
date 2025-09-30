@@ -141,8 +141,6 @@ document.addEventListener('DOMContentLoaded', async () => {
             : {};
         const predictionClasses = Object.keys(predictionMap);
         const hasPrediction = predictionClasses.length > 0;
-        const selected = state.selectedClass;
-        const selectedHasPrediction = !!(selected && predictionMap[selected]);
         const isBusy = state.workflowInProgress || state.isAcceptingMask || state.isRemovingMask;
 
         maskAnnotationToggle.checked = hasAnnotationMask;
@@ -155,8 +153,6 @@ document.addEventListener('DOMContentLoaded', async () => {
             reason = 'No sample loaded.';
         } else if (!hasAnnotationMask && !hasPrediction) {
             reason = 'No mask prediction available.';
-        } else if (!hasAnnotationMask && hasPrediction && predictionClasses.length > 1 && !selectedHasPrediction) {
-            reason = 'Select a class with a mask prediction first.';
         }
 
         maskAnnotationToggle.disabled = Boolean(reason);
@@ -489,44 +485,48 @@ document.addEventListener('DOMContentLoaded', async () => {
         const predictionMap = state.currentMaskPredictions && typeof state.currentMaskPredictions === 'object'
             ? state.currentMaskPredictions
             : {};
-        const classes = Object.keys(predictionMap);
-        if (classes.length === 0) {
+        const entries = Object.entries(predictionMap).filter(([cls, meta]) => cls && meta && typeof meta === 'object');
+        if (entries.length === 0) {
             alert('No mask prediction available to save.');
             return false;
         }
 
-        let targetClass = state.selectedClass;
-        if (!targetClass || !predictionMap[targetClass]) {
-            if (classes.length === 1) {
-                targetClass = classes[0];
-            } else {
-                alert('Select a class with a mask prediction to accept.');
-                return false;
+        const missingMeta = [];
+        const payload = entries.map(([cls, meta]) => {
+            const predictionId = meta.prediction_id ?? meta.id ?? null;
+            const predictionTimestamp = meta.prediction_timestamp ?? meta.timestamp ?? null;
+            if (predictionId == null || predictionTimestamp == null) {
+                missingMeta.push(cls);
             }
-        }
+            return {
+                className: cls,
+                predictionId,
+                predictionTimestamp,
+            };
+        }).filter(item => item.predictionId != null && item.predictionTimestamp != null);
 
-        const meta = predictionMap[targetClass] || {};
-        const predictionId = meta.prediction_id ?? meta.id ?? null;
-        const predictionTimestamp = meta.prediction_timestamp ?? meta.timestamp ?? null;
-        if (predictionId == null || predictionTimestamp == null) {
-            alert('Cannot save mask: missing prediction metadata.');
+        if (missingMeta.length > 0 || payload.length === 0) {
+            const missingList = missingMeta.join(', ');
+            alert(missingList
+                ? `Cannot save masks: missing prediction metadata for ${missingList}.`
+                : 'Cannot save masks: missing prediction metadata.');
             return false;
         }
 
-        state.selectedClass = targetClass;
-        if (classesView && typeof classesView.setSelectedClass === 'function') {
-            classesView.setSelectedClass(targetClass);
+        // Keep UI selection aligned with the first accepted class when possible.
+        const primaryClass = state.selectedClass && predictionMap[state.selectedClass]
+            ? state.selectedClass
+            : payload[0].className;
+        state.selectedClass = primaryClass;
+        if (classesView && typeof classesView.setSelectedClass === 'function' && primaryClass) {
+            classesView.setSelectedClass(primaryClass);
         }
 
         state.isAcceptingMask = true;
         updateMaskAnnotationToggle();
         beginWorkflow();
         try {
-            await api.acceptMaskPrediction(state.currentSampleId, {
-                className: targetClass,
-                predictionId,
-                predictionTimestamp,
-            });
+            await api.acceptMaskPrediction(state.currentSampleId, payload);
             const refreshed = await api.loadSample(state.currentSampleId);
             await loadSampleAndContext(refreshed, null);
             return true;
@@ -540,9 +540,9 @@ document.addEventListener('DOMContentLoaded', async () => {
                     console.error('Failed to reload sample after prediction change:', reloadErr);
                 }
             } else {
-                console.error('Failed to accept mask prediction:', err);
+                console.error('Failed to accept mask predictions:', err);
                 const message = err && err.message ? err.message : 'Unknown error';
-                alert(`Failed to save mask: ${message}`);
+                alert(`Failed to save masks: ${message}`);
             }
             return false;
         } finally {

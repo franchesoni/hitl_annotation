@@ -1,4 +1,5 @@
 from pathlib import Path
+from contextlib import suppress
 from flask import Flask, request, jsonify, send_file, Response
 from io import BytesIO
 import base64
@@ -10,7 +11,7 @@ import mimetypes
 import re
 import shutil
 from collections import defaultdict
-from typing import List
+from typing import List, Dict, Any
 
 from src.backend.db import (
     get_config, update_config, get_next_sample_by_strategy,
@@ -429,35 +430,50 @@ def put_annotations_bulk(sample_id: int):
     return jsonify({"ok": True, "count": total})
 
 
-@app.post("/api/annotations/<int:sample_id>/accept_mask")
-def accept_mask_annotation(sample_id: int):
-    """Promote an ML mask prediction to a persisted mask annotation."""
-    payload = request.get_json(silent=True) or {}
-    class_name = payload.get("class")
+@app.delete("/api/annotations/<int:sample_id>/points")
+def delete_point_annotations_endpoint(sample_id: int):
+    """Delete all point annotations for the given sample."""
+
+    deleted_rows = clear_point_annotations(sample_id)
+    release_claim_by_id(sample_id)
+    return jsonify({"ok": True, "deleted": deleted_rows})
+
+
+def _accept_single_mask_prediction(
+    sample_id: int,
+    prediction: Dict[str, Any],
+) -> Dict[str, Any]:
+    """Persist a single mask prediction as an annotation.
+
+    Raises exceptions when invariants are not met so the caller can abort the workflow.
+    """
+
+    class_name = prediction.get("class")
     if not isinstance(class_name, str) or not class_name.strip():
-        return jsonify({"error": "class is required"}), 400
+        raise ValueError("class is required")
     class_name = class_name.strip()
 
-    if "prediction_id" not in payload:
-        return jsonify({"error": "prediction_id is required"}), 400
+    if "prediction_id" not in prediction:
+        raise ValueError("prediction_id is required")
     try:
-        prediction_id = int(payload.get("prediction_id"))
-    except (TypeError, ValueError):
-        return jsonify({"error": "prediction_id must be an integer"}), 400
+        prediction_id = int(prediction.get("prediction_id"))
+    except (TypeError, ValueError) as exc:
+        raise ValueError("prediction_id must be an integer") from exc
 
-    if "prediction_timestamp" not in payload:
-        return jsonify({"error": "prediction_timestamp is required"}), 400
+    if "prediction_timestamp" not in prediction:
+        raise ValueError("prediction_timestamp is required")
     try:
-        prediction_timestamp = int(payload.get("prediction_timestamp"))
-    except (TypeError, ValueError):
-        return jsonify({"error": "prediction_timestamp must be an integer"}), 400
+        prediction_timestamp = int(prediction.get("prediction_timestamp"))
+    except (TypeError, ValueError) as exc:
+        raise ValueError("prediction_timestamp must be an integer") from exc
 
     mask_predictions = [
-        p for p in get_predictions(sample_id)
+        p
+        for p in get_predictions(sample_id)
         if p.get("type") == "mask" and p.get("class") == class_name and p.get("mask_path")
     ]
     if not mask_predictions:
-        return jsonify({"error": "Mask prediction not found"}), 404
+        raise LookupError(f"Mask prediction not found for class '{class_name}'")
 
     mask_predictions.sort(
         key=lambda p: ((p.get("timestamp") or 0), (p.get("id") or 0)),
@@ -466,18 +482,22 @@ def accept_mask_annotation(sample_id: int):
     latest = mask_predictions[0]
     latest_timestamp = latest.get("timestamp") or 0
     if latest.get("id") != prediction_id or latest_timestamp != prediction_timestamp:
-        return jsonify({
-            "error": "Mask prediction has changed",
-            "latest": {
-                "id": latest.get("id"),
-                "timestamp": latest_timestamp,
-            },
-        }), 409
+        raise RuntimeError(
+            json.dumps(
+                {
+                    "error": "Mask prediction has changed",
+                    "latest": {
+                        "id": latest.get("id"),
+                        "timestamp": latest_timestamp,
+                    },
+                }
+            )
+        )
 
     try:
         source_path = _resolve_under_dir(str(latest.get("mask_path")), PREDS_DIR)
     except (FileNotFoundError, ValueError) as exc:
-        return jsonify({"error": f"Mask file is no longer available: {exc}"}), 400
+        raise FileNotFoundError(f"Mask file is no longer available: {exc}") from exc
 
     MASKS_DIR.mkdir(parents=True, exist_ok=True)
     sanitized_class = re.sub(r"[^A-Za-z0-9_.-]", "_", class_name)
@@ -489,24 +509,29 @@ def accept_mask_annotation(sample_id: int):
     try:
         shutil.copy2(source_path, dest_path)
     except Exception as exc:
-        return jsonify({"error": f"Failed to store mask: {exc}"}), 500
+        raise RuntimeError(f"Failed to store mask for class '{class_name}': {exc}") from exc
 
     relative_path = dest_path.relative_to(SESSION_DIR).as_posix()
     timestamp = int(time.time())
 
     previous_annotations = [
-        ann for ann in get_annotations(sample_id)
+        ann
+        for ann in get_annotations(sample_id)
         if ann.get("type") == "mask" and ann.get("class") == class_name and ann.get("mask_path")
     ]
 
-    upsert_annotation(
-        sample_id,
-        class_name,
-        "mask",
-        mask_path=relative_path,
-        timestamp=timestamp,
-    )
-    release_claim_by_id(sample_id)
+    try:
+        upsert_annotation(
+            sample_id,
+            class_name,
+            "mask",
+            mask_path=relative_path,
+            timestamp=timestamp,
+        )
+    except Exception:
+        with suppress(Exception):
+            dest_path.unlink()
+        raise
 
     for prev in previous_annotations:
         prev_path = _resolve_under_dir(str(prev.get("mask_path")), MASKS_DIR)
@@ -524,7 +549,47 @@ def accept_mask_annotation(sample_id: int):
     if mask_url:
         response_annotation["mask_url"] = mask_url
 
-    return jsonify({"ok": True, "annotation": response_annotation})
+    return response_annotation
+
+
+@app.post("/api/annotations/<int:sample_id>/accept_mask")
+def accept_mask_annotation(sample_id: int):
+    """Promote ML mask predictions to persisted mask annotations."""
+
+    payload = request.get_json(silent=True) or {}
+    raw_predictions = payload.get("predictions")
+    if raw_predictions is None:
+        raw_predictions = [payload]
+
+    if not isinstance(raw_predictions, list) or not raw_predictions:
+        return jsonify({"error": "predictions must be a non-empty list"}), 400
+
+    accepted: List[Dict[str, Any]] = []
+    try:
+        for raw in raw_predictions:
+            if not isinstance(raw, dict):
+                raise ValueError("Each prediction must be an object")
+            annotation = _accept_single_mask_prediction(sample_id, raw)
+            accepted.append(annotation)
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 400
+    except LookupError as exc:
+        return jsonify({"error": str(exc)}), 404
+    except FileNotFoundError as exc:
+        return jsonify({"error": str(exc)}), 400
+    except RuntimeError as exc:
+        # Preserve structured JSON errors when provided.
+        try:
+            data = json.loads(str(exc))
+        except Exception:
+            data = {"error": str(exc)}
+        status = 409 if data.get("error") == "Mask prediction has changed" else 500
+        return jsonify(data), status
+    except Exception as exc:
+        return jsonify({"error": f"Failed to accept mask prediction: {exc}"}), 500
+
+    release_claim_by_id(sample_id)
+    return jsonify({"ok": True, "annotations": accepted})
 
 
 @app.delete("/api/annotations/<int:sample_id>/mask/<class_name>")
