@@ -198,7 +198,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         try {
             await updateConfigIfNeeded();
             await api.annotateSample(sampleId, className);
-            await loadSampleAndContext(null, null);
+            await loadSampleAndContext(null);
         } finally {
             endWorkflow();
         }
@@ -213,7 +213,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // No next-image strategy: always use default backend selection
     async function loadNextImage() {
-        await loadSampleAndContext(null, null);
+        await loadSampleAndContext(null);
         // Note: No prediction display for points annotation
     }
     async function loadConfigFromServer() {
@@ -272,11 +272,14 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         beginWorkflow();
         try {
+            console.log('navigatePrev: syncing config and points before fetching previous sample');
+            await updateConfigIfNeeded();
+            await savePointsForCurrentImage();
             const prevSample = await api.loadSamplePrev(state.currentSampleId);
             if (!prevSample) {
                 alert('No previous image available');
             } else {
-                await loadSampleAndContext(prevSample, null);
+                await loadSampleAndContext(prevSample, { skipPreLeaveSteps: true });
             }
         } catch (e) {
             console.error('Navigate prev failed:', e);
@@ -291,17 +294,23 @@ document.addEventListener('DOMContentLoaded', async () => {
         beginWorkflow();
         try {
             let nextSample = null;
+            let preLeaveHandled = false;
 
             // Try to get next sample if we have a current sample
             if (state.currentSampleId) {
+                console.log('navigateNext: syncing config and points before fetching next sample');
+                await updateConfigIfNeeded();
+                await savePointsForCurrentImage();
                 nextSample = await api.loadSampleNext(state.currentSampleId);
+                preLeaveHandled = true;
             }
 
             // If no next sample found, load a new one using strategy params
             if (!nextSample) {
-                await loadSampleAndContext(null, null);
+                console.log('navigateNext: no sequential sample found, loading default next image');
+                await loadSampleAndContext(null, { skipPreLeaveSteps: preLeaveHandled });
             } else {
-                await loadSampleAndContext(nextSample, null);
+                await loadSampleAndContext(nextSample, { skipPreLeaveSteps: preLeaveHandled });
             }
         } catch (e) {
             console.error('Navigate next failed:', e);
@@ -374,11 +383,16 @@ document.addEventListener('DOMContentLoaded', async () => {
         await classesView.setCurrentSample(sampleId, filepath);
     }
 
-    // DRY helper: push config, save points, fetch sample (or use provided),
+    // DRY helper: optionally push config/save points, fetch sample (or use provided),
     // load annotations, load masks, refresh stats/config, update buttons
-    async function loadSampleAndContext(sampleDataOrNull, _unused) {
-        await updateConfigIfNeeded();
-        await savePointsForCurrentImage();
+    async function loadSampleAndContext(sampleDataOrNull, { skipPreLeaveSteps = false } = {}) {
+        if (!skipPreLeaveSteps) {
+            console.log('loadSampleAndContext: running pre-leave steps before fetching next sample');
+            await updateConfigIfNeeded();
+            await savePointsForCurrentImage();
+        } else {
+            console.log('loadSampleAndContext: pre-leave steps already handled by caller');
+        }
         let data = sampleDataOrNull;
         if (!data) {
             // No strategy: call API without query params
@@ -530,14 +544,14 @@ document.addEventListener('DOMContentLoaded', async () => {
         try {
             await api.acceptMaskPrediction(state.currentSampleId, payload);
             const refreshed = await api.loadSample(state.currentSampleId);
-            await loadSampleAndContext(refreshed, null);
+            await loadSampleAndContext(refreshed);
             return true;
         } catch (err) {
             if (err && err.status === 409) {
                 alert('Mask prediction changed while saving. Reloading latest version.');
                 try {
                     const refreshed = await api.loadSample(state.currentSampleId);
-                    await loadSampleAndContext(refreshed, null);
+                    await loadSampleAndContext(refreshed);
                 } catch (reloadErr) {
                     console.error('Failed to reload sample after prediction change:', reloadErr);
                 }
@@ -571,7 +585,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         try {
             await api.deleteMaskAnnotations(state.currentSampleId);
             const refreshed = await api.loadSample(state.currentSampleId);
-            await loadSampleAndContext(refreshed, null);
+            await loadSampleAndContext(refreshed);
             return true;
         } catch (err) {
             console.error('Failed to delete mask annotation:', err);
