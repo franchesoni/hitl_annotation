@@ -18,7 +18,7 @@
 - `architecture` (str): `resnet18`/`resnet34` for fastai; `small`/`large` for DINOv3
 - `budget` (int): max items to predict per cycle
 - `resize` (int): image resize (fastai: shorter side; DINOv3: padded canvas size)
-- `mask_loss_weight` (float): balance between mask loss and point loss during segmentation training
+- `mask_loss_weight` (float): weighting applied to mask loss during segmentation training
 
 ### Data Exchange
 - Reads: `get_all_samples()`, `get_annotations(sample_id)`, `get_config()`

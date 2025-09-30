@@ -9,6 +9,7 @@ export class AIControlsView {
     this.archSelect = document.getElementById('ai-arch');
     this.budgetInput = document.getElementById('ai-budget');
     this.resizeInput = document.getElementById('ai-resize');
+    this.maskWeightInput = document.getElementById('ai-mask-weight');
     this.exportDBBtn = document.getElementById('export-db-btn');
 
     if (this.exportDBBtn) {
@@ -52,7 +53,7 @@ export class AIControlsView {
       Object.assign(this.state.config, this._collectAIConfig());
       this.state.configUpdated = true;
     };
-    [this.archSelect, this.budgetInput, this.resizeInput].forEach(inp => {
+    [this.archSelect, this.budgetInput, this.resizeInput, this.maskWeightInput].forEach(inp => {
       if (inp) inp.addEventListener('change', onInputChange);
     });
 
@@ -62,12 +63,26 @@ export class AIControlsView {
   _collectAIConfig() {
     // Determine appropriate default architecture based on whether custom architectures are used
     const defaultArch = this.customArchitectures ? this.customArchitectures[0] : 'resnet18';
-    
+
+    const resolveWeight = (inputEl, fallback) => {
+      if (!inputEl) return fallback;
+      const raw = inputEl.value;
+      if (raw === '' || raw === null || typeof raw === 'undefined') {
+        return fallback;
+      }
+      const parsed = Number(raw);
+      return Number.isFinite(parsed) ? parsed : fallback;
+    };
+
+    const currentMaskWeight = typeof this.state.config.mask_loss_weight === 'number'
+      ? this.state.config.mask_loss_weight : 1;
+
     return {
       aiShouldBeRun: !!(this.checkbox && this.checkbox.checked),
       architecture: this.archSelect?.value || this.state.config.architecture || defaultArch,
       budget: Number(this.budgetInput?.value || this.state.config.budget || 1000),
-      resize: Number(this.resizeInput?.value || this.state.config.resize || 224)
+      resize: Number(this.resizeInput?.value || this.state.config.resize || 224),
+      mask_loss_weight: resolveWeight(this.maskWeightInput, currentMaskWeight)
     };
   }
 
@@ -75,12 +90,13 @@ export class AIControlsView {
     if (this.archSelect && cfg.architecture) this.archSelect.value = cfg.architecture;
     if (this.budgetInput && cfg.budget !== undefined) this.budgetInput.value = cfg.budget;
     if (this.resizeInput && cfg.resize !== undefined) this.resizeInput.value = cfg.resize;
+    if (this.maskWeightInput && cfg.mask_loss_weight !== undefined) this.maskWeightInput.value = cfg.mask_loss_weight;
   }
 
   updateInputsDisabled() {
     const running = !!(this.checkbox && this.checkbox.checked);
     // When running, disable editing (as per requirement: only change when unchecked)
-    [this.archSelect, this.budgetInput, this.resizeInput].forEach(inp => {
+    [this.archSelect, this.budgetInput, this.resizeInput, this.maskWeightInput].forEach(inp => {
       if (inp) inp.disabled = running;
     });
     if (this.aiStatus) {
