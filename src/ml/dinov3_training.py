@@ -633,7 +633,7 @@ def main() -> None:
                     train_class_indices.add(val_idx)
 
         if len(train_class_indices) < 2:
-            print("[INFO] Not enough classes in train split — skipping training this cycle")
+            print("[INFO] Not enough classes in train split, need at least 2 classes (else we predict constant) — skipping training this cycle")
             train_loss_avg = None
         else:
             epochs = 25
