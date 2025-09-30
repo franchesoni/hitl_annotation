@@ -397,10 +397,44 @@ def put_annotations_bulk(sample_id: int):
     # Group by type
     allowed_types = {"label", "point", "bbox", "skip", "mask"}
     grouped = defaultdict(list)
-    for ann in items:
+    for idx, ann in enumerate(items):
+        if not isinstance(ann, dict):
+            return (
+                jsonify({"error": f"Annotation at index {idx} must be an object"}),
+                400,
+            )
         ann_type = ann.get("type", "label")
+        if not isinstance(ann_type, str):
+            return (
+                jsonify({"error": f"Annotation at index {idx} has invalid type"}),
+                400,
+            )
+        ann_type = ann_type.strip() or "label"
         if ann_type not in allowed_types:
             return jsonify({"error": f"Unsupported annotation type: {ann_type}"}), 400
+
+        if ann_type == "skip":
+            grouped[ann_type].append({"timestamp": ann.get("timestamp")})
+            continue
+
+        class_name = ann.get("class")
+        if not isinstance(class_name, str) or not class_name.strip():
+            return (
+                jsonify({"error": f"Annotation at index {idx} is missing 'class'"}),
+                400,
+            )
+        if ann_type == "mask":
+            mask_path = ann.get("mask_path")
+            if not isinstance(mask_path, str) or not mask_path.strip():
+                return (
+                    jsonify(
+                        {
+                            "error": "mask annotations require a non-empty 'mask_path'",
+                            "index": idx,
+                        }
+                    ),
+                    400,
+                )
         grouped[ann_type].append(ann)
     total = 0
     for ann_type, anns in grouped.items():
@@ -408,17 +442,18 @@ def put_annotations_bulk(sample_id: int):
         delete_annotations_by_type(sample_id, ann_type)
         # Insert new ones
         for ann in anns:
-            class_ = ann.get("class")
             timestamp = ann.get("timestamp")
             if ann_type == "skip":
                 upsert_annotation(sample_id, None, ann_type, timestamp=timestamp)
                 total += 1
                 continue
-            if not class_:
-                continue
-            # Prepare annotation data (supporting optional fields)
+
+            class_ = ann.get("class")
             annotation_data = {k: v for k, v in ann.items() if k not in ("class", "type")}
-            upsert_annotation(sample_id, class_, ann_type, **annotation_data)
+            try:
+                upsert_annotation(sample_id, class_, ann_type, **annotation_data)
+            except ValueError as exc:
+                return jsonify({"error": str(exc)}), 400
             total += 1
             # Store live accuracy for label annotations
             if ann_type == "label":
