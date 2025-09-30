@@ -38,25 +38,25 @@ and the AI, which is one of the following:
     - make the router show both options if task is not set in config and show only the selected task if it is, and fail if going directly (using url) to one of the tasks if it's not the selected task, and if it is the right one and no task was set, set it. essentially, if the task is not set and we hit the router, show both tasks. once we move to a task, if the task is unset, we set it. if one moves to a task that was set and is different, show an alert that says something like 'the current task is X, you can't change tasks, if you want to do another task, reset the app' (resetting means rm / renaming current session dir and relaunching the apps)
     - check cls frontend works
     - fix classif undo
-- remove the live accuracy things in the seg frontend 
+- 25-09-30:
+    - remove the live accuracy things in the seg frontend 
+    - update live acc thing in classif frontend
+    - add skip button for classif
+    - filter images via name
+    - try classif app in qc
+    - show image id in frontend
+    - check if claimed is removed by time
+    - integrate mask training (done)
 
 ## WIP
-- update live acc thing in classif frontend
-- add skip button for classif
-- filter images via name
-- try classif app in qc
-- show image id in frontend
+- expose way to add more images if needed <- needs trying
+- make using the keyboard easier (should work everywhere in the app) <- needs trying
+- allow the user to jump to a specific image id <- needs trying
 
 ## to-do
-- check if claimed is removed by time
-- integrate mask training (done)
-- expose way to add more images if needed
+- expose way to load external annotations 
 - when removing a class show warning, remove the annotations for that class, and reset the model
-- make using the keyboard easier (should work everywhere in the app)
 - add next image strategy (random, sequential, select class) for seg frontend
-- allow the user to jump to a specific image id
 - make it possible to start from trained model (maybe self-train?)
-    - train model over horizontal dips
-    - try model over horizontal dips
-- also allow to load previous annotations (on top)
+    - add a self-training weight, when non-zero, a self-training loop is run in the ml backend (use predictions as targets)
 - show both saved mask and prediction
