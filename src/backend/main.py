@@ -102,9 +102,12 @@ def create_image_response(sample_info):
         "X-Image-Filepath": str(sample_filepath),
     }
     # Only add X-Predictions-* headers for predictions
-    pred_candidates = [
-        p for p in preds if p.get("type") == "label" and p.get("probability") is not None
-    ]
+    pred_candidates = [p for p in preds if p.get("type") == "label"]
+    for pred in pred_candidates:
+        if pred.get("probability") is None:
+            raise ValueError(
+                f"Label prediction {pred.get('id', '<unknown>')} is missing a probability"
+            )
     assert len(pred_candidates) <= 1, "Expected at most one prediction per image"
     if pred_candidates:
         pred_ann = pred_candidates[0]
@@ -112,7 +115,7 @@ def create_image_response(sample_info):
         headers["X-Predictions-Label"] = str(pred_ann.get("class", ""))
         from src.backend.db import to_ppm
         prob = pred_ann.get("probability", None)
-        headers["X-Predictions-Probability"] = str(to_ppm(prob) if prob is not None else "")
+        headers["X-Predictions-Probability"] = str(to_ppm(prob))
 
     # If mask predictions exist, expose them as a JSON list of {class, url} objects
     mask_preds = [p for p in preds if p.get("type") == "mask" and p.get("mask_path")]

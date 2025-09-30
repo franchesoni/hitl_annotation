@@ -64,13 +64,8 @@ Notes
   - `X-Image-Filepath` (string): Full/absolute filepath to the sample asset.
   - Content-Type reflects the asset (`image/jpeg` or `image/png`).
 - Prediction headers: When available, predictions are exposed via headers. Schema:
-  - `X-Predictions-Type`: `label` or `mask`.
-  - If `label`:
-    - `X-Predictions-Label` (string): Predicted class label.
-    - `X-Predictions-Probability` (int ppm 0..1,000,000): Probability/confidence. Send this header whenever the DB row has a probability; omit only for legacy or missing values.
-  - If `mask`:
-    - `X-Predictions-Mask` (JSON object): `{class: url_path}` mapping, where each value is a relative URL to fetch the mask asset (e.g., `/preds/<file>.png`).
-    - Class mapping semantics remain as specified; backend maps files under `session/preds/` to URLs under `/preds/` and never exposes absolute filesystem paths. The DB may store `mask_path` as an absolute path (preferred) or a session-relative path; the server normalizes either form to safe relative URLs.
+  - Label predictions set `X-Predictions-Type: label`, `X-Predictions-Label` (string class), and require `X-Predictions-Probability` (int ppm 0..1,000,000). Missing probabilities on stored label predictions are treated as backend errors.
+  - Mask predictions surface via `X-Predictions-Mask` (JSON array). Each entry is an object `{class: <str>, url: <relative_url>, id: <int>, timestamp: <iso8601>}`. Class mapping semantics remain as specified; the backend maps files under `session/preds/` to URLs under `/preds/` and never exposes absolute filesystem paths. The DB may store `mask_path` as an absolute path (preferred) or a session-relative path; the server normalizes either form to safe relative URLs.
   - BBoxes: Not exposed via headers in v1.
  - Stats: `/api/stats` returns available curves, including `live_accuracy`, and always includes counts.
 - Write semantics summary:

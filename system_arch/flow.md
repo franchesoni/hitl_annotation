@@ -26,4 +26,4 @@
 | Add/remove points | Points updated | Point annotations update for the selected class; no mask update. |
 | Overlay slider | Viewer updates | Adjust visibility/strength of predictions and existing annotations. |
 | Delete points | Current image reset | Remove all point annotations for the current image. |
-| Next | Advance to Next | Uses current strategy (same set as classification); `prev/next` are deterministic and return 404 at list boundaries (no wrap). |
+| Next | Advance to Next | Uses current strategy (same set as classification); `prev/next` clamp to the current image at list boundaries (no wrap). |
