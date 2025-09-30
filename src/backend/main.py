@@ -651,17 +651,15 @@ def accept_mask_annotation(sample_id: int):
 def delete_mask_annotation_endpoint(sample_id: int, class_name: str | None):
     """Remove stored mask annotations for a sample.
 
-    When ``class_name`` is provided only that class is removed; otherwise all
-    mask annotations for the sample are deleted.
+    The optional ``class_name`` parameter is accepted for backwards
+    compatibility but ignored; deletions are always performed for the entire
+    ``(sample_id, type='mask')`` scope.
     """
-    class_name = (class_name or "").strip() or None
 
     existing = [
         ann
         for ann in get_annotations(sample_id)
-        if ann.get("type") == "mask"
-        and ann.get("mask_path")
-        and (class_name is None or ann.get("class") == class_name)
+        if ann.get("type") == "mask" and ann.get("mask_path")
     ]
     if not existing:
         # Nothing to delete; return ok to keep frontend logic simple
@@ -673,11 +671,10 @@ def delete_mask_annotation_endpoint(sample_id: int, class_name: str | None):
         prev_path.unlink()
         deleted_files += 1
 
-    deleted_rows = delete_mask_annotation(sample_id, class_name)
+    deleted_rows = delete_mask_annotation(sample_id)
     release_claim_by_id(sample_id)
 
-    scope = "all" if class_name is None else "class"
-    return jsonify({"ok": True, "deleted": deleted_rows, "deleted_files": deleted_files, "scope": scope})
+    return jsonify({"ok": True, "deleted": deleted_rows, "deleted_files": deleted_files, "scope": "all"})
 
 
 @app.get("/api/stats")
