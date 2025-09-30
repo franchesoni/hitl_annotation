@@ -478,7 +478,7 @@ def main() -> None:
 
     checkpoint = load_checkpoint(clf_path)
     class_names: List[str] = list(checkpoint.get("class_names", [])) if checkpoint else []
-    prev_config: Optional[dict] = None
+    prev_reset_snapshot: Optional[tuple[str, int, float]] = None
     cycle = 0
     model: Optional[torch.nn.Module] = None
     model_size: Optional[str] = None
@@ -491,27 +491,31 @@ def main() -> None:
         print(f"\n[LOOP] Starting cycle {cycle}")
         config = backend_db.get_config()
 
-        if prev_config != config:
+        arch_raw = (config.get("architecture") or "small").lower()
+        arch = arch_raw if arch_raw in {"small", "large"} else "small"
+        if arch != arch_raw:
+            print(f"[WARN] Unknown architecture '{arch_raw}', defaulting to 'small'")
+
+        resize_value = int(config.get("resize", current_resize) or current_resize)
+
+        cfg_mask_weight = config.get("mask_loss_weight")
+        mask_weight_value = 1.0 if cfg_mask_weight is None else float(cfg_mask_weight)
+        if mask_weight_value < 0.0:
+            mask_weight_value = 0.0
+
+        current_snapshot = (arch, resize_value, mask_weight_value)
+        if prev_reset_snapshot != current_snapshot:
             print("[CONFIG] Detected config change or first load.")
-            arch = config.get("architecture", "small") or "small"
-            if arch not in {"small", "large"}:
-                print(f"[WARN] Unknown architecture '{arch}', defaulting to 'small'")
-                arch = "small"
             if model is None or arch != model_size:
                 print("[INFO] Loading DINOv3 backbone:", arch)
                 model = load_dinov3_model(arch)
                 model_size = arch
             backend_db.reset_training_stats()
             print("[METRICS] Cleared train/val curves due to config change.")
-            current_resize = config.get("resize", 1536) or 1536
-            prev_config = config
+            prev_reset_snapshot = current_snapshot
 
-        cfg_mask_weight = config.get("mask_loss_weight", mask_loss_weight)
-        mask_loss_weight = 1.0 if cfg_mask_weight is None else float(cfg_mask_weight)
-        if mask_loss_weight < 0.0:
-            mask_loss_weight = 0.0
-
-        current_resize = config.get("resize", current_resize) or current_resize
+        current_resize = resize_value
+        mask_loss_weight = mask_weight_value
         task = (config.get("task") or "classification").lower()
         if task != "segmentation":
             print("[INFO] Task is not 'segmentation' — pausing 1s…")

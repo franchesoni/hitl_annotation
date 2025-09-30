@@ -255,9 +255,9 @@ def main() -> None:
     print("[INIT] DINOv3 linear classifier trainer (balanced LR, cached)")
     clf_path = Path(backend_db.DB_PATH).with_name("dinov3_linear_cls.pkl")
     cycle = 0
-    prev_config = None
     model = None
     model_size = None
+    prev_backbone_snapshot: Tuple[str, int, str, bool] | None = None
 
     while True:
         config = backend_db.get_config()
@@ -271,21 +271,23 @@ def main() -> None:
             time.sleep(2)
             continue
 
-        arch = (config.get("architecture") or "small").lower()
+        arch_raw = (config.get("architecture") or "small").lower()
+        arch = arch_raw
+        if arch not in {"small", "large"}:
+            print(f"[WARN] Unknown architecture '{arch}', defaulting to 'small'")
+            arch = "small"
         resize = int(config.get("resize", 384))
         pooling = (config.get("pooling") or "avg").lower()
         debug_forward = bool(config.get("debug_forward", False))
         budget = int(config.get("budget", 1000))
 
         # reload and clear cache if config changed in a way that affects features
-        if model is None or arch != model_size or config != prev_config:
-            if arch not in {"small", "large"}:
-                print(f"[WARN] Unknown architecture '{arch}', defaulting to 'small'")
-                arch = "small"
+        current_snapshot = (arch, resize, pooling, debug_forward)
+        if model is None or arch != model_size or current_snapshot != prev_backbone_snapshot:
             print(f"[INFO] Loading DINOv3 backbone: {arch}")
             model = load_dinov3_model(arch)
             model_size = arch
-            prev_config = config
+            prev_backbone_snapshot = current_snapshot
             _cache_clear()
             print("[CACHE] Cleared feature cache due to config change.")
 
