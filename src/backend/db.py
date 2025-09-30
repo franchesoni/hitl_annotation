@@ -919,10 +919,28 @@ def get_annotation_stats():
         cursor.execute("SELECT COUNT(*) FROM samples")
         total_samples = cursor.fetchone()[0]
         
-        # Annotated samples
-        cursor.execute("SELECT COUNT(DISTINCT sample_id) FROM annotations")
+        # Annotated samples (excluding skips)
+        cursor.execute(
+            """
+            SELECT COUNT(DISTINCT sample_id)
+            FROM annotations
+            WHERE type != ?
+            """,
+            (SKIP_ANNOTATION_TYPE,)
+        )
         annotated_samples = cursor.fetchone()[0]
-        
+
+        # Skipped samples
+        cursor.execute(
+            """
+            SELECT COUNT(DISTINCT sample_id)
+            FROM annotations
+            WHERE type = ?
+            """,
+            (SKIP_ANNOTATION_TYPE,)
+        )
+        skipped_samples = cursor.fetchone()[0]
+
         # Annotations by class
         cursor.execute("""
             SELECT class, COUNT(*) as count
@@ -932,6 +950,9 @@ def get_annotation_stats():
             ORDER BY count DESC
         """, (SKIP_CLASS_SENTINEL,))
         class_counts = {row[0]: row[1] for row in cursor.fetchall()}
+
+        if skipped_samples:
+            class_counts["Skipped"] = skipped_samples
         
         # Get training stats from curves table
         cursor.execute("""
@@ -981,10 +1002,15 @@ def get_annotation_stats():
         live_points = cursor.fetchall()
         live_accuracy_points = [{"value": p[0], "timestamp": p[1]} for p in live_points]
         
+        remaining_samples = total_samples - annotated_samples - skipped_samples
+        if remaining_samples < 0:
+            remaining_samples = 0
+
         return {
             "total": total_samples,
             "annotated": annotated_samples,
-            "remaining": total_samples - annotated_samples,
+            "skipped": skipped_samples,
+            "remaining": remaining_samples,
             "annotation_counts": class_counts,
             "training_stats": training_stats,
             "live_accuracy_points": live_accuracy_points
