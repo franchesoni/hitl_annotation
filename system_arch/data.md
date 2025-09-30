@@ -147,7 +147,7 @@ Represents the single-row app configuration stored in the `config` table and ret
 | `architecture` | string|null | Model architecture name (e.g., `small`, `large`, or a timm model name) | No |
 | `budget` | integer|null | Training or processing budget (app-dependent meaning) | No |
 | `resize` | integer|null | Image resize target (short side) for ML | No |
-| `sample_path_filter` | string|null | Glob-style path filter applied to sample filenames (`null` disables) | No |
+| `sample_path_filter` | string|null | Glob-style path filter applied to sample filenames (`null` disables) for operator-facing UI filtering only; ML pipelines continue training/evaluating on the full dataset regardless of this value. | No |
 | `sample_path_filter_count` | integer | Number of samples matching the current filter; recomputed on read | No (computed) |
 | `available_architectures` | string[] | Provided by API (computed), not stored in DB | No (computed) |
 | `last_claim_cleanup` | integer|null | Unix seconds of the last opportunistic claim cleanup; backend updates this when running cleanup | No |
@@ -169,7 +169,7 @@ Example:
 ```
 
 Notes
-- `sample_path_filter_count` currently rides along in the config payload for UI convenience; plan to migrate this counter to `/api/stats` in a future cleanup so config stays purely declarative.
+- `sample_path_filter_count` currently rides along in the config payload for UI convenience; plan to migrate this counter to `/api/stats` in a future cleanup so config stays purely declarative. The filter impacts operator views only; ML trainers intentionally continue to read from the full sample set to avoid starving the model of data when operators inspect subsets.
 - Coordinate semantics: All coordinates for points and bboxes are integers representing parts per million of the image dimension. `col01`/`width01` are ppm of image width; `row01`/`height01` are ppm of image height. Range: 0..1,000,000.
 - Probabilities: For label predictions, `probability` is an integer ppm (0..1,000,000). ML writers MUST round floats to nearest ppm; readers MUST divide by 1,000,000 when float is needed. Range clamp: [0, 1_000_000].
 - Single source of truth: `sample_filepath` exists only in `samples`. Child tables store `sample_id`. APIs expose the image filepath for user convenience via the `X-Image-Filepath` response header on image endpoints.
