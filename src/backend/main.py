@@ -282,20 +282,36 @@ def put_config():
 @app.get("/api/config")  # available architectures should go here
 def get_config_endpoint():
     """Gets the config from the db."""
-    # Opportunistic in-memory cleanup: at most once per 60 minutes
+    # Opportunistic cleanup: at most once per 60 minutes, using persisted timestamp.
     global _last_claim_cleanup_ts
     now = time.time()
-    did_cleanup = False
-    if _last_claim_cleanup_ts is None or (now - _last_claim_cleanup_ts) >= 60 * 60:
-        try:
-            cleanup_claims_unconditionally()
-            did_cleanup = True
-        finally:
-            _last_claim_cleanup_ts = now
     config = get_config()
-    # If cleanup was performed, update last_claim_cleanup in the response
-    if did_cleanup:
+
+    stored_last_cleanup = config.get("last_claim_cleanup")
+    stored_last_cleanup_ts: float | None = None
+    if stored_last_cleanup is not None:
+        with suppress(TypeError, ValueError):
+            stored_last_cleanup_ts = float(stored_last_cleanup)
+
+    last_cleanup_ts = stored_last_cleanup_ts
+    if last_cleanup_ts is None and _last_claim_cleanup_ts is not None:
+        last_cleanup_ts = float(_last_claim_cleanup_ts)
+
+    should_cleanup = last_cleanup_ts is None or (now - last_cleanup_ts) >= 60 * 60
+
+    if should_cleanup:
+        cleanup_claims_unconditionally()
+        persisted_ts = int(now)
+        update_config({"last_claim_cleanup": persisted_ts})
+        config["last_claim_cleanup"] = persisted_ts
+        _last_claim_cleanup_ts = now
+    elif stored_last_cleanup_ts is not None:
+        # Keep the in-memory guard in sync with the stored value when present.
+        _last_claim_cleanup_ts = stored_last_cleanup_ts
+        config["last_claim_cleanup"] = int(stored_last_cleanup_ts)
+    elif _last_claim_cleanup_ts is not None:
         config["last_claim_cleanup"] = int(_last_claim_cleanup_ts)
+
     # Add available architectures to the config response
     config["available_architectures"] = _list_architectures()
     return jsonify(config)
