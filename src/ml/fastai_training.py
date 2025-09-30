@@ -185,20 +185,36 @@ def _run_forever(flip: bool, max_rotate: float) -> None:
 
     learner = None
     model_path = Path(backend_db.DB_PATH).with_name("checkpoint.pkl")
-    prev_config: dict | None = None
+
+    def _reset_snapshot(cfg: dict | None) -> tuple:
+        if cfg is None:
+            return ()
+        arch_raw = cfg.get("architecture")
+        arch = arch_raw.lower() if isinstance(arch_raw, str) else arch_raw
+        resize_val = cfg.get("resize")
+        try:
+            resize = int(resize_val) if resize_val is not None else None
+        except (TypeError, ValueError):
+            resize = resize_val
+        task_raw = cfg.get("task")
+        task = task_raw.lower() if isinstance(task_raw, str) else task_raw
+        return (arch, resize, task)
+
+    prev_reset_snapshot: tuple | None = None
     cycle = 0
 
     while True:
         config = backend_db.get_config()
 
-        if prev_config != config:
-            if prev_config is not None:
+        current_snapshot = _reset_snapshot(config)
+        if prev_reset_snapshot != current_snapshot:
+            if prev_reset_snapshot is not None:
                 print("[INFO] Config changed; resetting learner")
             learner = None
             cycle = 0
             if model_path.exists():
                 model_path.unlink()
-            prev_config = config
+            prev_reset_snapshot = current_snapshot
 
         pause_s = 5  # default pause between cycles (seconds)
         if not config.get("ai_should_be_run", False):
