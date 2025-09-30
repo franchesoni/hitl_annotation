@@ -21,7 +21,8 @@ document.addEventListener('DOMContentLoaded', async () => {
             resize: 224,
             available_architectures: [],
             samplePathFilter: '',
-            sampleFilterCount: null
+            sampleFilterCount: null,
+            mask_loss_weight: 1
         },
         configUpdated: false,
         workflowInProgress: false,
@@ -68,7 +69,8 @@ document.addEventListener('DOMContentLoaded', async () => {
             architecture: cfg.architecture || 'small', // Default to 'small' for segmentation
             budget: cfg.budget || 1000,
             resize: cfg.resize || 224,
-            available_architectures: cfg.available_architectures || []
+            available_architectures: cfg.available_architectures || [],
+            mask_loss_weight: typeof cfg.mask_loss_weight === 'number' ? cfg.mask_loss_weight : (state.config.mask_loss_weight ?? 1)
         };
         sampleFilterView.applyServerConfig(cfg);
         if (state.classColors instanceof Map) {
