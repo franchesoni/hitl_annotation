@@ -185,6 +185,7 @@ Notes
 
 - Session dir: All runtime data lives under `session/`. The SQLite DB is `session/app.db` (with WAL files `app.db-wal`/`app.db-shm`). Prediction masks should be saved under `session/preds/`.
 - DB creation: On startup, `src/backend/db_init.initialize_database_if_needed()` creates tables, indexes, and a default `config` row if missing. It also seeds initial data from `build_initial_db_dict()` after strict `validate_db_dict()` checks.
+- Annotation/prediction seeding: The stock initializer leaves `annotations` and `predictions` empty (the stub `build_initial_db_dict()` returns empty lists). If you choose to preload annotations or predictions, you must extend both the validator and the insert logic to provide ppm-normalized geometry/probability fields; otherwise, expect to backfill them through the runtime APIs instead of at init time.
 - Initial data source: `build_initial_db_dict()` defines where samples, annotations, and predictions are loaded from (paths must exist). Update this function to point at your dataset.
 - Persistence model: All state changes (annotations, predictions, config, curves) are persisted to `session/app.db`. Mask files referenced by predictions remain on disk under `session/preds/`.
 - Resetting: Stop the app, then delete `session/app.db` (and optionally `session/preds/` and other artifacts) to fully reset. On next start, the DB will be recreated and re-seeded via `db_init`.
