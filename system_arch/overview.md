@@ -42,9 +42,9 @@ This repository implements a lightweight human-in-the-loop image annotation app 
   - Content-Type: `image/jpeg` or `image/png` per asset.
 
 - Prediction headers (minimal): Frontend consumes only top-1 label or mask.
-  - `X-Predictions-Type`: `label` or `mask`.
-  - If `label`: `X-Predictions-Label` (string class) and `X-Predictions-Probability` (integer ppm, 0..1,000,000). Include the probability header whenever stored in DB; omit only for legacy/missing values.
-  - If `mask`: `X-Predictions-Mask` as JSON `{class: url_path}` mapping; paths are served under `/preds/...` and must resolve inside `session/preds/` after normalization. The DB may store `mask_path` as an absolute or session-relative filesystem path; the server normalizes to safe relative URLs.
+  - `X-Predictions-Type`: present only for label predictions with value `label`.
+  - Label predictions must provide `X-Predictions-Label` (string class) and `X-Predictions-Probability` (integer ppm, 0..1,000,000). The backend treats a missing probability for a stored label prediction as an error.
+  - Mask predictions surface via `X-Predictions-Mask`, encoded as JSON array entries of the form `{"class": <str>, "url": <relative_url>, "id": <int>, "timestamp": <iso8601>}`. Paths are served under `/preds/...` and must resolve inside `session/preds/` after normalization. The DB may store `mask_path` as an absolute or session-relative filesystem path; the server normalizes to safe relative URLs.
   - BBoxes are not exposed via headers in v1.
 
 - “Unlabeled” definition (selection and stats):
@@ -55,7 +55,7 @@ This repository implements a lightweight human-in-the-loop image annotation app 
   - Supported: `sequential` (default), `random`, `minority_frontier`, `specific_class` (requires `class` query param). `specific_class` is both used for Last-Class Max-Prob and for a user-selected target class.
   - `minority_frontier` definition: compute labeled counts per class from `annotations(type='label')`; pick the class with the lowest labeled count (tie-break by lexicographic class name). Among samples whose current top-1 prediction equals that class, select the one with the lowest predicted `probability` (ppm). If none exist, fall back to `random`.
 
-- Navigation edges: For `GET /api/samples/{id}/prev` and `{id}/next`, return 404 at boundaries (no wrap/clamp). Frontend should handle and disable the control as needed.
+- Navigation edges: For `GET /api/samples/{id}/prev` and `{id}/next`, clamp to the current sample at the dataset boundaries (no wrap). Frontend may still disable the inactive control but should not expect a 404.
 
 - Stats response (shape): `GET /api/stats` returns aggregate counts and available curves such as `live_accuracy` (an ordered list of `{value, timestamp}` points) and training curves like `val_accuracy`, `train_loss`, etc. Specific count keys are implementation-defined in v1.
 
