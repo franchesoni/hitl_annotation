@@ -1,3 +1,5 @@
+import { isTextEntryTarget } from '/shared/js/hotkeys.js';
+
 export class ClassesView {
     constructor(container, annotateWorkflow, state) {
         this.container = typeof container === 'string' ? document.querySelector(container) : container;
@@ -13,7 +15,7 @@ export class ClassesView {
         this.isLoading = false;
         this.render();
         document.addEventListener('keydown', async (e) => {
-            if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+            if (isTextEntryTarget(e.target)) return;
             if (this.isLoading) return;
             let idx = -1;
             if (e.key >= '1' && e.key <= '9') {
