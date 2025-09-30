@@ -557,39 +557,24 @@ document.addEventListener('DOMContentLoaded', async () => {
             return false;
         }
         const annotations = Array.isArray(state.currentMaskAnnotations)
-            ? state.currentMaskAnnotations.filter(ann => ann && ann.type === 'mask' && ann.class)
+            ? state.currentMaskAnnotations.filter(ann => ann && ann.type === 'mask')
             : [];
         if (annotations.length === 0) {
             return true;
-        }
-        const annotatedClasses = new Set(annotations.map(ann => ann.class));
-        let targetClass = state.selectedClass;
-        if (!targetClass || !annotatedClasses.has(targetClass)) {
-            if (annotatedClasses.size === 1) {
-                targetClass = Array.from(annotatedClasses)[0];
-            } else {
-                alert('Select a class with a saved mask annotation to remove.');
-                return false;
-            }
-        }
-
-        state.selectedClass = targetClass;
-        if (classesView && typeof classesView.setSelectedClass === 'function') {
-            classesView.setSelectedClass(targetClass);
         }
 
         state.isRemovingMask = true;
         updateMaskAnnotationToggle();
         beginWorkflow();
         try {
-            await api.deleteMaskAnnotation(state.currentSampleId, targetClass);
+            await api.deleteMaskAnnotations(state.currentSampleId);
             const refreshed = await api.loadSample(state.currentSampleId);
             await loadSampleAndContext(refreshed, null);
             return true;
         } catch (err) {
             console.error('Failed to delete mask annotation:', err);
             const message = err && err.message ? err.message : 'Unknown error';
-            alert(`Failed to remove mask annotation: ${message}`);
+            alert(`Failed to remove mask annotations: ${message}`);
             return false;
         } finally {
             state.isRemovingMask = false;

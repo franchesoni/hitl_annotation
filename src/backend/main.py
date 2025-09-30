@@ -592,22 +592,26 @@ def accept_mask_annotation(sample_id: int):
     return jsonify({"ok": True, "annotations": accepted})
 
 
+@app.delete("/api/annotations/<int:sample_id>/mask", defaults={"class_name": None})
 @app.delete("/api/annotations/<int:sample_id>/mask/<class_name>")
-def delete_mask_annotation_endpoint(sample_id: int, class_name: str):
-    """Remove a stored mask annotation for a given class on a sample."""
-    if class_name is None:
-        return jsonify({"error": "class name is required"}), 400
-    class_name = class_name.strip()
-    if not class_name:
-        return jsonify({"error": "class name is required"}), 400
+def delete_mask_annotation_endpoint(sample_id: int, class_name: str | None):
+    """Remove stored mask annotations for a sample.
+
+    When ``class_name`` is provided only that class is removed; otherwise all
+    mask annotations for the sample are deleted.
+    """
+    class_name = (class_name or "").strip() or None
 
     existing = [
-        ann for ann in get_annotations(sample_id)
-        if ann.get("type") == "mask" and ann.get("class") == class_name and ann.get("mask_path")
+        ann
+        for ann in get_annotations(sample_id)
+        if ann.get("type") == "mask"
+        and ann.get("mask_path")
+        and (class_name is None or ann.get("class") == class_name)
     ]
     if not existing:
         # Nothing to delete; return ok to keep frontend logic simple
-        return jsonify({"ok": True, "deleted": 0})
+        return jsonify({"ok": True, "deleted": 0, "deleted_files": 0})
 
     deleted_files = 0
     for ann in existing:
@@ -618,7 +622,8 @@ def delete_mask_annotation_endpoint(sample_id: int, class_name: str):
     deleted_rows = delete_mask_annotation(sample_id, class_name)
     release_claim_by_id(sample_id)
 
-    return jsonify({"ok": True, "deleted": deleted_rows, "deleted_files": deleted_files})
+    scope = "all" if class_name is None else "class"
+    return jsonify({"ok": True, "deleted": deleted_rows, "deleted_files": deleted_files, "scope": scope})
 
 
 @app.get("/api/stats")
